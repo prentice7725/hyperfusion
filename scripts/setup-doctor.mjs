@@ -24,7 +24,18 @@ check('repository',()=>{root=repo(process.argv[2]??process.cwd());git(root,['rev
 if(root){
  check('worktree',()=>{if(git(root,['ls-files','--stage']).split('\n').some(x=>x.startsWith('160000')))throw Error('Submodules are not supported');return 'ordinary git worktree';});
  check('metadata',()=>{const d=path.join(root,'.fusion');if(fs.existsSync(d)&&fs.lstatSync(d).isSymbolicLink())throw Error('.fusion symlink');return 'cooperative locking only';});
- check('recovery',()=>{for(const f of ['locks/control.lock','locks/writer.json'])if(fs.existsSync(path.join(root,'.fusion',f)))throw Error('RECOVERY_REQUIRED: '+f);const f=path.join(root,'.fusion/state.json');if(fs.existsSync(f)){const s=read(f);if(['EXECUTING','RECOVERY_REQUIRED'].includes(s.phase))throw Error('RECOVERY_REQUIRED: '+s.phase);}return 'no interrupted mutation';});
+ // 중단 흔적이 있으면 무엇이 남았는지와 다음 명령까지 보여 준다. 잠금은 절대 자동으로 지우지 않는다.
+ check('recovery',()=>{
+  const lock=f=>path.join(root,'.fusion/locks',f),sf=path.join(root,'.fusion/state.json');
+  const s=fs.existsSync(sf)?read(sf):null,problems=[];
+  if(fs.existsSync(lock('control.lock')))problems.push('control.lock (controller crashed mid-command)');
+  if(fs.existsSync(lock('writer.json'))){const w=read(lock('writer.json'));problems.push(`writer.json owner=${w.owner} task=${w.task_id} round=${w.round} since=${w.created_at}`);}
+  if(s&&['EXECUTING','RECOVERY_REQUIRED'].includes(s.phase))problems.push('phase '+s.phase);
+  if(!problems.length)return 'no interrupted mutation';
+  const legacy=s&&s.schema_version!==4;
+  throw Error('RECOVERY_REQUIRED: '+problems.join('; ')+(s?` | state task=${s.task_id} schema=${s.schema_version} phase=${s.phase}`:' | no state.json')
+   +' | next: confirm no worker/controller process is running, then '+(legacy?'archive (state from another branch/version)':'recover')+' with the writer token; see references/recovery-protocol.md');
+ });
  check('metadata-ignore',()=>{try{git(root,['check-ignore','.fusion/state.json']);}catch{throw Error('Add /.fusion/ to local git info/exclude before init');}return 'ignored';});
 }
 console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,bench,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));

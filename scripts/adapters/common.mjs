@@ -1,4 +1,4 @@
-import {execFileSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
 import {resolveExecutable} from '../platform.mjs';
 
 // 외부 일꾼(Grok, Antigravity)이 공통으로 따르는 결과 계약과 지시문.
@@ -37,11 +37,18 @@ export function bashRules(brief) {
 // 실행 파일과 필수 플래그를 확인한다. 인증은 실제 호출에서만 드러난다.
 export function probe(name,binary,requiredFlags) {
  const {executable,prefix_args}=resolveExecutable(name,binary);
- const opts={encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true};
- const version=execFileSync(executable,[...prefix_args,'--version'],opts).trim();
- const help=execFileSync(executable,[...prefix_args,'--help'],opts);
+ const shown=prefix_args.at(-1)??executable;
+ // 도움말을 stderr로 내거나 0이 아닌 코드로 끝내는 CLI도 있어 두 스트림을 합쳐 본다.
+ const run=flag=>{
+  const r=spawnSync(executable,[...prefix_args,flag],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true});
+  if(r.error)throw Error(`ADAPTER_UNAVAILABLE: ${name} ${flag} failed at ${shown}: ${r.error.code==='ETIMEDOUT'?'timed out (CLI may need a TTY)':r.error.message}`);
+  return `${r.stdout??''}\n${r.stderr??''}`;
+ };
+ const version=run('--version').trim().split(/\r?\n/)[0];
+ const help=run('--help');
  const missing=requiredFlags.filter(f=>!help.includes(f));
- if(missing.length)throw Error(`ADAPTER_UNAVAILABLE: missing ${name} flags `+missing.join(', '));
+ // 어떤 파일이 잡혔고 무엇을 출력했는지 남겨야 엉뚱한 실행 파일(IDE 실행기 등)을 알아챌 수 있다.
+ if(missing.length)throw Error(`ADAPTER_UNAVAILABLE: missing ${name} flags ${missing.join(', ')} (resolved ${shown}, version "${version}", help starts "${help.trim().split(/\r?\n/).slice(0,2).join(' | ').slice(0,160)}")`);
  return {executable,prefix_args,version,platform:process.platform,authentication:'not verified by local probe'};
 }
 

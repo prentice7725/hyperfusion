@@ -4,7 +4,8 @@ import crypto from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {samePath,renameWithRetry} from './platform.mjs';
 export const hash = v => crypto.createHash('sha256').update(v).digest('hex');
-export const read = f => JSON.parse(fs.readFileSync(f,'utf8'));
+// PowerShell 5.1의 Set-Content -Encoding utf8은 BOM을 붙인다. 입력 JSON의 BOM은 무시한다.
+export const read = f => JSON.parse(fs.readFileSync(f,'utf8').replace(/^\uFEFF/,''));
 export function atomic(f,v) {
   fs.mkdirSync(path.dirname(f),{recursive:true});
   const tmp=f+'.'+crypto.randomUUID()+'.tmp';

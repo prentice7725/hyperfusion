@@ -8,6 +8,9 @@ import {resolveExecutable,unwrapShim,samePath,assertCommandLine,isWin} from '../
 import {execute} from '../scripts/executor-bridge.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {run} from '../scripts/fusion-state.mjs';
+import {adapter} from '../scripts/adapters/index.mjs';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 
 const tmp=t=>{const d=fs.mkdtempSync(path.join(os.tmpdir(),'hf-plat-'));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));return d;};
 
@@ -25,3 +28,16 @@ test('Windows command-line length guard',()=>{if(!isWin){assertCommandLine('x',[
 test('backslash paths from a Windows worker are normalized before validation',async t=>{const f=fixture(t);f.begin();f.mode('backslash');const out=await execute(f.root);assert.deepEqual(read(out.result_file).files_read,['sub/a.txt']);});
 test('per-executor timeout_ms from config bounds the round',async t=>{const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{grok:{timeout_ms:150}}}));run(f.root,'init',{...f.brief,executor:'grok'});f.begin();f.mode('hang');await assert.rejects(()=>execute(f.root),/timeout/);assert.ok(f.state().writer);});
 test('process record states how the tree is killed on this platform',async t=>{const f=fixture(t);f.begin();await execute(f.root);const p=read(path.join(f.root,'.fusion/tasks/HF-test/process-1.json'));assert.equal(p.platform,process.platform);assert.equal(p.tree_kill,isWin?'taskkill /T /F':'process group');});
+test('wrong binary (e.g. IDE launcher) is named in the probe error with its help text',t=>{
+ const d=tmp(t),f=path.join(d,'agy.mjs');
+ fs.writeFileSync(f,"console.error(process.argv.includes('--help')?'Usage: antigravity [options][paths...]\\n  --new-window':'1.2.3');");
+ const old=process.env.HF_AGY_BIN;process.env.HF_AGY_BIN=f;t.after(()=>{if(old===undefined)delete process.env.HF_AGY_BIN;else process.env.HF_AGY_BIN=old;});
+ assert.throws(()=>adapter('antigravity').probe(),e=>e.message.includes(fs.realpathSync(f))&&e.message.includes('Usage: antigravity')&&e.message.includes('version "1.2.3"'));
+});
+test('doctor explains a leftover writer lease instead of a bare error',t=>{
+ const f=fixture(t);f.begin();
+ const out=spawnSync(process.execPath,[fileURLToPath(new URL('../scripts/setup-doctor.mjs',import.meta.url)),f.root,'--executor','grok'],{encoding:'utf8'});
+ const rec=JSON.parse(out.stdout).checks.find(c=>c.name==='recovery');
+ assert.equal(rec.ok,false);assert.match(rec.detail,/owner=grok task=HF-test round=1/);assert.match(rec.detail,/schema=4 phase=EXECUTING/);assert.match(rec.detail,/then recover/);
+});
+test('JSON input written by PowerShell with a UTF-8 BOM is accepted',t=>{const d=tmp(t),f=path.join(d,'in.json');fs.writeFileSync(f,'\uFEFF{"a":1}');assert.deepEqual(read(f),{a:1});});
