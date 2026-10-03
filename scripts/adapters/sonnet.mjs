@@ -5,7 +5,8 @@ import {resultSchema,prompt,bashRules,probe as probeCli} from './common.mjs';
 // 플래그 출처: https://code.claude.com/docs/en/headless, https://code.claude.com/docs/en/cli-reference
 export const name='sonnet';
 export const MODEL='claude-sonnet-5-5';
-export const requiredFlags=['--model','--output-format','--json-schema','--resume','--session-id','--safe-mode','--tools','--allowedTools','--disallowedTools','--permission-mode','--max-turns'];
+// --max-turns는 --help에 나오지 않는 버전이 있어 프로브 대상에서 뺀다. 인자로는 계속 넘기며, 인식 못 하면 실행이 실패로 끝난다.
+export const requiredFlags=['--model','--output-format','--json-schema','--resume','--session-id','--safe-mode','--tools','--allowedTools','--disallowedTools','--permission-mode'];
 export const binary=()=>process.env.HF_CLAUDE_BIN||'claude';
 export const probe=()=>probeCli('Claude Code (Sonnet)',binary(),requiredFlags);
 export const newSession=()=>crypto.randomUUID();

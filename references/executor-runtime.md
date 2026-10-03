@@ -33,6 +33,7 @@
 - 인자: `-p --model claude-sonnet-5-5 --safe-mode --output-format json --json-schema <결과 스키마> --permission-mode dontAsk --max-turns 40`, 첫 라운드 `--session-id <UUID>`, 이후 `--resume <UUID>`. 프롬프트는 stdin.
 - 도구: Read/Glob/Grep(+edit 허용 시 Edit/Write)과 `executor_bash_rules`에 있는 Bash만 허용. Agent/Task/Skill/MCP와 git 변경 명령은 금지. `--safe-mode`로 사용자 플러그인·훅·메모리를 끄므로 필요한 저장소 지침은 brief에 직접 넣는다.
 - `structured_output`을 검증한다. 오류 envelope, 세션 불일치, `permission_denials`는 실패다.
+- `--max-turns`는 일부 버전의 `--help`에 표시되지 않아 프로브하지 않는다(2.1.288에서 확인). 인자로는 넘기며, 인식하지 못하는 버전이면 실행이 실패로 끝난다.
 - 실행 파일 경로는 `HF_CLAUDE_BIN`(기본 `claude`).
 
 ## 하지 말 것
