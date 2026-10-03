@@ -13,7 +13,7 @@
 |---|---|
 | pass | VERIFY. 리드가 수용 테스트를 직접 돌린다 |
 | redo | 같은 일꾼, 같은 세션. 예산이 없으면 교체/takeover/BLOCKED |
-| alternative (`escalate` 별칭) | 다른 일꾼. 예산 있는 다른 일꾼이 없으면 거절 |
+| alternative (`escalate` 별칭) | 다른 일꾼. 생략 시 배치 순서상 다음 일꾼. 예산 있는 다른 일꾼이 없으면 거절 |
 | decision | 리드가 설계/요구사항 결정 후 같은 일꾼 REDO |
 | takeover | 모든 일꾼이 소진됐을 때만. 아니면 거절 |
 

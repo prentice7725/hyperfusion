@@ -4,6 +4,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {config,selectExecutor,EXECUTORS,CAP} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
+import {route} from './router.mjs';
 import {atomic,immutable,read,repo,snapshot,changes} from './artifact.mjs';
 import {acquire,assertLease,release} from './writer-lease.mjs';
 import * as contract from './contracts.mjs';
@@ -26,14 +27,19 @@ export function run(root,action,input={}) {
   s=fs.existsSync(sf)?read(sf):null;
   if(action==='init') {
    const configuration=config(root);
-   const executor=selectExecutor(configuration,input.executor);
+   const requested=selectExecutor(configuration,input.executor);
    if(s&&!['CLOSE','ARCHIVED'].includes(s.phase))throw Error('Existing unfinished task; inspect/recover');
    contract.brief(input);
    if(writerHeld())throw Error('Existing writer; recover first');
    if(fs.existsSync(path.join(dir,'tasks',input.task_id)))throw Error('Task ID already used');
+   // auto면 router가 고르고, 명시 지정이면 그 일꾼을 맨 앞에 두고 router 순서를 예비로 붙인다.
+   let routing;
+   if(requested==='auto')routing={mode:'auto',...route(root,configuration,input)};
+   else {const r=route(root,configuration,input,{probe:false});routing={mode:'explicit',...r,executor:requested,candidates:[requested,...r.candidates.filter(e=>e!==requested)],reason:'lead override; router suggested '+r.executor+' ('+r.reason+')'};}
+   const executor=routing.executor;
    const base=snapshot(root);
-   s={schema_version:4,architecture:'opus-lead-v0.3',configuration,initial_executor:executor,active_executor:executor,owner:null,
-    attempts:{grok:0,antigravity:0,lead:0},sessions:{grok:null,antigravity:null},task_id:input.task_id,phase:'PLAN',
+   s={schema_version:4,architecture:'opus-lead-v0.3',configuration,routing,initial_executor:executor,active_executor:executor,owner:null,
+    attempts:{grok:0,antigravity:0,sonnet:0,lead:0},sessions:{grok:null,antigravity:null,sonnet:null},task_id:input.task_id,phase:'PLAN',
     lead:configuration.lead,lead_target_model:configuration.lead_model,lead_model:null,iteration:0,base_commit:base.head,baseline_dirty:!!base.status,
     writer:null,reviews:[],escalations:[],result_failures:0,started_at:new Date().toISOString()};
    art('initial-brief.json',input);art('baseline.json',base);save();return s;
@@ -72,7 +78,12 @@ export function run(root,action,input={}) {
     owner='lead';
     if(typeof input.takeover_reason!=='string'||!input.takeover_reason.trim())throw Error('Takeover requires a recorded reason');
    } else if(s.phase==='ALTERNATIVE_REQUIRED'){
-    owner=selectExecutor(s.configuration,input.executor);
+    // 지정이 없으면 배치표에서 방금 반려된 일꾼 다음 순번부터 돌아가며 예산 있는 일꾼을 투입한다.
+    const pick=input.executor===undefined||input.executor==='auto';
+    const order=[...new Set([...s.routing.candidates,...pool()])].filter(e=>pool().includes(e));
+    const at=order.indexOf(s.owner);
+    owner=pick?[...order.slice(at+1),...order.slice(0,at+1)].find(e=>e!==s.owner&&budget(e)):selectExecutor(s.configuration,input.executor);
+    if(!owner)throw Error('No alternative executor with budget');
     if(owner===s.owner)throw Error('Alternative requires a different executor than the one just rejected');
    } else {
     owner=s.phase==='PLAN'?s.active_executor:s.owner;
@@ -93,7 +104,7 @@ export function run(root,action,input={}) {
    const lease=acquire(root,s.task_id,round,owner);
    if(s.owner!==owner)s.result_failures=0;
    s.phase='EXECUTING';s.writer=lease;s.iteration=round;s.owner=owner;s.attempts[owner]++;
-   if(a){s.active_executor=owner;if(owner==='grok')s.sessions.grok=session;}
+   if(a){s.active_executor=owner;if(session)s.sessions[owner]=session;}
    save();
    art(`brief-${round}.json`,input);art(`base-${round}.json`,snapshot(root));
    const request=a?{transport:'executor-cli',executor:owner,command:process.execPath,args:[fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url)),root],

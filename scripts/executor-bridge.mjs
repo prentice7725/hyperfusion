@@ -12,7 +12,7 @@ export async function execute(root,{timeoutMs=1200000,maxBytes=8*1024*1024}={}) 
  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1)throw Error('Invalid timeout');
  root=repo(root);
  const state=read(path.join(root,'.fusion/state.json'));
- if(state.phase!=='EXECUTING'||!['grok','antigravity'].includes(state.owner))throw Error('No active executor round');
+ if(state.phase!=='EXECUTING'||!['grok','antigravity','sonnet'].includes(state.owner))throw Error('No active executor round');
  const dir=path.join(root,'.fusion/tasks',state.task_id),n=state.iteration;
  const request=read(path.join(dir,`dispatch-${n}.json`));
  const lease=assertLease(root,request.token);
@@ -23,14 +23,14 @@ export async function execute(root,{timeoutMs=1200000,maxBytes=8*1024*1024}={}) 
  if(request.cli.prompt_file){fs.writeFileSync(request.cli.prompt_file,request.prompt,{flag:'wx',mode:0o600});}
  let stdout='',stderr='',reason=null,child,killTimer,timer,forceResolve;
  const killGroup=signal=>{if(child?.pid)try{process.kill(-child.pid,signal);}catch(e){if(e.code!=='ESRCH')throw e;}};
- const stop=why=>{if(reason)return;reason=why;killGroup('SIGTERM');killTimer=setTimeout(()=>{killGroup('SIGKILL');child?.stdout.destroy();child?.stderr.destroy();forceResolve?.({code:null,signal:'SUPERVISOR_ABORT'});},2000);};
+ const stop=why=>{if(reason)return;reason=why;killGroup('SIGTERM');killTimer=setTimeout(()=>{killGroup('SIGKILL');child?.stdout.destroy();child?.stderr.destroy();child?.stdin?.destroy();forceResolve?.({code:null,signal:'SUPERVISOR_ABORT'});},2000);};
  const onTerm=()=>stop('bridge interrupted');
  process.on('SIGTERM',onTerm);process.on('SIGINT',onTerm);
  let exit;
  try {
   exit=await new Promise(resolve=>{
    forceResolve=resolve;
-   child=spawn(request.cli.executable,request.cli.args,{cwd:root,stdio:['ignore','pipe','pipe'],shell:false,detached:true});
+   child=spawn(request.cli.executable,request.cli.args,{cwd:root,stdio:[request.stdin===undefined?'ignore':'pipe','pipe','pipe'],shell:false,detached:true});
    if(child.pid)immutable(path.join(dir,`process-${n}.json`),{executor:request.executor,pid:child.pid,process_group:child.pid,session_id:request.cli.session_id});
    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
    child.on('error',e=>{reason='Executor spawn failed: '+e.message;});
@@ -38,6 +38,8 @@ export async function execute(root,{timeoutMs=1200000,maxBytes=8*1024*1024}={}) 
    child.stderr.on('data',chunk=>{if(Buffer.byteLength(stderr)+Buffer.byteLength(chunk)>maxBytes)stop('Executor stderr limit exceeded');else stderr+=chunk;});
    timer=setTimeout(()=>stop('Executor timeout'),timeoutMs);
    child.on('close',(code,signal)=>resolve({code,signal}));
+   // 프롬프트를 stdin으로 받는 일꾼(Sonnet)만 파이프를 연다.
+   if(request.stdin!==undefined){child.stdin.on('error',e=>{if(e.code!=='EPIPE')stop('Executor stdin failed: '+e.message);});child.stdin.end(request.stdin);}
   });
  } finally {
   clearTimeout(timer);clearTimeout(killTimer);process.off('SIGTERM',onTerm);process.off('SIGINT',onTerm);

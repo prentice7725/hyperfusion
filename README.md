@@ -1,10 +1,10 @@
 # HyperFusion — Opus 리드 브랜치 (`opus-lead`)
 
-**Claude Opus 5.5가 리드**를 맡고, **Grok과 Antigravity가 일꾼**으로 구현과 테스트를 전부 수행하는 Claude Code 스킬.
+**Claude Opus 5.5가 리드**를 맡고, **Grok·Antigravity·Sonnet이 일꾼**으로 구현과 테스트를 전부 수행하는 Claude Code 스킬. 리드는 작업 종류와 난이도를 보고 일꾼을 골라 투입한다(이미지 애셋은 Grok, 까다로운 코딩은 Sonnet, UI는 Antigravity…).
 
 리드는 계획·반려·최종 검수만 한다. 일꾼에게 예산이 남아 있는 한 리드는 코드를 쓰지 않는다. 반려할 때는 구체적 명령서를 붙여야 하고, 같은 실수를 두 번 하는 일꾼은 다른 일꾼으로 교체된다. 일꾼의 "다 했어요"는 스냅샷 diff와 리드의 재실행으로만 인정된다.
 
-> main 브랜치는 GPT-6.1 Sol(Codex)이 리드, Claude Code가 일꾼인 v0.2.1 구조다. 이 브랜치는 역할을 뒤집은 v0.3이다.
+> main 브랜치는 GPT-6.1 Sol(Codex)이 리드, Claude Code가 일꾼인 v0.2.1 구조다. 이 브랜치는 역할을 뒤집은 v0.4다.
 
 ## main 평가 요약 (v0.2.1)
 
@@ -17,6 +17,22 @@
 | 코드 가독성 | 한 줄에 로직을 몰아넣은 압축 스타일. 동작은 맞지만 리뷰 비용이 큼 |
 | 테스트 | 36개 통과. 대역 CLI로 프로세스/프로토콜만 검증하며 실제 모델 호출은 없음(정직하게 명시됨) |
 
+## 일꾼 배치 (v0.4)
+
+| 작업 | 1순위 → 예비 |
+|---|---|
+| 이미지 애셋 (`image-asset`) | Grok → Antigravity |
+| 중·고난도 코드 (`code` medium/high) | Sonnet → Grok → Antigravity |
+| 쉬운 코드 (`code` low) | Grok → Antigravity → Sonnet |
+| 테스트 / 리팩터 | Sonnet → … |
+| UI / 문서 | Antigravity → … |
+
+- brief의 `task_kind`, `difficulty`로 규칙을 고르고, 설치 안 된 일꾼은 건너뛴다.
+- 같은 종류 작업에서 pass 비율이 낮은 일꾼(표본 3개 이상, 40% 미만)은 자동으로 뒤로 밀린다.
+- 반려·교체 시 배치 순서상 다음 일꾼이 들어간다. 리드는 `--executor`로 언제든 직접 지정할 수 있다.
+- 배치표는 측정값이 아닌 출발점이며 `hyperfusion.config.json`의 `routing.rules`로 바꾼다. 자세한 건 [routing](references/routing.md).
+- Grok의 이미지 생성은 공개 자료에 언급되지만 공식 문서로 확인하지 못했다. 결과 파일은 스냅샷 diff로 검증되므로, 애셋이 실제로 범위 안에 생기지 않으면 통과할 수 없다.
+
 ## v0.3에서 바뀐 것
 
 | 기능 | 상태 |
@@ -24,19 +40,20 @@
 | 리드 | Claude Opus 5.5 (`claude-opus-5-5`), Claude Code 호스트 |
 | Grok 어댑터 | 구현. `--prompt-file`, `--output-format json`, `--session-id`/`--resume`, scope 기반 `--allow Edit(...)`, git 변경 명령 `--deny` |
 | Antigravity 어댑터 | 구현. `--json-schema` 구조화 출력, CLI 발급 `conversation_id`로 재개, 기본 `--sandbox` |
+| Sonnet 어댑터 (v0.4) | 구현. Claude Code `-p --model claude-sonnet-5-5`, `--json-schema`, `--safe-mode`, `dontAsk` |
+| auto-routing (v0.4) | 구현. 배치표 + 실적 + 설치 상태 |
 | 일꾼 예산 | 일꾼당 3라운드(main은 2), 리드 takeover 1회 |
-| takeover 조건 | 두 일꾼 모두 소진됐을 때만. 그 전엔 컨트롤러가 거절 |
+| takeover 조건 | 모든 일꾼이 소진됐을 때만. 그 전엔 컨트롤러가 거절 |
 | 빈 반려 금지 | 반려에 `blocking_criteria` 필수, 재지시에 `lead_feedback` 필수 |
 | 자동 교체 | 같은 반려 사유 2연속이면 다른 일꾼으로 강제 교대 |
-| Luna / Claude 일꾼 | 제거. Claude는 리드이므로 일꾼으로 고용 불가 |
-| auto-routing | 미구현, 명시적 오류 |
-| 실제 Grok/agy 인증·모델 호출 | 이 패키지의 테스트로 검증되지 않음 |
+| Luna | 제거. Claude 일꾼은 `sonnet`으로만 고용(리드 Opus와 별도 프로세스) |
+| 실제 Grok/agy/Sonnet 인증·모델 호출 | 이 패키지의 테스트로 검증되지 않음 |
 
-CLI 플래그는 xAI의 [Grok Build headless 문서](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)와 [Antigravity CLI headless 문서](https://antigravity.google/docs/cli/headless)를 기준으로 했다. 설치된 버전에 필요한 플래그가 없으면 preflight에서 거절하며, 플래그를 약하게 바꿔 우회하지 않는다.
+CLI 플래그는 xAI의 [Grok Build headless 문서](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)와 [Antigravity CLI headless 문서](https://antigravity.google/docs/cli/headless), [Claude Code headless 문서](https://code.claude.com/docs/en/headless)를 기준으로 했다. 설치된 버전에 필요한 플래그가 없으면 preflight에서 거절하며, 플래그를 약하게 바꿔 우회하지 않는다.
 
 ## 설치와 사용
 
-Node.js 20 이상, Git, POSIX, 초기 커밋이 있는 대상 저장소, 그리고 설치·인증된 `grok` 및/또는 `agy`가 필요하다.
+Node.js 20 이상, Git, POSIX, 초기 커밋이 있는 대상 저장소, 그리고 설치·인증된 `grok`, `agy`, `claude` 중 하나 이상이 필요하다.
 
 ```sh
 git clone -b opus-lead https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyperfusion
@@ -46,12 +63,12 @@ Claude Code(Opus 5.5 선택)에서:
 
 ```text
 /hyperfusion <작업 내용>
-/hyperfusion --executor antigravity <작업 내용>
+/hyperfusion --executor sonnet <작업 내용>
 ```
 
-독립 실행형 명령이나 daemon은 없다. 리드가 `SKILL.md`에 따라 brief를 쓰고 컨트롤러와 브리지를 호출한다. 기본 일꾼과 정책은 대상 저장소의 `hyperfusion.config.json`으로 정한다(예시: `hyperfusion.config.example.json`). 실행 파일 경로는 `HF_GROK_BIN`, `HF_AGY_BIN`으로 바꿀 수 있다.
+독립 실행형 명령이나 daemon은 없다. 리드가 `SKILL.md`에 따라 brief를 쓰고 컨트롤러와 브리지를 호출한다. 기본 일꾼과 정책은 대상 저장소의 `hyperfusion.config.json`으로 정한다(예시: `hyperfusion.config.example.json`). 실행 파일 경로는 `HF_GROK_BIN`, `HF_AGY_BIN`, `HF_CLAUDE_BIN`으로 바꿀 수 있다.
 
-자세한 순서: [SKILL.md](SKILL.md), [runtime](references/runtime.md), [일꾼 런타임](references/executor-runtime.md).
+자세한 순서: [SKILL.md](SKILL.md), [runtime](references/runtime.md), [일꾼 런타임](references/executor-runtime.md), [배치](references/routing.md).
 
 ## 테스트
 
@@ -59,7 +76,7 @@ Claude Code(Opus 5.5 선택)에서:
 npm test
 ```
 
-47개 테스트가 Grok/Antigravity 정상 실행, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. 테스트의 `grok`/`agy`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
+63개 테스트가 Grok/Antigravity/Sonnet 정상 실행, 작업별 배치·설치 상태 반영·실적 기반 강등·교체 순서, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. 테스트의 `grok`/`agy`/`claude`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
 
 ## 완료보고 진단
 
@@ -69,12 +86,13 @@ npm test
 - `envelope-N.json`: 종료 코드, 중단 이유, 원본 stdout/stderr
 - `result-N.json`, `session-N.json`, `usage-N.json`: 검증된 결과, 세션 ID, 일꾼 보고 사용량
 - `review-N.json`: 리드 판정과 반려 사유
-- `.fusion/state.json`: 단계, 일꾼별 남은 예산, 교체 이력
+- `.fusion/state.json`: 단계, 배치 결과와 근거(`routing`), 일꾼별 남은 예산, 교체 이력
+- `.fusion/metrics/<task_id>.json`: router가 학습하는 작업별 기록
 
 ## 운영 원칙
 
 writer는 한 명이다. lock은 협업 통제이며 OS 샌드박스가 아니다. 자동 commit/push/deploy/release, 범위 확장, 파괴적 복구는 없다.
 
-목표 지표는 **성공 작업당 Opus 리드 토큰**이다. 실패 작업도 분자에 포함한다. 일꾼 비용과 소요 시간은 별도 가드레일로 기록한다(Antigravity는 비용을 보고하지 않으므로 null). 측정되지 않은 값은 null이다.
+목표 지표는 **성공 작업당 Opus 리드 토큰**이다. 실패 작업도 분자에 포함한다. 일꾼 비용과 소요 시간은 별도 가드레일로 기록한다(Antigravity는 비용을 보고하지 않으므로 null). 작업이 끝날 때마다 `metrics.mjs`를 돌려야 router가 실적을 배운다. 측정되지 않은 값은 null이다.
 
 실행 로그·세션·인증정보는 이 저장소에 포함하지 않는다. `.fusion/`은 대상 저장소의 비공개 로컬 작업 기록이다.

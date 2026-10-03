@@ -19,11 +19,14 @@ export function measure(root,observations=null) {
   objective:'minimize Opus lead tokens per successful task; workers do the heavy lifting',
   lead_target_model:s.lead_target_model??null,lead_model:s.lead_model??null,
   lead_usage:lead,lead_tokens_per_success:s.phase==='CLOSE'&&lead?lead.lead_tokens:null,
-  worker_usage:usage,worker_rounds:{grok:byExecutor('grok').length,antigravity:byExecutor('antigravity').length},
+  task_kind:s.routing?.task_kind??null,difficulty:s.routing?.difficulty??null,routing_mode:s.routing?.mode??null,routed_executor:s.routing?.executor??null,final_owner:s.owner??null,
+  // router 학습용. 어떤 일꾼이 어떤 판정을 받았는지.
+  review_outcomes:(s.reviews??[]).map(r=>({owner:r.owner,verdict:r.verdict,round:r.round})),
+  worker_usage:usage,worker_rounds:Object.fromEntries(['grok','antigravity','sonnet'].map(e=>[e,byExecutor(e).length])),
   worker_cost_estimate_usd:usage.length&&usage.every(u=>known(u.total_cost_usd))?usage.reduce((a,u)=>a+u.total_cost_usd,0):null,
   review_rounds:s.reviews.length,delegation_count:s.iteration,escalation_count:s.escalations.length,lead_takeovers:s.attempts?.lead??0,
   wall_ms:s.closed_at?Date.parse(s.closed_at)-Date.parse(s.started_at):null,
-  measurement_note:'Unknown usage stays null. Antigravity reports no cost, so mixed tasks have null worker cost. Failed tasks count in the numerator.'};
+  measurement_note:'Unknown usage stays null. Antigravity reports no cost, so mixed tasks have null worker cost. Failed tasks count in the numerator. Run this at CLOSE and BLOCKED so the router learns.'};
  atomic(path.join(root,'.fusion/metrics',s.task_id+'.json'),v);return v;
 }
 export function aggregate(records) {

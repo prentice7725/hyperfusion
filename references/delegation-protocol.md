@@ -12,9 +12,13 @@
   "allowed_actions": ["read", "edit", "test", "lint", "build"],
   "forbidden_actions": ["commit", "push", "deploy", "release", "scope-expansion"],
   "evidence_required": ["files_changed", "commands_run", "test_results", "remaining_risks"],
-  "executor_bash_rules": ["Bash(npm test*)"]
+  "executor_bash_rules": ["Bash(npm test*)"],
+  "task_kind": "code",
+  "difficulty": "medium"
 }
 ```
+
+`task_kind`/`difficulty`는 배치 힌트다([routing.md](routing.md)). 종류가 섞인 작업은 쪼갠다.
 
 ## 재지시 명령서 (`lead_feedback`)
 

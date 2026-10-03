@@ -49,16 +49,30 @@ const result=finish(request,id);
 console.log(JSON.stringify({conversation_id:id,status:mode==='agy-fail'?'failed':'success',response:'done',structured_output:result,num_turns:2,usage:{total_tokens:20}}));
 `;
 
-export function fixture(t,{initialize=true,executor}={}) {
+const FAKE_CLAUDE=FAKE_COMMON+`
+if(args.includes('--version')){console.log('FAKE claude for protocol tests');process.exit(0);}
+if(args.includes('--help')){console.log('--model --output-format --json-schema --resume --session-id --safe-mode --tools --allowedTools --disallowedTools --permission-mode --max-turns');process.exit(0);}
+fs.writeFileSync('.fusion/fake-claude-args.json',JSON.stringify(args));
+const request=JSON.parse(fs.readFileSync(0,'utf8'));
+const resume=args.includes('--resume'),id=args[args.indexOf(resume?'--resume':'--session-id')+1];
+if(resume&&(!fs.existsSync('.fusion/fake-claude-session')||fs.readFileSync('.fusion/fake-claude-session','utf8')!==id)){console.log('{}');process.exit(1);}
+fs.writeFileSync('.fusion/fake-claude-session',id);
+if(mode==='denied'){console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,session_id:id,structured_output:finish(request,id),permission_denials:[{tool_name:'Bash'}]}));process.exit(0);}
+console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,session_id:id,structured_output:finish(request,id),usage:{input_tokens:30,output_tokens:9},total_cost_usd:0.01}));
+`;
+
+// executor 기본값은 grok(기존 테스트 호환). 라우팅 테스트는 executor:'auto'를 넘긴다.
+export function fixture(t,{initialize=true,executor='grok'}={}) {
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'hf-v03-')),root=path.join(temp,'repo');fs.mkdirSync(root);
- const old={grok:process.env.HF_GROK_BIN,agy:process.env.HF_AGY_BIN};
+ const old={grok:process.env.HF_GROK_BIN,agy:process.env.HF_AGY_BIN,claude:process.env.HF_CLAUDE_BIN};
  t.after(()=>{
-  for(const [k,v] of [['HF_GROK_BIN',old.grok],['HF_AGY_BIN',old.agy]]){if(v===undefined)delete process.env[k];else process.env[k]=v;}
+  for(const [k,v] of [['HF_GROK_BIN',old.grok],['HF_AGY_BIN',old.agy],['HF_CLAUDE_BIN',old.claude]]){if(v===undefined)delete process.env[k];else process.env[k]=v;}
   fs.rmSync(temp,{recursive:true,force:true});
  });
  const grok=path.join(temp,'fake grok'),agy=path.join(temp,'fake agy');
- fs.writeFileSync(grok,FAKE_GROK,{mode:0o755});fs.writeFileSync(agy,FAKE_AGY,{mode:0o755});
- process.env.HF_GROK_BIN=grok;process.env.HF_AGY_BIN=agy;
+ const claude=path.join(temp,'fake claude');
+ fs.writeFileSync(grok,FAKE_GROK,{mode:0o755});fs.writeFileSync(agy,FAKE_AGY,{mode:0o755});fs.writeFileSync(claude,FAKE_CLAUDE,{mode:0o755});
+ process.env.HF_GROK_BIN=grok;process.env.HF_AGY_BIN=agy;process.env.HF_CLAUDE_BIN=claude;
  const git=(...a)=>execFileSync('git',['-C',root,...a],{stdio:'pipe'});
  git('init');git('config','user.email','test@example.invalid');git('config','user.name','Test');
  fs.writeFileSync(path.join(root,'a.txt'),'base');git('add','.');git('commit','-m','fixture');fs.appendFileSync(path.join(root,'.git/info/exclude'),'\n/.fusion/\n');

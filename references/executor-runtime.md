@@ -1,4 +1,4 @@
-# 일꾼 런타임 (Grok, Antigravity)
+# 일꾼 런타임 (Grok, Antigravity, Sonnet)
 
 설치·인증된 CLI를 POSIX에서 쓴다. doctor는 실행 파일, 버전, 필수 플래그만 확인하고 모델 호출이나 인증은 확인하지 않는다. 인증 실패는 실제 호출에서 드러난다. 오류를 없애려고 소프트웨어를 설치하거나 인증정보를 복사하거나 계정 설정을 바꾸지 않는다.
 
@@ -26,6 +26,14 @@
 - agy에는 명령 단위 허용 규칙이 없어 `executor_bash_rules`는 dispatch에 `ignored_bash_rules`로 기록만 된다. 터미널 제한은 `--sandbox`뿐이다. `--dangerously-skip-permissions`는 쓰지 않는다. 권한 때문에 막히면 실패로 보고하고 우회하지 않는다.
 - `error` 필드, 실패성 `status`, `conversation_id` 부재는 실패. `structured_output`이 없으면 `response`에서 결과 JSON을 찾는다.
 - 비용은 보고되지 않으므로 null로 둔다.
+
+## Sonnet (`claude --model claude-sonnet-5-5`)
+
+- 리드(Opus)와 별개인 Claude Code 하위 프로세스다. 리드의 대화 맥락을 공유하지 않으며, 리드가 직접 쓰는 것으로 치지 않는다.
+- 인자: `-p --model claude-sonnet-5-5 --safe-mode --output-format json --json-schema <결과 스키마> --permission-mode dontAsk --max-turns 40`, 첫 라운드 `--session-id <UUID>`, 이후 `--resume <UUID>`. 프롬프트는 stdin.
+- 도구: Read/Glob/Grep(+edit 허용 시 Edit/Write)과 `executor_bash_rules`에 있는 Bash만 허용. Agent/Task/Skill/MCP와 git 변경 명령은 금지. `--safe-mode`로 사용자 플러그인·훅·메모리를 끄므로 필요한 저장소 지침은 brief에 직접 넣는다.
+- `structured_output`을 검증한다. 오류 envelope, 세션 불일치, `permission_denials`는 실패다.
+- 실행 파일 경로는 `HF_CLAUDE_BIN`(기본 `claude`).
 
 ## 하지 말 것
 
