@@ -35,7 +35,8 @@ export function bashRules(brief) {
 }
 
 // 실행 파일과 필수 플래그를 확인한다. 인증은 실제 호출에서만 드러난다.
-export function probe(name,binary,requiredFlags) {
+// optionalFlags는 있으면 쓰고 없어도 통과하는 플래그다. 결과의 supports에 기록된다.
+export function probe(name,binary,requiredFlags,optionalFlags=[]) {
  const {executable,prefix_args}=resolveExecutable(name,binary);
  const shown=prefix_args.at(-1)??executable;
  // 도움말을 stderr로 내거나 0이 아닌 코드로 끝내는 CLI도 있어 두 스트림을 합쳐 본다.
@@ -49,7 +50,8 @@ export function probe(name,binary,requiredFlags) {
  const missing=requiredFlags.filter(f=>!help.includes(f));
  // 어떤 파일이 잡혔고 무엇을 출력했는지 남겨야 엉뚱한 실행 파일(IDE 실행기 등)을 알아챌 수 있다.
  if(missing.length)throw Error(`ADAPTER_UNAVAILABLE: missing ${name} flags ${missing.join(', ')} (resolved ${shown}, version "${version}", help starts "${help.trim().split(/\r?\n/).slice(0,2).join(' | ').slice(0,160)}")`);
- return {executable,prefix_args,version,platform:process.platform,authentication:'not verified by local probe'};
+ const supports=Object.fromEntries(optionalFlags.map(f=>[f,help.includes(f)]));
+ return {executable,prefix_args,version,platform:process.platform,supports,authentication:'not verified by local probe'};
 }
 
 // 스키마 강제가 없는 CLI는 최종 텍스트에서 결과 JSON을 꺼낸다. 마지막 ```json 블록 또는 본문 전체만 인정한다.

@@ -41,3 +41,5 @@ test('doctor explains a leftover writer lease instead of a bare error',t=>{
  assert.equal(rec.ok,false);assert.match(rec.detail,/owner=grok task=HF-test round=1/);assert.match(rec.detail,/schema=4 phase=EXECUTING/);assert.match(rec.detail,/then recover/);
 });
 test('JSON input written by PowerShell with a UTF-8 BOM is accepted',t=>{const d=tmp(t),f=path.join(d,'in.json');fs.writeFileSync(f,'\uFEFF{"a":1}');assert.deepEqual(read(f),{a:1});});
+test('Go-style help on stderr with exit code 2 (real agy.EXE) still passes the probe',t=>{const f=fixture(t,{initialize:false});const p=adapter('antigravity').probe();assert.equal(p.supports['--print-timeout'],true);});
+test('agy gets --print-timeout shorter than the bridge timeout',async t=>{const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{antigravity:{timeout_ms:300000}}}));run(f.root,'init',{...f.brief,executor:'antigravity'});const d=f.begin();assert.equal(d.cli.args[d.cli.args.indexOf('--print-timeout')+1],'270s');assert.ok(d.cli.args.indexOf('--print-timeout')<d.cli.args.indexOf('-p'));});

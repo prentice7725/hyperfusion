@@ -39,7 +39,7 @@ if(mode==='hang'){setInterval(()=>{},1000);}else{
 `;
 const FAKE_AGY=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE agy for protocol tests');process.exit(0);}
-if(args.includes('--help')){console.log('-p, --print --output-format --json-schema --conversation --mode --add-dir --sandbox');process.exit(0);}
+if(args.includes('--help')){console.error('Usage of agy.EXE:\\n  --add-dir\\n  --conversation\\n  --json-schema\\n  --mode\\n  --output-format\\n  -p\\n  --print\\n  --print-timeout\\n  --sandbox');process.exit(2);}
 fs.writeFileSync('.fusion/fake-agy-args.json',JSON.stringify(args));
 const request=JSON.parse(args[args.indexOf('-p')+1]);
 const prior=args.includes('--conversation')?args[args.indexOf('--conversation')+1]:null;
