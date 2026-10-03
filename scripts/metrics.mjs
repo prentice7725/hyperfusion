@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {isMain} from './platform.mjs';
 import {read,atomic} from './artifact.mjs';
 
 // 목표 지표: 성공 작업당 Opus(리드) 토큰. 일꾼 비용·시간은 별도 가드레일로만 본다.
@@ -37,7 +37,7 @@ export function aggregate(records) {
   lead_takeover_rate:records.length?records.filter(r=>r.lead_takeovers>0).length/records.length:null,
   usage_coverage:records.length?records.filter(r=>r.lead_usage!==null).length/records.length:0};
 }
-if(process.argv[1]&&fileURLToPath(import.meta.url)===path.resolve(process.argv[1])) {
+if(isMain(import.meta.url)) {
  try {
   const [root,observations]=process.argv.slice(2);if(!root)throw Error('Usage: metrics.mjs REPO_ROOT [TASK_USAGE.json] | --aggregate METRICS.json ...');
   console.log(JSON.stringify(root==='--aggregate'?aggregate(process.argv.slice(3).map(read)):measure(root,observations?read(observations):null),null,2));

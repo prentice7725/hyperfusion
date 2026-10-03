@@ -53,11 +53,19 @@ CLI 플래그는 xAI의 [Grok Build headless 문서](https://github.com/xai-org/
 
 ## 설치와 사용
 
-Node.js 20 이상, Git, POSIX, 초기 커밋이 있는 대상 저장소, 그리고 설치·인증된 `grok`, `agy`, `claude` 중 하나 이상이 필요하다.
+Node.js 20 이상, Git, 초기 커밋이 있는 대상 저장소(Linux·macOS·Windows), 그리고 설치·인증된 `grok`, `agy`, `claude` 중 하나 이상이 필요하다.
 
 ```sh
+# Linux / macOS
 git clone -b opus-lead https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyperfusion
 ```
+
+```powershell
+# Windows (PowerShell)
+git clone -b opus-lead https://github.com/prentice7725/hyperfusion.git "$env:USERPROFILE\.claude\skills\hyperfusion"
+```
+
+Windows에서는 npm `.cmd` 래퍼를 자동으로 풀어서 실행하고, 프로세스 정리는 `taskkill /T`로 한다. 일꾼이 먼저 끝난 뒤 남은 자손 프로세스는 자동으로 못 잡으니 리드가 확인해야 하고, agy가 TTY 없이 멈추는 알려진 문제가 있어 `executors.antigravity.timeout_ms`를 짧게 두길 권한다. 자세한 건 [일꾼 런타임의 Windows 절](references/executor-runtime.md#windows).
 
 Claude Code(Opus 5.5 선택)에서:
 
@@ -76,7 +84,7 @@ Claude Code(Opus 5.5 선택)에서:
 npm test
 ```
 
-63개 테스트가 Grok/Antigravity/Sonnet 정상 실행, 작업별 배치·설치 상태 반영·실적 기반 강등·교체 순서, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. 테스트의 `grok`/`agy`/`claude`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
+71개 테스트가 Windows 경로 처리(.cmd 래퍼 해석, .js 진입점, 역슬래시 경로, 명령줄 길이)와 Grok/Antigravity/Sonnet 정상 실행, 작업별 배치·설치 상태 반영·실적 기반 강등·교체 순서, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. GitHub Actions가 Ubuntu·Windows × Node 20·24에서 실행한다. 테스트의 `grok`/`agy`/`claude`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
 
 ## 완료보고 진단
 

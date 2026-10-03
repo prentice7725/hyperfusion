@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {isMain} from './platform.mjs';
 import {config,selectExecutor,EXECUTORS,CAP} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
@@ -192,7 +193,7 @@ export function run(root,action,input={}) {
   throw Error('Unknown action '+action);
  } finally {fs.unlinkSync(guard);}
 }
-if(process.argv[1]&&fileURLToPath(import.meta.url)===path.resolve(process.argv[1])) {
+if(isMain(import.meta.url)) {
  try {
   const [action,root,file,...flags]=process.argv.slice(2);
   if(!action||!root)throw Error('Usage: node fusion-state.mjs ACTION REPO_ROOT [INPUT.json] [--executor NAME]');

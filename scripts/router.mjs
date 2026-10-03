@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {isMain} from './platform.mjs';
 import {read} from './artifact.mjs';
 import {adapter} from './adapters/index.mjs';
 import {config} from './executor-config.mjs';
@@ -43,7 +43,7 @@ export function route(root,c,brief,{probe=true}={}) {
  return {executor:candidates[0],candidates,task_kind:brief.task_kind??null,difficulty:brief.difficulty??null,stats,unavailable,reason:notes.join('; ')};
 }
 
-if(process.argv[1]&&fileURLToPath(import.meta.url)===path.resolve(process.argv[1])) {
+if(isMain(import.meta.url)) {
  try{
   const [root,file]=process.argv.slice(2);if(!root||!file)throw Error('Usage: router.mjs REPO_ROOT BRIEF.json');
   console.log(JSON.stringify(route(root,config(root),read(file)),null,2));

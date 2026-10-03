@@ -24,7 +24,7 @@ description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검�
 - `/hyperfusion --executor grok|antigravity|sonnet <작업>` — 리드가 직접 지정. router 추천은 근거에 함께 남는다.
 - `claude`, `opus`, `luna`는 일꾼 이름이 아니다. Claude 일꾼은 `sonnet`으로 부른다.
 
-먼저 [configuration.md](references/configuration.md), [delegation-protocol.md](references/delegation-protocol.md), [runtime.md](references/runtime.md), [executor-runtime.md](references/executor-runtime.md), [routing.md](references/routing.md)를 읽는다. `HF_SKILL`은 이 디렉터리, `HF_REPO`는 대상 저장소 루트. Node 20+, POSIX, 초기 커밋이 있는 일반 Git 저장소가 필요하다.
+먼저 [configuration.md](references/configuration.md), [delegation-protocol.md](references/delegation-protocol.md), [runtime.md](references/runtime.md), [executor-runtime.md](references/executor-runtime.md), [routing.md](references/routing.md)를 읽는다. `HF_SKILL`은 이 디렉터리, `HF_REPO`는 대상 저장소 루트. Node 20+, 초기 커밋이 있는 일반 Git 저장소가 필요하다. Linux·macOS·Windows에서 동작한다(Windows 주의점은 [executor-runtime.md](references/executor-runtime.md)).
 
 ## 절차
 

@@ -39,6 +39,7 @@ export function config(root) {
  const ok=v.lead==='opus'&&v.lead_model==='claude-opus-5-5'&&typeof v.lead_takeover==='boolean'&&ext&&Array.isArray(ext.available)&&ext.available.length&&ext.available.every(x=>EXECUTORS.includes(x))
   &&(ext.default==='auto'||ext.available.includes(ext.default))&&typeof (v.executors.antigravity.sandbox??true)==='boolean'
   &&Array.isArray(v.routing.rules)&&v.routing.rules.length&&v.routing.rules.every(validRule)&&typeof v.routing.learn==='boolean'
+  &&Object.entries(v.executors).every(([k,o])=>EXECUTORS.includes(k)&&o&&typeof o==='object'&&(o.timeout_ms===undefined||(Number.isSafeInteger(o.timeout_ms)&&o.timeout_ms>0)))
   &&Number.isInteger(v.routing.min_samples)&&v.routing.min_samples>0&&typeof v.routing.demote_below==='number'&&v.routing.demote_below>=0&&v.routing.demote_below<=1;
  if(!ok)throw Error('Invalid HyperFusion configuration');
  return v;

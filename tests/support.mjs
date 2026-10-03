@@ -31,6 +31,7 @@ if(mode==='hang'){setInterval(()=>{},1000);}else{
  if(mode==='oversize'){console.log('x'.repeat(10000));process.exit(0);}
  if(mode==='error'){console.log(JSON.stringify({type:'error',message:'boom'}));process.exit(0);}
  const result=finish(request,id);
+ if(mode==='backslash')result.files_read=['sub\\\\a.txt'];
  const text=mode==='prose'?'I think it is done.':mode==='fenced'?'Done.\\n\`\`\`json\\n'+JSON.stringify(result)+'\\n\`\`\`':JSON.stringify(result);
  console.log(JSON.stringify({text,stopReason:mode==='max-turns'?'max_turns':'end_turn',sessionId:mode==='bad-session'?'wrong':id,num_turns:3,usage:{input_tokens:10,output_tokens:5,total_tokens:15},total_cost_usd:0.002}));
  process.exit(mode==='nonzero'?2:0);
@@ -69,8 +70,10 @@ export function fixture(t,{initialize=true,executor='grok'}={}) {
   for(const [k,v] of [['HF_GROK_BIN',old.grok],['HF_AGY_BIN',old.agy],['HF_CLAUDE_BIN',old.claude]]){if(v===undefined)delete process.env[k];else process.env[k]=v;}
   fs.rmSync(temp,{recursive:true,force:true});
  });
- const grok=path.join(temp,'fake grok'),agy=path.join(temp,'fake agy');
- const claude=path.join(temp,'fake claude');
+ // Windows는 shebang을 실행하지 못하므로 .mjs 진입점으로 만들어 node로 실행되게 한다.
+ const ext=process.platform==='win32'?'.mjs':'';
+ const grok=path.join(temp,'fake grok'+ext),agy=path.join(temp,'fake agy'+ext);
+ const claude=path.join(temp,'fake claude'+ext);
  fs.writeFileSync(grok,FAKE_GROK,{mode:0o755});fs.writeFileSync(agy,FAKE_AGY,{mode:0o755});fs.writeFileSync(claude,FAKE_CLAUDE,{mode:0o755});
  process.env.HF_GROK_BIN=grok;process.env.HF_AGY_BIN=agy;process.env.HF_CLAUDE_BIN=claude;
  const git=(...a)=>execFileSync('git',['-C',root,...a],{stdio:'pipe'});

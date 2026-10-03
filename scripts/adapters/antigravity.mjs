@@ -1,4 +1,5 @@
 import {resultSchema,prompt,bashRules,probe as probeCli,extractResult} from './common.mjs';
+import {assertCommandLine} from '../platform.mjs';
 
 // Google Antigravity CLI(agy) 헤드리스 모드. 모든 플래그는 -p 앞에 와야 한다.
 // 대화 ID는 CLI가 발급하므로 첫 라운드 envelope의 conversation_id를 저장해 재개에 쓴다.
@@ -16,6 +17,8 @@ export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
  const args=['--output-format','json','--json-schema',JSON.stringify(resultSchema(brief.task_id,brief.round)),
   ...(brief.allowed_actions.includes('edit')?['--mode','accept-edits']:[]),'--add-dir',brief.repo_root,
   ...(options.sandbox===false?[]:['--sandbox']),...(resume?['--conversation',session]:[]),'-p',text];
+ // 프롬프트를 명령줄로 넘기므로 Windows 길이 제한을 lease 획득 전에 확인한다.
+ assertCommandLine(cli.executable,[...(cli.prefix_args??[]),...args]);
  return {cli:{...cli,args,session_id:session??null,resume,ignored_bash_rules:ignored},prompt:text};
 }
 

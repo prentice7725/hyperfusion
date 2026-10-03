@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
 import {acquire,release} from '../scripts/writer-lease.mjs';
@@ -13,7 +14,7 @@ import {config,selectExecutor} from '../scripts/executor-config.mjs';
 const grind=(f,n)=>{for(let i=0;i<n;i++){f.begin();f.finish();f.review('redo',['AC'+f.state().iteration]);}};
 
 test('explicit Grok goes to work first; Opus holds no attempt',t=>{const f=fixture(t);assert.equal(f.state().initial_executor,'grok');assert.equal(f.state().routing.mode,'explicit');assert.equal(f.begin().transport,'executor-cli');assert.deepEqual(f.state().attempts,{grok:1,antigravity:0,sonnet:0,lead:0});assert.equal(f.state().lead_target_model,'claude-opus-5-5');assert.equal(f.state().lead_model,null);});
-test('CLI --executor antigravity persists selection',t=>{const f=fixture(t,{initialize:false});const input=path.join(f.temp,'brief.json');fs.writeFileSync(input,JSON.stringify(f.brief));execFileSync(process.execPath,[new URL('../scripts/fusion-state.mjs',import.meta.url).pathname,'init',f.root,input,'--executor','antigravity']);assert.equal(f.state().initial_executor,'antigravity');});
+test('CLI --executor antigravity persists selection',t=>{const f=fixture(t,{initialize:false});const input=path.join(f.temp,'brief.json');fs.writeFileSync(input,JSON.stringify(f.brief));execFileSync(process.execPath,[fileURLToPath(new URL('../scripts/fusion-state.mjs',import.meta.url)),'init',f.root,input,'--executor','antigravity']);assert.equal(f.state().initial_executor,'antigravity');});
 test('Opus, Claude and Luna cannot be hired as workers',t=>{const f=fixture(t,{initialize:false});for(const executor of ['claude','luna','opus'])assert.throws(()=>run(f.root,'init',{...f.brief,executor}),/lead, not a worker/);assert.ok(!fs.existsSync(path.join(f.root,'.fusion/state.json')));});
 test('Codex lead config from main is rejected, not silently converted',t=>{const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({lead:'sol',external:{default:'claude',available:['claude']}}));assert.throws(()=>config(f.root),/main branch/);});
 test('configured default is honored',t=>{const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({external:{default:'antigravity',available:['grok','antigravity']}}));assert.equal(selectExecutor(config(f.root)),'antigravity');assert.equal(run(f.root,'init',{...f.brief,executor:undefined}).initial_executor,'antigravity');});

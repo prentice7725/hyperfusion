@@ -1,6 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {resolveExecutable} from '../platform.mjs';
 
 // 외부 일꾼(Grok, Antigravity)이 공통으로 따르는 결과 계약과 지시문.
 export function resultSchema(task_id,round) {
@@ -37,16 +36,13 @@ export function bashRules(brief) {
 
 // 실행 파일과 필수 플래그를 확인한다. 인증은 실제 호출에서만 드러난다.
 export function probe(name,binary,requiredFlags) {
- if(process.platform==='win32')throw Error('ADAPTER_UNAVAILABLE: process supervision requires POSIX');
- const candidates=binary.includes('/')?[path.resolve(binary)]:(process.env.PATH||'').split(path.delimiter).map(d=>path.resolve(d,binary));
- const executable=candidates.find(f=>{try{fs.accessSync(f,fs.constants.X_OK);return fs.statSync(f).isFile();}catch{return false;}});
- if(!executable)throw Error(`ADAPTER_UNAVAILABLE: ${name} executable not found`);
- const opts={encoding:'utf8',timeout:5000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe']};
- const version=execFileSync(executable,['--version'],opts).trim();
- const help=execFileSync(executable,['--help'],opts);
+ const {executable,prefix_args}=resolveExecutable(name,binary);
+ const opts={encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true};
+ const version=execFileSync(executable,[...prefix_args,'--version'],opts).trim();
+ const help=execFileSync(executable,[...prefix_args,'--help'],opts);
  const missing=requiredFlags.filter(f=>!help.includes(f));
  if(missing.length)throw Error(`ADAPTER_UNAVAILABLE: missing ${name} flags `+missing.join(', '));
- return {executable:fs.realpathSync(executable),version,authentication:'not verified by local probe'};
+ return {executable,prefix_args,version,platform:process.platform,authentication:'not verified by local probe'};
 }
 
 // 스키마 강제가 없는 CLI는 최종 텍스트에서 결과 JSON을 꺼낸다. 마지막 ```json 블록 또는 본문 전체만 인정한다.
