@@ -1,0 +1,16 @@
+{
+  "lead": "sol",
+  "lead_model": "gpt-6.1-sol",
+  "lead_reasoning_effort": "high",
+  "internal_helper": {
+    "provider": "luna"
+  },
+  "external": {
+    "default": "claude",
+    "available": [
+      "claude",
+      "grok",
+      "antigravity"
+    ]
+  }
+}

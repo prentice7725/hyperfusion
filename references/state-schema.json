@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HyperFusion external v0.2 state",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "phase",
+    "lead",
+    "iteration",
+    "writer",
+    "base_commit",
+    "baseline_dirty",
+    "reviews",
+    "escalations",
+    "result_failures",
+    "attempts",
+    "initial_executor",
+    "active_executor",
+    "configuration",
+    "architecture"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 3
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$"
+    },
+    "phase": {
+      "enum": [
+        "PLAN",
+        "EXECUTING",
+        "REVIEW",
+        "REDO",
+        "HELPER_REQUIRED",
+        "EXTERNAL_REQUIRED",
+        "ALTERNATIVE_REQUIRED",
+        "DECISION_REQUIRED",
+        "TAKEOVER_REQUIRED",
+        "RECOVERY_REQUIRED",
+        "VERIFY",
+        "CLOSE",
+        "BLOCKED",
+        "ARCHIVED"
+      ]
+    },
+    "lead": {
+      "enum": [
+        "sol",
+        "astra"
+      ]
+    },
+    "lead_model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "active_sidekick": {
+      "enum": [
+        null,
+        "claude",
+        "luna",
+        "astra"
+      ]
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "writer": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "base_commit": {
+      "type": "string"
+    },
+    "baseline_dirty": {
+      "type": "boolean"
+    },
+    "luna_session": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "claude_session": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviews": {
+      "type": "array"
+    },
+    "escalations": {
+      "type": "array"
+    },
+    "result_failures": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "post_digest": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "closed_at": {
+      "type": "string"
+    },
+    "attempts": {
+      "type": "object",
+      "required": [
+        "claude",
+        "luna",
+        "astra"
+      ],
+      "properties": {
+        "luna": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "claude": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "astra": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "architecture": {
+      "const": "external-v0.2"
+    },
+    "initial_executor": {
+      "enum": [
+        "claude",
+        "grok",
+        "antigravity"
+      ]
+    },
+    "active_executor": {
+      "enum": [
+        "claude",
+        "grok",
+        "antigravity"
+      ]
+    },
+    "configuration": {
+      "type": "object"
+    },
+    "lead_target_model": {
+      "const": "gpt-6.1-sol"
+    },
+    "lead_target_reasoning_effort": {
+      "const": "high"
+    },
+    "lead_reasoning_effort": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

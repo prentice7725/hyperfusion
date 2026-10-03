@@ -1,0 +1,9 @@
+# Recovery
+
+1. Inspect state, locks, latest brief, results, per-round snapshots and actual source diff/status. Old timestamps do not prove the writer stopped. The lease survives short-lived CLI processes.
+2. For Luna, inspect its saved native session and stop/wait for its turn and commands. For Claude inspect claude-launch-N.json, claude-process-N.json and the exit envelope; verify both bridge and child process group are gone. Check escaped/detached descendants. If quiescence cannot be established, keep the lock and report blocked.
+3. If a crashed controller left control.lock, first confirm no controller is running, record recovery evidence, then remove only that control.lock. Never delete writer.json to steal a lease. Call recover with matching token, quiescent:true and evidence-backed reason. It snapshots and releases the lease, then routes within the existing attempt budgets.
+4. Do not rerun a Claude launch marker, reset counters, replace a saved session with a fresh one, or use latest-session resumption. Missing saved session is an explicit failure. At exhausted external budget, consider an actual alternative or a reasoned takeover. Takeover obtains its own lease and is capped once.
+5. No automatic reset --hard, clean, stash, revert or removal of source. Preserve user edits. Existing pre-v0.2 states are readable through status and archivable only with confirmed stopped processes and a reason. Archive records full old state/current snapshot, marks ARCHIVED and does not count as task success. Do not archive/re-init the same failing task just to reset its budget.
+
+If initialization crashed before state.json exists, preserve the incomplete metadata under a unique recovery name only after confirming no agents/controllers started. Never overwrite existing artifacts. The controller and all model writers share cooperative ownership; the protocol does not fence arbitrary external programs.
