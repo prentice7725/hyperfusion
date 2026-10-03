@@ -1,21 +1,35 @@
-# Delegation contract
+# 위임 계약 (brief)
 
-The lead owns every architectural choice. Use exact relative file or directory paths (no glob syntax), minimal relevant context and criterion IDs that stay stable across rounds. Include the current failure evidence and approved decisions in a fresh brief on redo. A persistent session is task-scoped; never reuse it for a new task or after host-session loss without recovery.
+리드가 모든 설계 결정을 소유한다. 정확한 상대 경로(glob 금지), 최소한의 관련 맥락, 라운드 간 바뀌지 않는 기준 ID를 쓴다.
 
-Example JSON (replace task and contents):
 ```json
 {
-  "task_id": "HF-20260914-001",
-  "objective": "Fix duplicate refresh requests; auth refresh flow inspected by lead.",
+  "task_id": "HF-20261003-001",
+  "objective": "중복 refresh 요청 제거. 리드가 auth refresh 흐름 확인함.",
   "scope": {"paths": ["src/auth", "tests/auth"], "allowed_expansion": "ask-lead"},
-  "constraints": ["Preserve public API and existing uncommitted edits"],
-  "success_criteria": ["AC1: concurrent callers share a single refresh", "AC2: rejection clears the in-flight state"],
+  "constraints": ["공개 API와 기존 미커밋 변경 보존"],
+  "success_criteria": ["AC1: 동시 호출자가 refresh 하나를 공유", "AC2: 실패 시 in-flight 상태 초기화"],
   "allowed_actions": ["read", "edit", "test", "lint", "build"],
   "forbidden_actions": ["commit", "push", "deploy", "release", "scope-expansion"],
-  "evidence_required": ["files_changed", "commands_run", "test_results", "remaining_risks"]
+  "evidence_required": ["files_changed", "commands_run", "test_results", "remaining_risks"],
+  "executor_bash_rules": ["Bash(npm test*)"]
 }
 ```
 
-The adapter adds repo_root and round. Every scoped path includes its descendants. Tests with generated source outputs need those outputs in scope; ignored build caches are not audited. Do not approve ignored source-file edits. Snapshotting includes tracked and nonignored untracked files, symlink targets and permissions, plus HEAD and index fingerprints. Submodules are rejected in external M0.
+## 재지시 명령서 (`lead_feedback`)
 
-For Claude, the optional claude_bash_rules field grants only narrowly selected Bash commands; see claude-runtime.md. Executor selection is recorded at init. A different executor receives current tree and approved decisions without transcripts. Luna receives only a bounded helper subtask after review.
+PLAN 이후의 모든 일꾼 begin(REDO, ALTERNATIVE_REQUIRED)에는 비어 있지 않은 `lead_feedback` 문자열 배열이 필수다. 직전 반려의 `blocking_criteria`를 실행 가능한 명령으로 바꿔 쓴다.
+
+```json
+{"lead_feedback": [
+  "AC2 미충족: src/auth/refresh.ts의 catch 블록에서 inFlight를 null로 되돌려라",
+  "tests/auth/refresh.test.ts에 거절 후 재시도 케이스를 추가하고 통과시켜라",
+  "공개 함수 시그니처를 바꾸지 마라. 지난 라운드에서 바꾼 것을 되돌려라"
+]}
+```
+
+나쁜 예: `["다시 해봐"]`, `["테스트 고쳐"]`. 무엇을, 어디서, 어떤 기준으로가 없으면 명령이 아니다.
+
+## 교체 시
+
+다른 일꾼에게는 현재 트리 상태, 이전 일꾼이 바꾼 것, 남은 반려 사유, 리드의 결정을 brief로 준다. 이전 일꾼의 대화 기록은 넘기지 않는다. 범위의 경로는 하위 항목을 포함한다. 생성 산출물이 테스트에 필요하면 범위에 넣는다. submodule은 거절한다.

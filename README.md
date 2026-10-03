@@ -1,69 +1,80 @@
-# HyperFusion
+# HyperFusion — Opus 리드 브랜치 (`opus-lead`)
 
-Codex가 계획과 최종 검수를 맡고, 외부 CLI가 구현과 테스트를 수행하는 Codex Skill.
+**Claude Opus 5.5가 리드**를 맡고, **Grok과 Antigravity가 일꾼**으로 구현과 테스트를 전부 수행하는 Claude Code 스킬.
 
-기본 리드는 **GPT-6.1 Sol / reasoning high**, 기본 외부 실행자는 **Claude Code**다. Luna는 검수 후 작은 조사·수정에만 사용한다. 리드의 직접 구현은 기록된 takeover에서만 허용한다.
+리드는 계획·반려·최종 검수만 한다. 일꾼에게 예산이 남아 있는 한 리드는 코드를 쓰지 않는다. 반려할 때는 구체적 명령서를 붙여야 하고, 같은 실수를 두 번 하는 일꾼은 다른 일꾼으로 교체된다. 일꾼의 "다 했어요"는 스냅샷 diff와 리드의 재실행으로만 인정된다.
 
-## 상태 — v0.2.1 prototype
+> main 브랜치는 GPT-6.1 Sol(Codex)이 리드, Claude Code가 일꾼인 v0.2.1 구조다. 이 브랜치는 역할을 뒤집은 v0.3이다.
+
+## main 평가 요약 (v0.2.1)
+
+| 항목 | 평가 |
+|---|---|
+| 상태 기계·writer lease·스냅샷 감사 | 견고함. create-once 산출물, 원자적 상태 저장, 범위/HEAD/index 검증, 중복 실행 방지가 잘 설계됨 → **그대로 계승** |
+| 실행자 다양성 | Claude 하나뿐. Grok·Antigravity는 `ADAPTER_UNAVAILABLE`로만 존재 → 사실상 단일 일꾼이라 alternative 경로가 죽어 있었음 |
+| 리드의 개입 | Luna helper + takeover 경로가 있어 리드 측이 일을 떠안기 쉬움 |
+| 반려 품질 | 반려 사유 없이도 redo 가능 → 같은 실수를 반복시켜도 막을 장치 없음 |
+| 코드 가독성 | 한 줄에 로직을 몰아넣은 압축 스타일. 동작은 맞지만 리뷰 비용이 큼 |
+| 테스트 | 36개 통과. 대역 CLI로 프로세스/프로토콜만 검증하며 실제 모델 호출은 없음(정직하게 명시됨) |
+
+## v0.3에서 바뀐 것
 
 | 기능 | 상태 |
 |---|---|
-| Claude subprocess bridge / task-scoped resume | 구현; 대역 CLI 검증 |
-| 단일 writer / snapshot / result 검증 / review / recovery | 구현 |
-| Luna helper | native collaboration 도구 descriptor |
-| Lead takeover | 명시적 이유와 writer lease |
-| Grok / Antigravity / auto-routing | 미구현; 선택 시 명시적 오류 |
-| 실제 Claude 인증·모델 호출 | 이 패키지의 테스트로 검증되지 않음 |
+| 리드 | Claude Opus 5.5 (`claude-opus-5-5`), Claude Code 호스트 |
+| Grok 어댑터 | 구현. `--prompt-file`, `--output-format json`, `--session-id`/`--resume`, scope 기반 `--allow Edit(...)`, git 변경 명령 `--deny` |
+| Antigravity 어댑터 | 구현. `--json-schema` 구조화 출력, CLI 발급 `conversation_id`로 재개, 기본 `--sandbox` |
+| 일꾼 예산 | 일꾼당 3라운드(main은 2), 리드 takeover 1회 |
+| takeover 조건 | 두 일꾼 모두 소진됐을 때만. 그 전엔 컨트롤러가 거절 |
+| 빈 반려 금지 | 반려에 `blocking_criteria` 필수, 재지시에 `lead_feedback` 필수 |
+| 자동 교체 | 같은 반려 사유 2연속이면 다른 일꾼으로 강제 교대 |
+| Luna / Claude 일꾼 | 제거. Claude는 리드이므로 일꾼으로 고용 불가 |
+| auto-routing | 미구현, 명시적 오류 |
+| 실제 Grok/agy 인증·모델 호출 | 이 패키지의 테스트로 검증되지 않음 |
 
-이 스킬은 현재 대화의 모델·reasoning 설정을 강제로 전환하지 않는다. 호스트에서 GPT-6.1 Sol/high를 선택한다. Claude가 종료되거나 RESULT_READY를 반환해도 최종 작업 성공은 아니며, 리드의 검수·검증 후 CLOSE가 필요하다.
+CLI 플래그는 xAI의 [Grok Build headless 문서](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)와 [Antigravity CLI headless 문서](https://antigravity.google/docs/cli/headless)를 기준으로 했다. 설치된 버전에 필요한 플래그가 없으면 preflight에서 거절하며, 플래그를 약하게 바꿔 우회하지 않는다.
 
 ## 설치와 사용
 
-Node.js 20 이상, Git, 초기 커밋이 있는 대상 저장소가 필요하다. Claude 브리지는 POSIX 환경에서 설치·인증된 Claude Code를 사용한다. 필요 flag가 없는 버전은 preflight에서 거절한다.
-
-Codex CLI의 개인 스킬 디렉터리에 설치:
+Node.js 20 이상, Git, POSIX, 초기 커밋이 있는 대상 저장소, 그리고 설치·인증된 `grok` 및/또는 `agy`가 필요하다.
 
 ```sh
-git clone https://github.com/prentice7725/hyperfusion.git ~/.codex/skills/hyperfusion
+git clone -b opus-lead https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyperfusion
 ```
 
-Codex에서 호출:
+Claude Code(Opus 5.5 선택)에서:
 
 ```text
-$hyperfusion <작업 내용>
-$hyperfusion --executor claude <작업 내용>
+/hyperfusion <작업 내용>
+/hyperfusion --executor antigravity <작업 내용>
 ```
 
-이는 스킬 호출 문법이다. 독립 실행형 hyperfusion 명령이나 자율 daemon을 제공하지 않는다. Lead가 `SKILL.md`에 따라 brief를 만들고 controller 및 bridge를 호출한다.
+독립 실행형 명령이나 daemon은 없다. 리드가 `SKILL.md`에 따라 brief를 쓰고 컨트롤러와 브리지를 호출한다. 기본 일꾼과 정책은 대상 저장소의 `hyperfusion.config.json`으로 정한다(예시: `hyperfusion.config.example.json`). 실행 파일 경로는 `HF_GROK_BIN`, `HF_AGY_BIN`으로 바꿀 수 있다.
 
-기본 executor는 대상 저장소의 `hyperfusion.config.json`으로 설정한다. 예시는 `hyperfusion.config.example.json`에 있다. provider 목록은 어댑터가 실제 구현되었다는 뜻이 아니다. 기존 `lead: astra` 설정은 Sol/high로 읽으며, 기존 작업 lease는 임의로 변경하지 않는다.
-
-자세한 실행 순서: [SKILL.md](SKILL.md), [runtime](references/runtime.md), [Claude runtime](references/claude-runtime.md).
+자세한 순서: [SKILL.md](SKILL.md), [runtime](references/runtime.md), [일꾼 런타임](references/executor-runtime.md).
 
 ## 테스트
 
 ```sh
 npm test
-# 또는
-node --test tests/*.test.mjs
 ```
 
-36개 테스트가 정상 실행, 동일 세션 재개, 중복 실행 차단, 오류·timeout·결과 검증, helper/takeover budget, Sol/high 설정 및 실패 비용 집계를 확인한다. 테스트의 Claude CLI는 명시적으로 표시된 대역이며 실제 Claude 모델을 호출하지 않는다. GitHub Actions가 실행 결과를 별도로 기록한다.
+47개 테스트가 Grok/Antigravity 정상 실행, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. 테스트의 `grok`/`agy`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
 
 ## 완료보고 진단
 
-대상 저장소 `.fusion/tasks/<task_id>/`를 확인한다.
+대상 저장소 `.fusion/tasks/<task_id>/`:
 
-- `claude-envelope-N.json`: 종료 코드, 중단 이유, 원본 stdout/stderr
-- `claude-result-N.json`: 검증된 structured result
-- `.fusion/state.json`: lead 검수·완료 상태
-
-현재 수집기는 성공 envelope의 `structured_output`을 검증한다. 다른 형태의 출력, malformed JSON, 세션 불일치, 권한 거절 또는 실패 envelope는 성공으로 처리하지 않는다. 결과 파일 부재만으로 미보고 종료를 단정하지 말고 원본 envelope를 확인한다. bridge 결과 수집 실패 뒤 같은 launch를 재실행하지 않고 recovery protocol을 따른다.
+- `dispatch-N.json`: 일꾼, CLI 인자, 세션
+- `envelope-N.json`: 종료 코드, 중단 이유, 원본 stdout/stderr
+- `result-N.json`, `session-N.json`, `usage-N.json`: 검증된 결과, 세션 ID, 일꾼 보고 사용량
+- `review-N.json`: 리드 판정과 반려 사유
+- `.fusion/state.json`: 단계, 일꾼별 남은 예산, 교체 이력
 
 ## 운영 원칙
 
-writer는 한 명이다. 작업 중 lead나 helper가 같은 tree를 동시에 수정하지 않는다. lock은 협업 통제이며 OS sandbox가 아니다. 자동 commit/push/deploy/release, 범위 확장과 destructive recovery를 제공하지 않는다.
+writer는 한 명이다. lock은 협업 통제이며 OS 샌드박스가 아니다. 자동 commit/push/deploy/release, 범위 확장, 파괴적 복구는 없다.
 
-목표 지표는 **성공 작업당 Codex 사용량(lead + Luna)**이다. 실패 작업 사용량도 포함하고, 외부 비용·소요 시간·성공률·회귀는 별도로 기록한다. 측정되지 않은 값은 null이다.
+목표 지표는 **성공 작업당 Opus 리드 토큰**이다. 실패 작업도 분자에 포함한다. 일꾼 비용과 소요 시간은 별도 가드레일로 기록한다(Antigravity는 비용을 보고하지 않으므로 null). 측정되지 않은 값은 null이다.
 
-실행 로그·session·인증정보는 이 소스 저장소에 포함하지 않는다. `.fusion/`은 대상 저장소의 비공개 로컬 작업 기록이다.
+실행 로그·세션·인증정보는 이 저장소에 포함하지 않는다. `.fusion/`은 대상 저장소의 비공개 로컬 작업 기록이다.

@@ -1,30 +1,27 @@
-# Executor configuration
+# 설정
 
-Read optional `hyperfusion.config.json` at the target repository root. If absent, use:
+대상 저장소 루트의 `hyperfusion.config.json`(선택)을 읽는다. 없으면 다음을 쓴다.
 ```json
 {
-  "lead": "sol",
-  "lead_model": "gpt-6.1-sol",
-  "lead_reasoning_effort": "high",
-  "internal_helper": {"provider": "luna"},
-  "external": {
-    "default": "claude",
-    "available": ["claude", "grok", "antigravity"]
-  }
+  "lead": "opus",
+  "lead_model": "claude-opus-5-5",
+  "lead_takeover": true,
+  "external": {"default": "grok", "available": ["grok", "antigravity"]},
+  "executors": {"antigravity": {"sandbox": true}}
 }
 ```
 
-The invocation's `--executor` overrides the configured default for that task. The selected config is frozen in state at init; changes affect subsequent tasks, not an active lease. No permanent provider choice is embedded in orchestration logic. `available` is the user's enabled pool, not evidence that a CLI adapter exists. Capabilities and CLI presence are checked separately.
+- 호출 시 `--executor`가 그 작업의 기본 일꾼을 덮어쓴다. 설정은 init 때 상태에 고정되며 진행 중 작업에는 영향이 없다.
+- `available`은 사용자가 고용한 일꾼 명단이다. 한 명만 넣으면 교체 없이 그 일꾼을 예산 끝까지 돌린다.
+- `lead_takeover:false`면 두 일꾼이 모두 소진됐을 때 리드가 코드를 쓰지 않고 BLOCKED로 끝난다.
+- `executors.antigravity.sandbox:false`는 바깥 샌드박스 안에서 agy `--sandbox`가 시작되지 못할 때만 쓴다(`sandbox_apply: Operation not permitted`). 끄면 agy 터미널 실행은 제한되지 않는다는 점을 사용자에게 알린다.
+- `lead: sol|astra` 등 main 브랜치(Codex 리드) 설정은 거절한다. 조용히 변환하지 않는다.
 
-| Provider | Role | Implemented |
+| 역할 | 누구 | 예산 |
 |---|---|---|
-| Claude | External executor; default in shipped config | Yes, external M0 |
-| Grok | External executor | Planned M1; unavailable |
-| Antigravity | External executor | Planned M2; unavailable |
-| auto | Lead selects using measured capabilities | Planned after M2; unavailable |
-| Luna | Codex internal helper after review | Native tool descriptor |
-| GPT-6.1 Sol (high) / Codex | Lead; code mutation only in takeover | Lead lease descriptor |
+| 리드 | Claude Opus 5.5 (호스트) | 계획·검수 무제한, 코드 작성은 takeover 1회 |
+| 일꾼 | Grok (`grok`) | 3라운드 |
+| 일꾼 | Antigravity (`agy`) | 3라운드 |
+| auto | 미구현 | `ADAPTER_UNAVAILABLE` |
 
-A future adapter must provide capability probing, task-scoped persistence, structured results, cancellation/process evidence and the same writer protocol. Do not guess Grok or Antigravity CLI names/flags. Auto-routing must consider capability, success evidence and Codex usage; it is not implemented by selecting the first installed executable.
-
-Legacy `lead: astra` configuration is normalized to the Sol/high lead profile. Frozen running tasks and their leases are not rewritten. The target profile does not change the host model automatically; select GPT-6.1 Sol and high in the host when needed.
+환경변수 `HF_GROK_BIN`, `HF_AGY_BIN`은 실행 파일 경로다(공백 포함 가능). 셸 명령이나 추가 인자가 아니다.

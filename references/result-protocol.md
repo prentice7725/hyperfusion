@@ -1,7 +1,7 @@
-# Result contract
+# 결과 계약
 
-Return an object with task_id, round, status, summary, files_read, files_changed, commands_run, tests, unresolved, risks, needs_lead_decision, recommended_next_action. Paths are repository-relative; files_changed describes this round, not every dirty path. Arrays may be empty when nothing was read, changed or run. Never invent tests.
+필드: task_id, round, status, summary, files_read, files_changed, commands_run, tests, unresolved, risks, needs_lead_decision, recommended_next_action. 경로는 저장소 상대 경로이고 files_changed는 이번 라운드 변경만이다. 테스트는 실제로 돌린 `{command, status}`만 넣는다.
 
-Statuses: complete, blocked, needs_decision, failed. Tests contain command and status (pass, fail, not_run). A complete result cannot contain failed tests, unresolved items or a lead-decision flag. needs_decision requires needs_lead_decision=true. Include the exact command and relevant failure in unresolved/summary; requests for architectural changes stop execution.
+status: complete, blocked, needs_decision, failed. complete에는 실패 테스트, 미해결 항목, 리드 결정 요청이 있을 수 없다. needs_decision은 needs_lead_decision=true가 필요하다.
 
-Lead passes `{token, quiescent:true, result: OBJECT}` to finish only after the sidekick turn and all its child commands end. Result task_id and round must match active state. The controller compares declared changed paths to actual per-round content changes and checks scope, HEAD and index. It does not prove a test passed: independent verification is mandatory. Invalid result artifacts are preserved and the lease remains held for recovery.
+리드는 일꾼과 자식 프로세스가 모두 끝난 뒤 `{token, quiescent:true, result}`로 finish 한다. 컨트롤러는 task_id/round, 선언된 변경 파일과 실제 스냅샷 차이, 범위, HEAD, index를 대조한다. 거짓 신고는 RECOVERY_REQUIRED이며 lease는 복구 때까지 유지된다. 테스트 통과는 컨트롤러가 증명하지 않으므로 리드의 독립 검증이 필수다.

@@ -1,16 +1,17 @@
 {
-  "lead": "sol",
-  "lead_model": "gpt-6.1-sol",
-  "lead_reasoning_effort": "high",
-  "internal_helper": {
-    "provider": "luna"
-  },
+  "lead": "opus",
+  "lead_model": "claude-opus-5-5",
+  "lead_takeover": true,
   "external": {
-    "default": "claude",
+    "default": "grok",
     "available": [
-      "claude",
       "grok",
       "antigravity"
     ]
+  },
+  "executors": {
+    "antigravity": {
+      "sandbox": true
+    }
   }
 }

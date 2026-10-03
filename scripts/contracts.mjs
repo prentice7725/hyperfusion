@@ -26,10 +26,17 @@ export function result(v,task_id,round) {
  return v;
 }
 export function review(v) {
- requireThat(v&&['pass','redo','decision','escalate','alternative','takeover','helper','resume'].includes(v.verdict),'Invalid verdict');
+ requireThat(v&&['pass','redo','alternative','escalate','decision','takeover'].includes(v.verdict),'Invalid verdict');
  requireThat(str(v.rationale)&&strs(v.blocking_criteria)&&strs(v.commands_run),'Invalid review evidence');
  requireThat(v.independent_diff_review===true,'Independent diff review required');
  requireThat(v.verdict!=='pass'||v.blocking_criteria.length===0,'Cannot pass blocking criteria');
+ // 반려에는 반드시 구체적인 반려 사유가 있어야 한다. "다시 해" 같은 빈 반려는 받지 않는다.
+ requireThat(v.verdict==='pass'||v.blocking_criteria.length>0,'Rejection requires concrete blocking criteria');
+ return v;
+}
+// 다음 라운드 명령서. 이전 라운드 반려 사유를 일꾼에게 그대로 들이민다.
+export function feedback(v) {
+ requireThat(strs(v)&&v.length>0,'Re-dispatch requires lead_feedback: concrete orders for the worker');
  return v;
 }
 export function escalation(reviews,resultFailures=0,flags={}) {

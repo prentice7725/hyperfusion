@@ -1,8 +1,8 @@
 {
   "name": "hyperfusion",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
-  "description": "Codex skill for external executor implementation and lead review",
+  "description": "Claude Opus 5.5 리드가 Grok·Antigravity 일꾼에게 구현을 시키는 Claude Code 스킬",
   "type": "module",
   "engines": {
     "node": ">=20"
