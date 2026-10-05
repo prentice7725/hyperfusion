@@ -1,52 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
-import {execute} from '../scripts/executor-bridge.mjs';
-import {read} from '../scripts/artifact.mjs';
-import {recall,commit,candidates,context} from '../scripts/memory.mjs';
-import {AnchorMind} from '../scripts/memory-client.mjs';
+import {recall,commit,candidates,context,resolve,reflect} from '../scripts/memory.mjs';
+import * as store from '../scripts/memory-store.mjs';
 import {checkCandidate,looksSecret} from '../scripts/memory-policy.mjs';
 
-// AnchorMind 대역: Streamable HTTP MCP. 세션 헤더, SSE 응답, README에 적힌 인자 이름을 흉내 낸다.
-async function fakeAnchorMind(t,{key='k1'}={}) {
- const store=[],calls=[];
- const tools=[
-  {name:'context',inputSchema:{type:'object',properties:{workspace:{type:'string'}},required:['workspace']}},
-  {name:'recall',inputSchema:{type:'object',properties:{workspace:{type:'string'},text:{type:'string'},type:{type:'string'},keywords:{type:'array'},limit:{type:'integer'}},required:['workspace','text']}},
-  {name:'remember',inputSchema:{type:'object',properties:{workspace:{type:'string'},type:{type:'string'},content:{type:'string'},importance:{type:'number',minimum:0,maximum:1},keywords:{type:'array'},assertionStatus:{type:'string'},isAnchor:{type:'boolean'},ttl:{type:'string'}},required:['workspace','type','content']}}
- ];
- const server=http.createServer((req,res)=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>{
-  if(req.url==='/health'){res.end('ok');return;}
-  if(req.headers.authorization!=='Bearer '+key){res.statusCode=401;res.end();return;}
-  const m=JSON.parse(b);calls.push(m);
-  if(m.method==='notifications/initialized'){res.statusCode=202;res.end();return;}
-  if(m.method!=='initialize'&&req.headers['mcp-session-id']!=='s1'){res.statusCode=400;res.end();return;}
-  let result;
-  if(m.method==='initialize'){res.setHeader('Mcp-Session-Id','s1');result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'fake-anchormind'}};}
-  else if(m.method==='tools/list')result={tools};
-  else if(m.method==='tools/call'){
-   const a=m.params.arguments;let out;
-   if(m.params.name==='remember'){const f={id:'f'+(store.length+1),...a};store.push(f);out={id:f.id,stored:true};}
-   else if(m.params.name==='recall')out={fragments:store.filter(f=>f.workspace===a.workspace&&a.text.split(' ').some(w=>f.content.includes(w))).slice(0,a.limit??8)};
-   else out={anchors:store.filter(f=>f.workspace===a.workspace&&f.isAnchor)};
-   result={content:[{type:'text',text:JSON.stringify(out)}]};
-  }
-  // tools/call은 SSE로, 나머지는 JSON으로 답해 두 형식을 모두 시험한다.
-  if(m.method==='tools/call'){res.setHeader('Content-Type','text/event-stream');res.end(`event: message\ndata: ${JSON.stringify({jsonrpc:'2.0',id:m.id,result})}\n\n`);}
-  else {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({jsonrpc:'2.0',id:m.id,result}));}
- });});
- await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>server.close());
- const url=`http://127.0.0.1:${server.address().port}/mcp`;
- const env={HF_MEMORY_URL:process.env.HF_MEMORY_URL,HF_MEMORY_KEY:process.env.HF_MEMORY_KEY};
- process.env.HF_MEMORY_URL=url;process.env.HF_MEMORY_KEY=key;
- t.after(()=>{for(const [k,v] of Object.entries(env)){if(v===undefined)delete process.env[k];else process.env[k]=v;}});
- return {store,calls,url};
-}
-const withMemory=(t,workspace='hyperfusion-test')=>{const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({memory:{workspace}}));run(f.root,'init',{...f.brief,executor:'grok'});return f;};
+const DAY=86400000;
+// 기억 파일은 테스트마다 임시 폴더에 둔다.
+const memDir=t=>{const d=fs.mkdtempSync(path.join(os.tmpdir(),'hf-mem-'));const old=process.env.HF_MEMORY_DIR;process.env.HF_MEMORY_DIR=d;t.after(()=>{if(old===undefined)delete process.env.HF_MEMORY_DIR;else process.env.HF_MEMORY_DIR=old;fs.rmSync(d,{recursive:true,force:true});});return d;};
+const withMemory=(t,workspace='hyperfusion-test')=>{memDir(t);const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({memory:{workspace}}));run(f.root,'init',{...f.brief,executor:'grok'});return f;};
+const put=(w,type,content,extra={})=>store.remember(w,{type,content,assertion:'inferred',source:{role:'lead'},...extra},extra.at?{now:extra.at}:{});
 const ledger=f=>candidates(f.root);
 
 test('secrets, oversized text and worker decisions never become memory',()=>{
@@ -57,85 +24,135 @@ test('secrets, oversized text and worker decisions never become memory',()=>{
  assert.match(checkCandidate({type:'fact',content:'Engine is Godot 4.5'},'lead').join(),/restricted/);
  assert.match(checkCandidate({type:'fact',content:'Engine is Godot 4.5',anchor_key:'MOOD'},'lead').join(),/anchor_key/);
  assert.deepEqual(checkCandidate({type:'fact',content:'Engine is Godot 4.5',anchor_key:'CURRENT_ENGINE',reason:'pointer for agents'},'lead'),[]);
+ assert.match(checkCandidate({type:'fact',content:'x',anchor_key:'GIT_REPO',reason:'r',ttl_days:3},'lead').join(),/do not expire/);
 });
-test('memory stays off without a per-project workspace, and bad names are refused',async t=>{
- const f=fixture(t);f.begin();const r=f.result();r.memory_candidates=[{type:'error',content:'A failed because B'}];f.finish(r);
+test('memory stays off without a per-project workspace, and bad names are refused',t=>{
+ memDir(t);const f=fixture(t);f.begin();const r=f.result();r.memory_candidates=[{type:'error',content:'A failed because B'}];f.finish(r);
  assert.deepEqual(ledger(f).candidates,[]);
+ assert.throws(()=>recall(f.root,'x'),/MEMORY_DISABLED/);
  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({memory:{workspace:'my project!'}}));
- await assert.rejects(()=>recall(f.root,'x'),/workspace/);
+ assert.throws(()=>recall(f.root,'x'),/workspace/);
 });
-test('worker lessons land in the ledger, not in AnchorMind',async t=>{
- const mem=await fakeAnchorMind(t);const f=withMemory(t);
+test('worker lessons land in the ledger, not in shared memory',t=>{
+ const f=withMemory(t);
  f.begin();const r=f.result();r.memory_candidates=[{type:'error',content:'Node 17 param A produced malformed output; B passed the gate',keywords:['comfyui']},{type:'decision',content:'Switch engines'}];f.finish(r);
  const c=ledger(f).candidates;
  assert.equal(c[0].status,'pending');assert.equal(c[0].source.executor,'grok');
  assert.equal(c[1].status,'invalid');assert.match(c[1].problems[0],/lead owns/);
- assert.equal(mem.store.length,0);
+ assert.equal(store.stats('hyperfusion-test').active,0);
 });
-test('closing a task harvests failure→cause→fix→verification, committed only on lead approval',async t=>{
- const mem=await fakeAnchorMind(t);const f=withMemory(t);
- f.begin();f.finish();f.review('redo',['AC1']);
- f.begin();f.finish();f.review('pass');
+test('closing a task harvests failure→cause→fix→verification; only approved ones are stored, as verified',t=>{
+ const f=withMemory(t);
+ f.begin();f.finish();f.review('redo',['AC1']);f.begin();f.finish();f.review('pass');
  run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'npm test',status:'pass'}]});
  const c=ledger(f).candidates;
  assert.deepEqual(c.map(x=>x.type),['error','procedure','episode']);
- assert.match(c[0].content,/grok round 1 failed AC1.*Resolved by grok round 2/);assert.match(c[1].content,/npm test/);
- const out=await commit(f.root,{accept:['m1','m2'],reject:['m3']});
- assert.deepEqual(out.results.map(r=>r.status),['committed','committed','rejected']);
- assert.equal(mem.store.length,2);
- const saved=mem.store[0];
- assert.equal(saved.workspace,'hyperfusion-test');assert.equal(saved.assertionStatus,'verified');assert.equal(saved.importance,0.9);
- assert.ok(saved.keywords.includes('hf:HF-test')&&saved.keywords.includes('src:protocol'));
- assert.equal(saved.isAnchor,undefined);
+ assert.match(c[0].content,/grok round 1 failed AC1.*Resolved by grok round 2/);
+ const out=commit(f.root,{accept:['m1','m2'],reject:['m3']});
+ assert.deepEqual(out.results.map(r=>r.status),['stored','stored','rejected']);
+ const hit=recall(f.root,'grok round failed AC1').hits[0];
+ assert.equal(hit.assertion,'verified');assert.ok(hit.keywords.includes('hf:HF-test')&&hit.keywords.includes('src:protocol'));
 });
-test('worker and lead-added memories are stored as inferred, anchors only on the allow-list',async t=>{
- const mem=await fakeAnchorMind(t);const f=withMemory(t);
- f.begin();const r=f.result();r.memory_candidates=[{type:'procedure',content:'Run gate script before human review'}];f.finish(r);f.review('pass');
+test('worker and lead-added memories are inferred; anchors only on the allow-list and never decay',t=>{
+ const f=withMemory(t);
+ f.begin();const r=f.result();r.memory_candidates=[{type:'procedure',content:'Run the gate script before human review'}];f.finish(r);f.review('pass');
  run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'check',status:'pass'}]});
- const out=await commit(f.root,{accept:['m1'],add:[{type:'decision',content:'Pixel pipeline excludes Qwen2.1; Anima + Krea2 are the default generators'},{type:'fact',content:'Design SOT lives in Google Drive folder GDD/',anchor_key:'SOT_LOCATION',reason:'pointer, not the design itself'}]});
- assert.ok(out.results.every(r=>r.status==='committed'));
- const byContent=x=>mem.store.find(f=>f.content.startsWith(x));
- assert.equal(byContent('Run gate').assertionStatus,'inferred');assert.equal(byContent('Pixel').assertionStatus,'inferred');
- assert.equal(byContent('Design SOT').isAnchor,true);assert.ok(byContent('Design SOT').keywords.includes('anchor:SOT_LOCATION'));
+ commit(f.root,{accept:['m1'],add:[{type:'decision',content:'Pixel pipeline excludes Qwen2.1; Anima and Krea2 are the default generators',importance:'high'},{type:'fact',content:'Design SOT is the GDD folder in Google Drive',anchor_key:'SOT_LOCATION',reason:'pointer, not the design'}]});
+ assert.equal(recall(f.root,'gate script human review').hits[0].assertion,'inferred');
+ const ctx=context(f.root);
+ assert.equal(ctx.anchors[0].anchor_key,'SOT_LOCATION');
+ assert.equal(store.effective({...ctx.anchors[0],anchor_key:'SOT_LOCATION',importance:0.6,updated_at:new Date(0).toISOString()}),0.6);
 });
-test('lead edits are re-checked before saving',async t=>{
- await fakeAnchorMind(t);const f=withMemory(t);
+test('lead edits are re-checked before saving',t=>{
+ const f=withMemory(t);
  f.begin();const r=f.result();r.memory_candidates=[{type:'error',content:'Build failed'}];f.finish(r);
- const out=await commit(f.root,{accept:['m1'],edits:{m1:{content:'Build failed; token = abcd1234efgh'}}});
+ const out=commit(f.root,{accept:['m1'],edits:{m1:{content:'Build failed; token = abcd1234efgh'}}});
  assert.equal(out.results[0].status,'invalid');assert.match(out.results[0].problems.join(),/credential/);
  assert.equal(ledger(f).candidates[0].status,'pending');
 });
-test('recall returns workspace-scoped fragments ready for prior_experience, never rejected ones',async t=>{
- const mem=await fakeAnchorMind(t);const f=withMemory(t);
- mem.store.push({id:'a',workspace:'hyperfusion-test',type:'error',content:'bow-arm separation failed on both P4 drafts',assertionStatus:'verified'},
-  {id:'b',workspace:'hyperfusion-test',type:'error',content:'bow-arm separation fixed by retopology',assertionStatus:'rejected'},
-  {id:'c',workspace:'asset-pipeline',type:'error',content:'bow-arm separation in another project',assertionStatus:'verified'});
- const r=await recall(f.root,'bow-arm separation');
- assert.deepEqual(r.prior_experience,[{id:'a',type:'error',content:'bow-arm separation failed on both P4 drafts',assertion:'verified'}]);
- assert.equal(r.dropped_rejected,1);
- const call=mem.calls.find(c=>c.params?.name==='recall');assert.equal(call.params.arguments.text,'bow-arm separation');assert.equal(call.params.arguments.workspace,'hyperfusion-test');
+test('near-duplicates merge instead of piling up, and verified wins',t=>{
+ memDir(t);const w='ws';
+ const a=put(w,'error','PixelOEPixelize+ raised ModuleNotFoundError on import');
+ const b=store.remember(w,{type:'error',content:'PixelOEPixelize+ raised ModuleNotFoundError on import.',assertion:'verified',importance:'high',keywords:['pixel'],source:{role:'protocol'}});
+ assert.equal(b.status,'merged');assert.equal(b.id,a.id);
+ const hit=store.recall(w,'ModuleNotFoundError').hits[0];
+ assert.equal(hit.assertion,'verified');assert.equal(hit.sources,2);assert.ok(hit.keywords.includes('pixel'));
+ assert.equal(store.stats(w).active,1);
 });
-test('prior_experience reaches the worker with its lower rank spelled out',async t=>{
+test('contradictions go to a review queue, are kept from workers, and a rejected claim cannot sneak back',t=>{
+ memDir(t);const w='ws';
+ const old=put(w,'decision','Pixel pipeline uses Qwen2.1 as the default generator');
+ const neu=put(w,'decision','Pixel pipeline excludes Qwen2.1 as the default generator');
+ assert.equal(neu.status,'needs_review');assert.deepEqual(neu.conflicts_with,[old.id]);
+ const r=store.recall(w,'Qwen2.1 default generator');
+ assert.deepEqual(r.hits.map(h=>h.id),[old.id]);assert.equal(r.needs_review[0].id,neu.id);
+ store.resolve(w,{keep:neu.id,drop:old.id});
+ assert.deepEqual(store.recall(w,'Qwen2.1 default generator').hits.map(h=>h.id),[neu.id]);
+ assert.equal(put(w,'decision','Pixel pipeline uses Qwen2.1 as the default generator').status,'refused');
+ const v=put(w,'procedure','Run ComfyUI workflow X with node 17 set to 0.4');
+ assert.equal(put(w,'procedure','Run ComfyUI workflow X with node 17 set to 0.7').status,'needs_review');
+ assert.equal(store.recall(w,'workflow').hits[0].id,v.id);
+ // 숫자만 다른 거의 같은 문장도 병합되지 않고 검토 대기열로 간다.
+ assert.equal(put(w,'decision','Use Godot 4.4 for the shop game').status,'stored');
+ assert.equal(put(w,'decision','Use Godot 4.5 for the shop game').status,'needs_review');
+});
+test('importance decays with disuse, recall reinforces, reflect archives forgotten guesses but keeps verified and anchors',t=>{
+ memDir(t);const w='ws',now=Date.now();
+ const stale=put(w,'episode','Bow arm separation failed on draft Alpha sketch',{at:now-400*DAY});
+ const fresh=put(w,'episode','Bow arm separation failed on draft Beta render',{at:now-1*DAY});
+ store.remember(w,{type:'error',content:'Bow arm separation verified failure on rig C',assertion:'verified',source:{role:'protocol'}},{now:now-400*DAY});
+ store.remember(w,{type:'fact',content:'GIT_REPO is prentice7725/hyperfusion',assertion:'inferred',anchor_key:'GIT_REPO',source:{role:'lead'}},{now:now-900*DAY});
+ assert.deepEqual(store.recall(w,'bow arm separation draft',{touch:false}).hits.slice(0,2).map(h=>h.id),[fresh.id,stale.id]);
+ const out=store.reflect(w,{now});
+ assert.deepEqual(out.archived,[{id:stale.id,reason:'decayed'}]);
+ assert.equal(store.stats(w).active,3);
+});
+test('TTL expiry hides a memory and reflect archives it',t=>{
+ memDir(t);const w='ws',now=Date.now();
+ put(w,'episode','Temporary staging server runs on port 8081',{ttl_days:1,at:now-2*DAY});
+ assert.deepEqual(store.recall(w,'staging server port').hits,[]);
+ assert.equal(store.reflect(w,{now}).archived[0].reason,'ttl');
+});
+test('Korean text is searchable without spaces matching (character bigrams)',t=>{
+ memDir(t);const w='ws';
+ put(w,'episode','P4 원화 두 장 모두 캐릭터 점유율과 활팔분리 문제로 FAIL');
+ assert.equal(store.recall(w,'팔분리 실패 사례').hits.length,1);
+ assert.equal(store.recall(w,'점유율').hits.length,1);
+});
+test('recall spreads to memories from the same task (association)',t=>{
+ memDir(t);const w='ws';
+ put(w,'error','Seed 42 with Krea2 produced fused limbs',{keywords:['hf:T1']});
+ put(w,'procedure','Fixed by raising ControlNet weight to 0.8 and re-running the gate',{keywords:['hf:T1']});
+ put(w,'episode','Unrelated shop UI polish',{keywords:['hf:T2']});
+ const r=store.recall(w,'fused limbs');
+ assert.deepEqual(r.hits.map(h=>h.via),['match','association']);assert.match(r.hits[1].content,/ControlNet/);
+});
+test('workspaces never see each other',t=>{
+ memDir(t);
+ put('asset-pipeline','error','bow-arm separation failed on P4');
+ assert.deepEqual(store.recall('hyperfusion','bow-arm separation').hits,[]);
+ assert.equal(store.recall('asset-pipeline','bow-arm separation').hits.length,1);
+});
+test('lead recall hands back prior_experience that reaches the worker with its lower rank spelled out',t=>{
  const f=withMemory(t);
- const prior=[{id:'a',type:'error',content:'PixelOEPixelize+ raised ModuleNotFoundError; do not retry the same setup',assertion:'verified'}];
- // 기각된 기억이나 비밀값은 lease를 잡기 전에 거절된다.
+ put('hyperfusion-test','error','PixelOEPixelize+ raised ModuleNotFoundError; do not retry the same setup');
+ const prior=recall(f.root,'PixelOEPixelize').prior_experience;
+ assert.equal(prior.length,1);
  assert.throws(()=>f.begin({prior_experience:[{type:'error',content:'x',assertion:'rejected'}]}),/prior_experience/);
  assert.throws(()=>f.begin({prior_experience:[{type:'error',content:'login with password: hunter22'}]}),/prior_experience/);
  assert.equal(f.state().iteration,0);
- const d=f.begin({prior_experience:prior});
- const msg=JSON.parse(d.prompt);
+ const msg=JSON.parse(f.begin({prior_experience:prior}).prompt);
  assert.deepEqual(msg.brief.prior_experience,prior);assert.ok(msg.instructions.some(i=>/ranks below this brief/.test(i)));
 });
-test('a bad access key fails loudly, and server tool schemas decide argument names',async t=>{
- await fakeAnchorMind(t,{key:'right'});process.env.HF_MEMORY_KEY='wrong';
- await assert.rejects(()=>new AnchorMind().context('w'),/access key/);
- process.env.HF_MEMORY_KEY='right';
- const api=await new AnchorMind().connect();
- assert.throws(()=>api.shape('recall',{workspace:'w'},{}),/requires text/);
- assert.deepEqual(api.shape('recall',{workspace:'w',query:'q',bogus:1},{query:['text']}),{workspace:'w',text:'q'});
+test('the store file is locked while written, so two agents cannot clobber it',t=>{
+ const d=memDir(t);fs.mkdirSync(d,{recursive:true});fs.writeFileSync(path.join(d,'ws.json.lock'),'');
+ assert.throws(()=>put('ws','error','x happened'),/EEXIST/);
 });
-test('context returns anchors for the workspace',async t=>{
- const mem=await fakeAnchorMind(t);const f=withMemory(t);
- mem.store.push({id:'z',workspace:'hyperfusion-test',type:'fact',content:'GIT_REPO is prentice7725/hyperfusion',isAnchor:true});
- assert.equal((await context(f.root)).core.anchors[0].id,'z');
+test('recalling an old memory reinforces it, so reflect keeps what is still in use',t=>{
+ memDir(t);const w='ws',now=Date.now();
+ const old=put(w,'procedure','Validate sprites with the alpha-bleed checker before export',{at:now-900*DAY});
+ assert.ok(store.effective({type:'procedure',importance:0.6,updated_at:new Date(now-900*DAY).toISOString()},now)<0.05);
+ store.recall(w,'alpha-bleed checker',{now});
+ assert.deepEqual(store.reflect(w,{now}).archived,[]);
+ assert.equal(store.recall(w,'alpha-bleed checker',{touch:false}).hits[0].id,old.id);
 });

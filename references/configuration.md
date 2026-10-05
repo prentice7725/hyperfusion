@@ -29,7 +29,7 @@
 
 ## 기억 계층
 
-`"memory": {"workspace": "<프로젝트별 이름>", "recall_limit": 8, "enabled": true}`. workspace가 없으면 꺼진다. 서버 주소·키는 환경변수 `HF_MEMORY_URL`, `HF_MEMORY_KEY`로만 받는다. 자세한 건 [memory.md](memory.md).
+`"memory": {"workspace": "<프로젝트별 이름>", "recall_limit": 8, "enabled": true}`. workspace가 없으면 꺼진다. 외부 서버 없이 `~/.hyperfusion/memory/<workspace>.json`에 저장한다(`HF_MEMORY_DIR`로 위치 변경). 자세한 건 [memory.md](memory.md).
 
 ## 알림
 

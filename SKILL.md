@@ -2,7 +2,7 @@
 name: hyperfusion
 description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검수만 하고, 구현과 테스트는 작업 종류에 맞춰 고른 일꾼(Grok Build CLI, Antigravity CLI, Claude Code Sonnet)에게 시키는 오케스트레이션 스킬. 단일 writer, 감사 가능한 라운드 기록, 반려 시 구체적 명령서 필수, 같은 실수 반복 시 일꾼 교체. HyperFusion, Grok, Antigravity, agy, Sonnet에게 코딩이나 이미지 애셋 작업을 맡기라는 요청에 사용한다.
 ---
-# HyperFusion v0.6 — Opus 리드, Grok·Antigravity·Sonnet 일꾼
+# HyperFusion v0.7 — Opus 리드, Grok·Antigravity·Sonnet 일꾼
 
 **리드: Claude Opus 5.5 (`claude-opus-5-5`)**. 리드는 분해, 계획, 범위 확정, 반려, 최종 검증만 한다. **코드는 일꾼이 쓴다.** 일꾼은 Grok(`grok`), Antigravity(`agy`), Sonnet(`claude --model claude-sonnet-5-5` 하위 프로세스). 스킬은 호스트 모델을 바꿀 수 없다. 호스트가 Opus 5.5가 아니면 그렇다고 밝히고 진행하며 `lead_model`은 확인 전까지 null로 둔다.
 
@@ -14,9 +14,9 @@ description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검�
 
 구현 라운드와 별개로 일꾼을 읽기 전용으로 불러 판단 근거를 받는다([consult.md](references/consult.md)). `advisor`(1명)는 REVIEW에서 Opus가 diff를 정독하기 전에 다른 일꾼에게 먼저 검사시킬 때 쓴다. 중·고난도 작업에서는 기본으로 쓴다. `committee`(서로 다른 2명)는 같은 반려가 반복될 때 교체 전에 원인과 계획을 받을 때 쓴다(`hint`가 권고). 상담 결과는 참고일 뿐이고 판정은 리드가 한다. findings는 `{file, line, comment}` 형태의 `lead_feedback`으로 옮긴다.
 
-## 기억 계층 (AnchorMind, 선택)
+## 기억 계층 (선택, AnchorMind 설계를 들여온 내장 기억)
 
-`memory.workspace`가 설정된 프로젝트에서만 켜진다([memory.md](references/memory.md)). AnchorMind는 정본이 아니다. 행동 규칙은 이 스킬과 CLAUDE.md에 있고, 기억에는 사실과 경험만 들어간다. 일꾼은 AnchorMind에 직접 접근하지 않는다. 리드가 `memory.mjs recall`로 찾은 기억을 Drive SOT와 Git HEAD로 확인한 뒤 `prior_experience`로 넣어 준다. 일꾼의 `memory_candidates`와 작업 종료 시 자동 추출된 후보는 리드가 `memory.mjs commit`으로 승인해야만 저장된다.
+`memory.workspace`가 설정된 프로젝트에서만 켜진다([memory.md](references/memory.md)). 이 기억은 정본이 아니다. 행동 규칙은 이 스킬과 CLAUDE.md에 있고, 기억에는 사실과 경험만 들어간다. 일꾼은 AnchorMind에 직접 접근하지 않는다. 리드가 `memory.mjs context`/`recall`로 찾은 기억을 Drive SOT와 Git HEAD로 확인한 뒤 `prior_experience`로 넣어 준다. 일꾼의 `memory_candidates`와 작업 종료 시 자동 추출된 후보는 리드가 `memory.mjs commit`으로 승인해야만 저장된다. 모순 후보(`needs_review`)는 `resolve`로 정리하고, 가끔 `reflect`로 만료·감쇠된 기억을 정리한다.
 
 ## 부려먹기 원칙
 

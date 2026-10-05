@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {read,atomic} from './artifact.mjs';
 
-// AnchorMind는 정본(SOT)이 아니라 에이전트들의 장기 작업기억이다.
+// 기억 계층(AnchorMind 설계를 들여온 것)은 정본(SOT)이 아니라 에이전트들의 장기 작업기억이다.
 // 이 모듈은 무엇을 기억시켜도 되는지 정하는 규칙과, 작업마다 쌓이는 후보 장부를 다룬다.
 
 export const TYPES=['fact','decision','error','preference','procedure','relation','episode'];
@@ -51,6 +51,8 @@ export function checkCandidate(c,role) {
   else if(!ANCHOR_KEYS.includes(c.anchor_key))problems.push('anchor_key must be one of '+ANCHOR_KEYS.join(', '));
  }
  if(c.importance!==undefined&&!['low','medium','high'].includes(c.importance))problems.push('importance must be low, medium or high');
+ if(c.ttl_days!==undefined&&!(Number.isInteger(c.ttl_days)&&c.ttl_days>0&&c.ttl_days<=3650))problems.push('ttl_days must be 1..3650');
+ if(c.ttl_days!==undefined&&c.anchor_key)problems.push('anchors do not expire');
  if(role==='lead'&&RESTRICTED_TYPES.includes(c.type)&&!str(c.reason))problems.push(`${c.type} is restricted; give a reason`);
  return problems;
 }
@@ -74,7 +76,7 @@ export function propose(root,task,items,source) {
   const key=crypto.createHash('sha256').update(c.type+'\0'+c.content).digest('hex').slice(0,12);
   if(ledger.candidates.some(x=>x.key===key))continue;
   ledger.candidates.push({id:'m'+(ledger.candidates.length+1),key,type:c.type,content:c.content,keywords:c.keywords??[],importance:c.importance??'medium',
-   anchor_key:c.anchor_key,reason:c.reason,source,status:problems.length?'invalid':'pending',problems,proposed_at:new Date().toISOString()});
+   anchor_key:c.anchor_key,reason:c.reason,ttl_days:c.ttl_days,source,status:problems.length?'invalid':'pending',problems,proposed_at:new Date().toISOString()});
  }
  writeLedger(root,task,ledger);
  return ledger;

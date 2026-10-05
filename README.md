@@ -33,9 +33,18 @@
 - 배치표는 측정값이 아닌 출발점이며 `hyperfusion.config.json`의 `routing.rules`로 바꾼다. 자세한 건 [routing](references/routing.md).
 - Grok의 이미지 생성은 공개 자료에 언급되지만 공식 문서로 확인하지 못했다. 결과 파일은 스냅샷 diff로 검증되므로, 애셋이 실제로 범위 안에 생기지 않으면 통과할 수 없다.
 
-## 기억 계층: AnchorMind 파일럿 (v0.6)
+## 기억 계층: AnchorMind 설계를 들여온 내장 작업기억 (v0.7)
 
-[AnchorMind](https://github.com/jinho-von-choi/memento-mcp)를 **정본이 아닌 장기 작업기억**으로 붙였다. 일꾼이 세션을 새로 열 때마다 끊기던 시행착오("이 에러 지난번에 해결했지", "여기선 이렇게 검증했지")를 다음 세션과 다른 일꾼에게 넘기는 공유 경험층이다. Drive(설계 정본), Git(구현), Notion(관제) 구조는 건드리지 않는다.
+[AnchorMind](https://github.com/jinho-von-choi/memento-mcp)에 붙지 않고, 그 설계를 벤치마킹해 HyperFusion 안에 직접 구현했다. 외부 서버나 DB 없이 `~/.hyperfusion/memory/<workspace>.json`에 저장한다. 일꾼이 세션을 새로 열 때마다 끊기던 시행착오("이 에러 지난번에 해결했지", "여기선 이렇게 검증했지")를 다음 세션과 다른 일꾼에게 넘기는 공유 경험층이다. Drive(설계 정본), Git(구현), Notion(관제) 구조는 건드리지 않는다.
+
+| 들여온 아이디어 | 구현 |
+|---|---|
+| 7종 fragment, workspace 격리 | 1~2문장(400자) 단위, 프로젝트별 파일. 쓰기마다 잠금 + 원자적 저장 |
+| 중복 병합 | 같은 종류·유사도 0.8 이상·숫자와 버전 동일 → 병합(중요도↑, 출처 누적, verified 우선) |
+| 모순 탐지 + 검토 대기열 | 주제가 겹치는데 부정어나 숫자·버전이 다르면 `needs_review`. 리드가 `resolve` 하기 전엔 일꾼에게 안 감. 기각된 내용은 다시 저장되지 않음 |
+| importance 감쇠·재공고화·TTL | 종류별 반감기, 다시 쓰이면 감쇠가 처음부터 다시 시작, `ttl_days` 만료. `reflect`가 만료되거나 잊힌 추정 기억을 보관함으로 옮김 |
+| 연상 확산 | 상위 결과와 링크됐거나 같은 작업에서 나온 기억을 낮은 점수로 함께 꺼냄 |
+| 검색 | BM25 계열 어휘 점수 × 감쇠된 중요도 × 신뢰도. 한글은 글자 bigram 색인 |
 
 | 경로 | 동작 |
 |---|---|
@@ -44,8 +53,8 @@
 | 쓰기 확정 | 리드가 `memory.mjs commit`으로 승인한 것만 저장. 검증 통과 작업에서 프로토콜이 뽑은 것만 `verified`, 나머지는 `inferred` |
 | 차단 | 일꾼의 decision/preference/relation 제안, 400자 초과, 비밀값 패턴, 허용 목록 밖 anchor, workspace 미설정(기능 꺼짐) |
 
-- **일꾼은 AnchorMind에 직접 접근하지 않는다.** AnchorMind는 처음 잘못 저장된 기억을 스스로 거르지 못하고, 검색(recall@5 88.3%)에 비해 종합 추론(QA 44.9%)이 약하다. 그래서 쓰기도 읽기도 리드를 거친다.
-- **서버 연결:** 서버 인자 이름은 접속할 때 `tools/list`로 받은 실제 스키마에 맞춘다. 주소·키는 환경변수(`HF_MEMORY_URL`, `HF_MEMORY_KEY`)로만 받는다.
+- **일꾼이 직접 쓰지 않는 이유:** 처음 잘못 저장된 기억은 저장소가 스스로 거르지 못한다. 그래서 쓰기도 읽기도 리드를 거친다.
+- **검색의 한계:** 임베딩이 없어서 뜻은 같지만 단어가 다른 기억은 놓칠 수 있다. 키워드로 보완한다.
 
 자세한 건 [memory](references/memory.md).
 
@@ -118,7 +127,7 @@ Claude Code(Opus 5.5 선택)에서:
 npm test
 ```
 
-98개 테스트가 기억 계층(비밀값·크기·권한 차단, 후보 장부, 프로토콜 자동 추출, 리드 승인 저장, verified/inferred 구분, workspace 격리, 스키마 기반 인자 매핑, SSE 응답),  상담(advisor/committee) 실행·읽기 전용 위반 적발·상담 중 잠금·예산, 줄 단위 피드백, 알림 전송, Windows 경로 처리(.cmd 래퍼 해석, .js 진입점, 역슬래시 경로, 명령줄 길이)와 Grok/Antigravity/Sonnet 정상 실행, 작업별 배치·설치 상태 반영·실적 기반 강등·교체 순서, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. GitHub Actions가 Ubuntu·Windows × Node 20·24에서 실행한다. 테스트의 `grok`/`agy`/`claude`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
+104개 테스트가 기억 계층(비밀값·크기·권한 차단, 후보 장부, 프로토콜 자동 추출, 리드 승인 저장, verified/inferred, 중복 병합, 모순 검토 대기열, 감쇠·재공고화·TTL, 연상 확산, 한글 검색, workspace 격리, 파일 잠금),  상담(advisor/committee) 실행·읽기 전용 위반 적발·상담 중 잠금·예산, 줄 단위 피드백, 알림 전송, Windows 경로 처리(.cmd 래퍼 해석, .js 진입점, 역슬래시 경로, 명령줄 길이)와 Grok/Antigravity/Sonnet 정상 실행, 작업별 배치·설치 상태 반영·실적 기반 강등·교체 순서, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. GitHub Actions가 Ubuntu·Windows × Node 20·24에서 실행한다. 테스트의 `grok`/`agy`/`claude`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
 
 ## 완료보고 진단
 
