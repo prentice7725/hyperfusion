@@ -38,8 +38,17 @@ export function review(v) {
  return v;
 }
 // 다음 라운드 명령서. 이전 라운드 반려 사유를 일꾼에게 그대로 들이민다.
+// 문자열 또는 diff 위치를 짚는 {file, line?, comment}. 상담 findings를 그대로 옮겨 쓸 수 있다.
 export function feedback(v) {
- requireThat(strs(v)&&v.length>0,'Re-dispatch requires lead_feedback: concrete orders for the worker');
+ const item=x=>str(x)||(x&&typeof x==='object'&&safePath(x.file)&&str(x.comment)&&(x.line===undefined||(Number.isInteger(x.line)&&x.line>=0))&&Object.keys(x).every(k=>['file','line','comment'].includes(k)));
+ requireThat(Array.isArray(v)&&v.length>0&&v.every(item),'Re-dispatch requires lead_feedback: concrete orders for the worker (strings or {file, line?, comment})');
+ return v;
+}
+export function consultResult(v,task_id,consult_id,member) {
+ requireThat(v&&v.task_id===task_id&&v.consult_id===consult_id&&v.member===member,'Consult provenance mismatch');
+ requireThat(str(v.summary)&&typeof v.root_cause==='string'&&Array.isArray(v.plan)&&v.plan.every(x=>typeof x==='string'),'Invalid consult fields');
+ requireThat(['pass','redo','alternative','decision','none'].includes(v.recommended_verdict)&&['low','medium','high'].includes(v.confidence),'Invalid consult verdict');
+ requireThat(Array.isArray(v.findings)&&v.findings.every(f=>f&&safePath(f.file)&&Number.isInteger(f.line)&&f.line>=0&&['blocker','major','minor','nit'].includes(f.severity)&&str(f.issue)&&typeof f.suggestion==='string'),'Invalid consult findings');
  return v;
 }
 export function escalation(reviews,resultFailures=0,flags={}) {

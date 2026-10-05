@@ -33,6 +33,24 @@
 - 배치표는 측정값이 아닌 출발점이며 `hyperfusion.config.json`의 `routing.rules`로 바꾼다. 자세한 건 [routing](references/routing.md).
 - Grok의 이미지 생성은 공개 자료에 언급되지만 공식 문서로 확인하지 못했다. 결과 파일은 스냅샷 diff로 검증되므로, 애셋이 실제로 범위 안에 생기지 않으면 통과할 수 없다.
 
+## Orca·Paseo에서 들여온 것 (v0.5)
+
+[Orca](https://github.com/stablyai/orca)와 [Paseo](https://github.com/getpaseo/paseo)를 벤치마킹했다. 둘 다 여러 코딩 에이전트를 한곳에서 부리는 앱/데몬이다. 그중 이 스킬의 단일 writer·감사 구조와 맞는 것만 가져왔다.
+
+| 기능 | 출처 | 내용 |
+|---|---|---|
+| advisor | Paseo `/paseo-advisor` | 다른 일꾼이 읽기 전용으로 diff를 먼저 검사하고 findings(파일·줄·심각도)를 낸다. Opus는 그걸 단서로 검수해 읽을 양을 줄인다 |
+| committee | Paseo `/paseo-committee` | 서로 다른 일꾼 둘이 병렬로 근본 원인과 실행 계획을 낸다. 같은 실수가 반복되면 상태에 권고(`hint`)가 붙는다 |
+| 줄 단위 피드백 | Orca diff annotate | `lead_feedback`에 `{file, line, comment}`. 상담 findings를 그대로 넘길 수 있다 |
+| 알림 | 둘 다 | `HF_NOTIFY_URL`(예: ntfy)로 일꾼 완료, 상담 완료, 리드 판단 필요 시 휴대폰 푸시 |
+
+상담은 writer lease 없이 돌고 구현 예산을 쓰지 않는다(작업당 위원 실행 4회 상한). 읽기 전용은 CLI 설정(Sonnet은 읽기 도구만, agy `--mode plan`, Grok 편집·셸 deny)에 더해 **상담 전후 스냅샷 비교**로 보증한다. 트리를 건드린 상담은 답변을 버리고 복구로 넘어가며, 그 일꾼은 router 실적이 깎인다. 자세한 건 [consult](references/consult.md).
+
+**들여오지 않은 것**
+- **Orca의 worktree 경쟁(같은 brief를 여러 일꾼에게 동시에 시키고 승자 채택):** 가장 탐나는 기능이지만, 단일 작업 트리라는 핵심 불변식을 바꿔야 한다. 의존성 설치·Windows 심볼릭 링크 문제도 있어 다음 단계로 미뤘다.
+- **작업 DAG:** 다음 단계로 미뤘다.
+- **모바일 앱·음성·내장 브라우저·원격 접속:** 스킬 범위 밖이다.
+
 ## v0.3에서 바뀐 것
 
 | 기능 | 상태 |
@@ -84,7 +102,7 @@ Claude Code(Opus 5.5 선택)에서:
 npm test
 ```
 
-71개 테스트가 Windows 경로 처리(.cmd 래퍼 해석, .js 진입점, 역슬래시 경로, 명령줄 길이)와 Grok/Antigravity/Sonnet 정상 실행, 작업별 배치·설치 상태 반영·실적 기반 강등·교체 순서, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. GitHub Actions가 Ubuntu·Windows × Node 20·24에서 실행한다. 테스트의 `grok`/`agy`/`claude`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
+88개 테스트가 상담(advisor/committee) 실행·읽기 전용 위반 적발·상담 중 잠금·예산, 줄 단위 피드백, 알림 전송, Windows 경로 처리(.cmd 래퍼 해석, .js 진입점, 역슬래시 경로, 명령줄 길이)와 Grok/Antigravity/Sonnet 정상 실행, 작업별 배치·설치 상태 반영·실적 기반 강등·교체 순서, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. GitHub Actions가 Ubuntu·Windows × Node 20·24에서 실행한다. 테스트의 `grok`/`agy`/`claude`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
 
 ## 완료보고 진단
 

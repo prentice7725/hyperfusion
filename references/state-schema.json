@@ -300,6 +300,50 @@
           "type": "object"
         }
       }
+    },
+    "open_consult": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "id",
+        "mode",
+        "members",
+        "digest"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "advisor",
+            "committee"
+          ]
+        }
+      }
+    },
+    "consults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "mode",
+          "members",
+          "violated",
+          "touched"
+        ]
+      }
+    },
+    "consult_runs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "hint": {
+      "type": [
+        "object",
+        "null"
+      ]
     }
   }
 }

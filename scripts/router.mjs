@@ -22,6 +22,8 @@ export function history(root,kind) {
    stats[e]??={tasks:0,passed:0};stats[e].tasks++;
    if(m.review_outcomes.some(r=>r.owner===e&&r.verdict==='pass'))stats[e].passed++;
   }
+  // 읽기 전용 상담에서 트리를 건드린 일꾼은 실패 한 건으로 친다.
+  for(const c of m.consults??[])if(c.violated)for(const x of c.members){stats[x.executor]??={tasks:0,passed:0};stats[x.executor].tasks++;}
  }
  return stats;
 }

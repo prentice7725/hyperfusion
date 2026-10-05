@@ -8,27 +8,58 @@ export function resultSchema(task_id,round) {
  return {type:'object',properties,required:Object.keys(properties),additionalProperties:false};
 }
 
+// 상담(advisor/committee) 결과 계약. 코드를 고치지 않고 판단 근거만 낸다.
+export function consultSchema(brief) {
+ const c=brief.consult;
+ const finding={type:'object',properties:{file:{type:'string'},line:{type:'integer',minimum:0},severity:{enum:['blocker','major','minor','nit']},issue:{type:'string'},suggestion:{type:'string'}},required:['file','line','severity','issue','suggestion'],additionalProperties:false};
+ const properties={task_id:{const:brief.task_id},consult_id:{const:c.id},member:{const:c.member},summary:{type:'string'},findings:{type:'array',items:finding},root_cause:{type:'string'},plan:{type:'array',items:{type:'string'}},recommended_verdict:{enum:['pass','redo','alternative','decision','none']},confidence:{enum:['low','medium','high']}};
+ return {type:'object',properties,required:Object.keys(properties),additionalProperties:false};
+}
+export const schemaFor=brief=>brief.consult?consultSchema(brief):resultSchema(brief.task_id,brief.round);
+
+const IMPLEMENT_RULES=[
+ 'Your FINAL message must be only the filled result_template as one JSON object. No prose around it.',
+ 'Keep task_id and round unchanged. status is complete, blocked, needs_decision or failed; needs_decision requires needs_lead_decision=true.',
+ 'files_read and files_changed are repository-relative paths; files_changed covers only this round and must match the real diff exactly.',
+ 'tests holds commands you actually ran with status pass, fail or not_run. Never invent evidence: the lead re-runs everything and diffs the tree.',
+ 'complete means no failed tests, no unresolved items and no pending lead decision.'
+];
+const IMPLEMENT_ORDERS=[
+ 'You are a worker, not a planner. Execute exactly this brief until every success criterion holds, then stop.',
+ 'If lead_feedback is present, every item in it is a blocking order from the lead. Items with file/line point at the exact spot. Address each one; ignoring any of them fails the round.',
+ 'Do not commit, stage, push, deploy, delegate, touch .fusion or .git, or edit outside scope.paths.',
+ 'Do not stop at a plan or a partial patch. Write the code, run the tests, fix what fails.',
+ 'If the brief itself is wrong or insufficient, return needs_decision with the concrete question instead of guessing.',
+ 'Stop every command and child process before returning. Returning ends your write authority.'
+];
+const CONSULT_RULES=[
+ 'Your FINAL message must be only the filled result_template as one JSON object. No prose around it.',
+ 'Keep task_id, consult_id and member unchanged. findings use repository-relative file paths; line is 1-based, or 0 when not tied to a line.',
+ 'severity: blocker breaks a success criterion, major is a real bug or risk, minor is worth fixing, nit is style.',
+ 'recommended_verdict is what you would tell the lead: pass, redo (same worker can fix), alternative (needs a different approach/worker), decision (requirements or architecture unclear), or none.',
+ 'Only report what you verified by reading the code. Say so in summary when evidence is thin, and lower confidence.'
+];
+const CONSULT_ORDERS={
+ advisor:['You are an independent reviewer hired by the lead. Another worker produced the change described in context. Find what is wrong or missing against the success criteria.'],
+ committee:['You are one member of a two-member committee hired by the lead because the task is stuck. Step back: identify the root cause of the repeated failure and propose a concrete plan the next worker can execute.','The other member is a different model. Think independently; do not assume the last attempt was on the right track.']
+};
+const READ_ONLY=['This is a READ-ONLY consultation. Do not create, edit, move or delete any file. Do not run builds, tests, installers or any command that writes to disk. The lead diffs the whole tree afterwards; any change voids your answer and counts against you.'];
+
 export function prompt(brief,lease) {
- return JSON.stringify({protocol:'hyperfusion-opus-lead-v0.3',lead:'Claude Opus 5.5',worker:lease.owner,brief,
+ if(brief.consult){
+  const c=brief.consult;
+  return JSON.stringify({protocol:'hyperfusion-opus-lead-v0.5/consult',lead:'Claude Opus 5.5',worker:lease.owner,brief,
+   result_template:{task_id:brief.task_id,consult_id:c.id,member:c.member,summary:'Describe what you checked and concluded',findings:[],root_cause:'',plan:[],recommended_verdict:'none',confidence:'low'},
+   result_rules:CONSULT_RULES,instructions:[...CONSULT_ORDERS[c.mode],...READ_ONLY]});
+ }
+ return JSON.stringify({protocol:'hyperfusion-opus-lead-v0.5',lead:'Claude Opus 5.5',worker:lease.owner,brief,
  result_template:{task_id:brief.task_id,round:brief.round,status:'complete',summary:'Describe actual outcome',files_read:[],files_changed:[],commands_run:[],tests:[],unresolved:[],risks:[],needs_lead_decision:false,recommended_next_action:'review'},
- result_rules:[
-  'Your FINAL message must be only the filled result_template as one JSON object. No prose around it.',
-  'Keep task_id and round unchanged. status is complete, blocked, needs_decision or failed; needs_decision requires needs_lead_decision=true.',
-  'files_read and files_changed are repository-relative paths; files_changed covers only this round and must match the real diff exactly.',
-  'tests holds commands you actually ran with status pass, fail or not_run. Never invent evidence: the lead re-runs everything and diffs the tree.',
-  'complete means no failed tests, no unresolved items and no pending lead decision.'
- ],
- instructions:[
-  'You are a worker, not a planner. Execute exactly this brief until every success criterion holds, then stop.',
-  'If lead_feedback is present, every item in it is a blocking order from the lead. Address each one; ignoring any of them fails the round.',
-  'Do not commit, stage, push, deploy, delegate, touch .fusion or .git, or edit outside scope.paths.',
-  'Do not stop at a plan or a partial patch. Write the code, run the tests, fix what fails.',
-  'If the brief itself is wrong or insufficient, return needs_decision with the concrete question instead of guessing.',
-  'Stop every command and child process before returning. Returning ends your write authority.'
- ]});
+ result_rules:IMPLEMENT_RULES,instructions:IMPLEMENT_ORDERS});
 }
 
 export function bashRules(brief) {
+ // 상담은 명령 실행 권한을 주지 않는다.
+ if(brief.consult)return [];
  const rules=brief.executor_bash_rules??[];
  if(!Array.isArray(rules)||rules.some(r=>typeof r!=='string'||!/^Bash\([^(),\n]+\)$/.test(r)||r==='Bash(*)'))throw Error('Invalid executor_bash_rules');
  return rules;

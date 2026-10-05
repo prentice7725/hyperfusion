@@ -8,15 +8,17 @@ export const requiredFlags=['--prompt-file','--output-format','--session-id','--
 export const binary=()=>process.env.HF_GROK_BIN||'grok';
 export const probe=()=>probeCli('Grok',binary(),requiredFlags);
 export const newSession=()=>crypto.randomUUID();
+// 상담은 편집과 셸을 모두 막는다. 규칙 문법이 버전마다 다를 수 있어 실제 보증은 상담 전후 스냅샷 비교다.
+export const CONSULT_DENY=['Edit(**)','Bash(*)'];
 export const DENY=['Edit(.fusion/**)','Edit(.git/**)','Bash(git commit*)','Bash(git push*)','Bash(git reset*)','Bash(git clean*)','Bash(git stash*)','Bash(git checkout*)','Bash(git add*)'];
 
 export function dispatch(brief,lease,{session,resume,probe:cli,promptFile}) {
  if(!session)throw Error('Grok requires a preallocated session UUID');
- const edit=brief.allowed_actions.includes('edit');
+ const edit=brief.allowed_actions.includes('edit')&&!brief.consult;
  // 쓰기 권한은 scope 경로로만 연다. 이 규칙은 협업 통제이지 OS 샌드박스가 아니다.
  const allow=[...(edit?brief.scope.paths.flatMap(p=>[`Edit(${p})`,`Edit(${p}/**)`]):[]),...bashRules(brief)];
  const args=['--prompt-file',promptFile,'--output-format','json','--cwd',brief.repo_root,'--max-turns','40',
-  resume?'--resume':'--session-id',session,...allow.flatMap(r=>['--allow',r]),...DENY.flatMap(r=>['--deny',r])];
+  resume?'--resume':'--session-id',session,...allow.flatMap(r=>['--allow',r]),...[...DENY,...(brief.consult?CONSULT_DENY:[])].flatMap(r=>['--deny',r])];
  return {cli:{...cli,args,session_id:session,resume,prompt_file:promptFile},prompt:prompt(brief,lease)};
 }
 

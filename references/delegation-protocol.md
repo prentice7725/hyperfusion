@@ -34,6 +34,15 @@ PLAN 이후의 모든 일꾼 begin(REDO, ALTERNATIVE_REQUIRED)에는 비어 있�
 
 나쁜 예: `["다시 해봐"]`, `["테스트 고쳐"]`. 무엇을, 어디서, 어떤 기준으로가 없으면 명령이 아니다.
 
+위치를 정확히 짚을 때는 문자열 대신 `{file, line?, comment}`를 쓴다(Orca의 diff 주석 방식). 상담 결과의 findings를 그대로 옮기기 좋다.
+
+```json
+{"lead_feedback": [
+  {"file": "src/auth/refresh.ts", "line": 42, "comment": "거절 시 inFlight를 null로 되돌려라"},
+  "공개 함수 시그니처를 바꾸지 마라"
+]}
+```
+
 ## 교체 시
 
 다른 일꾼에게는 현재 트리 상태, 이전 일꾼이 바꾼 것, 남은 반려 사유, 리드의 결정을 brief로 준다. 이전 일꾼의 대화 기록은 넘기지 않는다. 범위의 경로는 하위 항목을 포함한다. 생성 산출물이 테스트에 필요하면 범위에 넣는다. submodule은 거절한다.

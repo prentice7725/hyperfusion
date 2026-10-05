@@ -15,7 +15,9 @@
 | verify | acceptance_satisfied:true, 실제 통과 테스트 → CLOSE |
 | recover | token(보유 시), quiescent:true, reason |
 | archive | quiescent:true, reason, token(보유 시) → ARCHIVED |
-| status | 상태, 다이제스트, 일꾼별 남은 예산 |
+| consult | mode(advisor/committee), question, focus?, executors? → 읽기 전용 상담 dispatch. [consult.md](consult.md) |
+| consult-finish | quiescent:true → 위원별 결과. 트리가 바뀌었으면 답변 폐기 후 RECOVERY_REQUIRED |
+| status | 상태, 다이제스트, 일꾼별 남은 예산, 남은 상담 횟수 |
 
 일꾼 begin은 lease와 시도를 쓰기 전에 CLI를 프로브한다. 반환된 `command`/`args`(executor-bridge)를 라운드당 한 번 실행한다. RESULT_READY 후에도 lease는 유지되고, 리드가 정지 확인 후 finish 한다.
 

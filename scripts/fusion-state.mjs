@@ -3,10 +3,14 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isMain} from './platform.mjs';
-import {config,selectExecutor,EXECUTORS,CAP} from './executor-config.mjs';
+import {config,selectExecutor,EXECUTORS,CAP,CONSULT_CAP} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
-import {atomic,immutable,read,repo,snapshot,changes} from './artifact.mjs';
+import {atomic,immutable,read,repo,snapshot,changes,git} from './artifact.mjs';
+import {notify} from './notify.mjs';
+
+const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
+const CONTEXT_DIFF_MAX=12000;
 import {acquire,assertLease,release} from './writer-lease.mjs';
 import * as contract from './contracts.mjs';
 
@@ -70,7 +74,81 @@ export function run(root,action,input={}) {
    if(budget(s.owner))return 'REDO';
    return takeoverOrBlocked();
   };
-  if(action==='status')return {...s,lease_present:writerHeld(),current_digest:snapshot(root).digest,remaining:Object.fromEntries(Object.keys(CAP).map(k=>[k,CAP[k]-s.attempts[k]]))};
+  if(action==='status')return {...s,lease_present:writerHeld(),current_digest:snapshot(root).digest,remaining:Object.fromEntries(Object.keys(CAP).map(k=>[k,CAP[k]-s.attempts[k]])),consult_remaining:CONSULT_CAP-(s.consult_runs??0)};
+  // 상담 중에는 다음 수를 두지 않는다. 결과를 보고 판단한다.
+  if(s.open_consult&&action!=='consult-finish')throw Error('Consult '+s.open_consult.id+' in progress; run its bridge, then consult-finish');
+  if(action==='consult') {
+   phase('PLAN','REVIEW','REDO','ALTERNATIVE_REQUIRED','DECISION_REQUIRED');
+   if(writerHeld())throw Error('Writer still present; recover');
+   const mode=input.mode;
+   if(!['advisor','committee'].includes(mode))throw Error('Consult mode must be advisor or committee');
+   if(typeof input.question!=='string'||!input.question.trim())throw Error('Consult requires a concrete question');
+   if(input.focus!==undefined&&!(Array.isArray(input.focus)&&input.focus.every(x=>typeof x==='string')))throw Error('Invalid focus');
+   const size=mode==='advisor'?1:2;
+   if((s.consult_runs??0)+size>CONSULT_CAP)throw Error(`Consult cap reached (${CONSULT_CAP} member runs per task)`);
+   let picks,explicit=input.executors!==undefined;
+   if(explicit){
+    if(!Array.isArray(input.executors)||input.executors.length!==size||new Set(input.executors).size!==size)throw Error(`${mode} needs ${size} distinct executor(s)`);
+    picks=input.executors.map(e=>{const x=selectExecutor(s.configuration,e);if(x==='auto')throw Error('Name consult executors explicitly or omit them');return x;});
+   } else {
+    // 기본: 방금 일한 일꾼은 뒤로. 자기 작업을 자기가 검사하지 않게 하고, 위원회는 서로 다른 모델로 꾸린다.
+    const order=[...new Set([...s.routing.candidates,...pool()])].filter(e=>pool().includes(e));
+    picks=[...order.filter(e=>e!==s.owner),...order.filter(e=>e===s.owner)];
+   }
+   const members=[];
+   for(const e of picks){
+    if(members.length===size)break;
+    let cli;try{cli=adapter(e).probe(s.configuration.executors[e]??{});}catch(err){if(explicit)throw err;continue;}
+    members.push({member:'m'+(members.length+1),executor:e,cli});
+   }
+   if(members.length<size)throw Error(`ADAPTER_UNAVAILABLE: ${mode} needs ${size} installed worker(s)`);
+   const id='c'+((s.consults?.length??0)+1);
+   const n=s.iteration,opt=name=>{const f=path.join(taskdir(),name);return fs.existsSync(f)?read(f):null;};
+   const latest=opt(`brief-${n}.json`)??opt('initial-brief.json');
+   const changed=n?(opt(`validation-${n}.json`)?.changed??[]):[];
+   // 읽기 전용 위원(Sonnet은 Bash도 없다)이 diff를 볼 수 있게 직접 넣어 준다. 새 파일은 목록만 있으므로 직접 읽어야 한다.
+   const diff=changed.length?git(root,['diff','HEAD','--',...changed]):'';
+   const context={round:n,last_worker:s.owner,last_result:n?opt(`raw-result-${n}.json`):null,changed_files:changed,
+    diff:diff.slice(0,CONTEXT_DIFF_MAX),diff_truncated:diff.length>CONTEXT_DIFF_MAX,diff_note:'git diff HEAD of changed files; untracked new files are not shown, read them directly',
+    recent_reviews:s.reviews.slice(-3).map(r=>({owner:r.owner,round:r.round,verdict:r.verdict,blocking_criteria:r.blocking_criteria,rationale:r.rationale}))};
+   // 모든 위원의 dispatch를 먼저 만든다. 하나라도 실패하면(예: Windows 명령줄 길이) 상태를 바꾸지 않는다.
+   const requests=members.map(m=>{
+    const a=adapter(m.executor);
+    const brief={task_id:s.task_id,round:n,repo_root:root,objective:latest.objective,scope:latest.scope,constraints:latest.constraints,success_criteria:latest.success_criteria,allowed_actions:['read'],
+     consult:{id,mode,member:m.member,question:input.question,focus:input.focus??[],context}};
+    const d=a.dispatch(brief,{token:'consult',owner:m.executor},{session:a.newSession(),resume:false,probe:m.cli,promptFile:path.join(taskdir(),`prompt-consult-${id}-${m.member}.txt`),options:s.configuration.executors[m.executor]??{}});
+    return [m.member,{transport:'executor-cli',kind:'consult',executor:m.executor,...d,task_id:s.task_id,consult_id:id,member:m.member}];
+   });
+   const base=snapshot(root),roster=members.map(({member,executor})=>({member,executor}));
+   art(`consult-${id}-base.json`,base);
+   for(const [member,request] of requests)art(`consult-${id}-${member}.json`,request);
+   art(`consult-${id}.json`,{id,mode,question:input.question,focus:input.focus??[],members:roster,phase:s.phase});
+   s.consult_runs=(s.consult_runs??0)+size;s.hint=null;
+   s.open_consult={id,mode,members:roster,digest:base.digest,started_at:new Date().toISOString()};
+   save();
+   return {consult_id:id,mode,members:roster,command:process.execPath,args:[BRIDGE,root,'--consult',id],next_action:'run command once, then consult-finish with quiescent:true'};
+  }
+  if(action==='consult-finish') {
+   const open=s.open_consult;
+   if(!open)throw Error('No open consult');
+   if(input.quiescent!==true)throw Error('Confirm consult workers and children stopped');
+   const base=read(path.join(taskdir(),`consult-${open.id}-base.json`)),now=snapshot(root);
+   // 읽기 전용 약속을 실제로 지켰는지 전후 스냅샷으로 확인한다. 어기면 그 답변은 버린다.
+   const violated=now.digest!==base.digest,touched=changes(base,now);
+   const results=[];
+   const members=open.members.map(m=>{
+    const f=path.join(taskdir(),`consult-result-${open.id}-${m.member}.json`);
+    if(!fs.existsSync(f))return {...m,ok:false};
+    const r=read(f);if(!violated)results.push({...r,executor:m.executor});
+    return {...m,ok:!violated,recommended_verdict:r.recommended_verdict,confidence:r.confidence,findings:r.findings.length,blockers:r.findings.filter(x=>x.severity==='blocker').length};
+   });
+   const record={id:open.id,mode:open.mode,members,violated,touched,finished_at:new Date().toISOString()};
+   art(`consult-${open.id}-finish.json`,record);
+   s.consults=[...(s.consults??[]),record];s.open_consult=null;
+   if(violated){s.phase='RECOVERY_REQUIRED';s.last_errors=['Consult modified the tree: '+(touched.join(', ')||'HEAD/index')];}
+   save();
+   return {...record,results,phase:s.phase};
+  }
   if(action==='begin') {
    phase('PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED');contract.brief(input);
    if(input.task_id!==s.task_id)throw Error('Task ID mismatch');
@@ -104,6 +182,7 @@ export function run(root,action,input={}) {
    if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile:prompt_file,options});
    const lease=acquire(root,s.task_id,round,owner);
    if(s.owner!==owner)s.result_failures=0;
+   s.hint=null;
    s.phase='EXECUTING';s.writer=lease;s.iteration=round;s.owner=owner;s.attempts[owner]++;
    if(a){s.active_executor=owner;if(session)s.sessions[owner]=session;}
    save();
@@ -160,6 +239,9 @@ export function run(root,action,input={}) {
    else if(!budget(s.owner)||(e.hard&&pool().some(x=>x!==s.owner&&budget(x))))s.phase=exhausted();
    else s.phase='REDO';
    if(!['VERIFY','REDO','DECISION_REQUIRED'].includes(s.phase))s.escalations.push({...e,from:s.owner,to:s.phase,round:s.iteration,reason:input.rationale,prior_phase:from});
+   // 같은 실수가 반복돼 교체할 때는 바로 다음 일꾼에게 넘기기 전에 위원회로 원인부터 보라고 권한다.
+   s.hint=e.hard&&s.phase==='ALTERNATIVE_REQUIRED'&&(s.consult_runs??0)+2<=CONSULT_CAP?{suggest:'consult',mode:'committee',reason:'repeated failure; get a root cause and plan before the next worker'}:null;
+   if(['BLOCKED','TAKEOVER_REQUIRED','DECISION_REQUIRED'].includes(s.phase))notify(`HyperFusion ${s.task_id}`,`needs the lead: ${s.phase} after ${s.owner} round ${s.iteration}`,{priority:'high'});
    s.escalation_assessment=e;save();return s;
   }
   if(action==='decide') {

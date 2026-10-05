@@ -27,4 +27,8 @@
 | 일꾼 | Sonnet (`claude --model claude-sonnet-5-5`) | 3라운드 |
 | auto | 배치표 + 실적 + 설치 상태로 선택 | — |
 
+## 알림
+
+환경변수 `HF_NOTIFY_URL`을 설정하면 일꾼 라운드·상담이 끝날 때, 그리고 BLOCKED·TAKEOVER_REQUIRED·DECISION_REQUIRED가 될 때 그 URL로 POST 한다. [ntfy](https://ntfy.sh) 주소(예: `https://ntfy.sh/내-비밀-토픽`)를 쓰면 휴대폰 앱으로 바로 받는다. 본문은 작업 ID, 일꾼, 상태, 요약 한 줄뿐이며 코드나 출력은 보내지 않는다. 대상 저장소 설정 파일로는 켤 수 없다(저장소 내용이 외부 전송을 결정하지 못하게). 토픽 이름은 추측하기 어렵게 정한다.
+
 환경변수 `HF_GROK_BIN`, `HF_AGY_BIN`, `HF_CLAUDE_BIN`은 실행 파일 경로다(공백 포함 가능). 셸 명령이나 추가 인자가 아니다.

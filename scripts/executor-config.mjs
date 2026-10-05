@@ -5,6 +5,8 @@ import {read} from './artifact.mjs';
 // 리드는 Claude Opus 5.5 하나로 고정. 일꾼은 Grok, Antigravity, Sonnet.
 export const EXECUTORS=['grok','antigravity','sonnet'];
 export const CAP={grok:3,antigravity:3,sonnet:3,lead:1};
+// 상담(advisor 1명, committee 2명) 위원 실행 총량. 구현 예산과 별도다.
+export const CONSULT_CAP=4;
 export const TASK_KINDS=['code','ui','image-asset','tests','refactor','docs'];
 export const DIFFICULTIES=['low','medium','high'];
 

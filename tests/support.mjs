@@ -15,6 +15,7 @@ const finish=(request,id)=>{
  const result={...request.result_template,summary:'Fake transport result; no live model'};
  if(mode==='edit'){fs.writeFileSync('a.txt','fixed');result.files_changed=['a.txt'];}
  if(mode==='lazy'){result.status='blocked';result.unresolved=['did not bother'];}
+ if(mode==='findings'&&result.consult_id){result.findings=[{file:'sub\\\\a.txt',line:3,severity:'blocker',issue:'AC1 not met',suggestion:'handle empty input'}];result.recommended_verdict='redo';result.confidence='high';}
  return result;
 };
 `;
