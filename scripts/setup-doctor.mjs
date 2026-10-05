@@ -3,6 +3,7 @@ import path from 'node:path';
 import {config,selectExecutor,EXECUTORS,CAP} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {repo,git,read} from './artifact.mjs';
+import {workspaceOf} from './memory-policy.mjs';
 
 // 실행 전 점검. 일꾼 CLI는 모두 프로브해서 교체 가능한 인력을 미리 파악한다.
 const checks=[];
@@ -38,5 +39,17 @@ if(root){
  });
  check('metadata-ignore',()=>{try{git(root,['check-ignore','.fusion/state.json']);}catch{throw Error('Add /.fusion/ to local git info/exclude before init');}return 'ignored';});
 }
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,bench,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
+// 기억 계층은 선택 사항이라 실패해도 전체 점검을 막지 않는다.
+let memory=null;
+try{
+ const w=c?workspaceOf(c):null;
+ if(w){
+  memory={workspace:w,url:!!process.env.HF_MEMORY_URL,key:!!process.env.HF_MEMORY_KEY,health:'not checked'};
+  if(process.env.HF_MEMORY_URL){
+   try{const r=await fetch(new URL('/health',process.env.HF_MEMORY_URL),{signal:AbortSignal.timeout(3000)});memory.health=r.ok?'ok':'HTTP '+r.status;}
+   catch(e){memory.health='unreachable: '+e.message;}
+  } else memory.health='HF_MEMORY_URL not set';
+ }
+}catch(e){memory={error:e.message};}
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,bench,memory,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;

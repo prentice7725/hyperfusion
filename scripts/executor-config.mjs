@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {read} from './artifact.mjs';
+import {workspaceOf} from './memory-policy.mjs';
 
 // 리드는 Claude Opus 5.5 하나로 고정. 일꾼은 Grok, Antigravity, Sonnet.
 export const EXECUTORS=['grok','antigravity','sonnet'];
@@ -44,6 +45,11 @@ export function config(root) {
   &&Object.entries(v.executors).every(([k,o])=>EXECUTORS.includes(k)&&o&&typeof o==='object'&&(o.timeout_ms===undefined||(Number.isSafeInteger(o.timeout_ms)&&o.timeout_ms>0)))
   &&Number.isInteger(v.routing.min_samples)&&v.routing.min_samples>0&&typeof v.routing.demote_below==='number'&&v.routing.demote_below>=0&&v.routing.demote_below<=1;
  if(!ok)throw Error('Invalid HyperFusion configuration');
+ // 기억 계층(AnchorMind)은 선택 사항이다. 켜려면 프로젝트별 workspace가 반드시 있어야 한다.
+ if(v.memory!==undefined){
+  if(!v.memory||typeof v.memory!=='object'||(v.memory.enabled!==undefined&&typeof v.memory.enabled!=='boolean')||(v.memory.recall_limit!==undefined&&!(Number.isInteger(v.memory.recall_limit)&&v.memory.recall_limit>0&&v.memory.recall_limit<=12)))throw Error('Invalid memory configuration');
+  workspaceOf(v);
+ }
  return v;
 }
 

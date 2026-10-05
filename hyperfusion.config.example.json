@@ -90,5 +90,9 @@
         ]
       }
     ]
+  },
+  "memory": {
+    "workspace": "hyperfusion",
+    "recall_limit": 8
   }
 }

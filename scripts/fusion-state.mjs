@@ -8,6 +8,7 @@ import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
 import {atomic,immutable,read,repo,snapshot,changes,git} from './artifact.mjs';
 import {notify} from './notify.mjs';
+import {workspaceOf,propose,deriveFromState} from './memory-policy.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 const CONTEXT_DIFF_MAX=12000;
@@ -62,6 +63,9 @@ export function run(root,action,input={}) {
    if(action==='status')return {...s,legacy:true,next_action:'Confirm all processes stopped and archive with evidence; do not reinterpret an active lease'};
    throw Error('LEGACY_STATE: inspect status; confirm stopped writers then archive with a reason before creating an Opus-led task');
   }
+  const memoryOn=()=>!!workspaceOf(s.configuration);
+  // 작업이 끝나면(CLOSE/BLOCKED) 실패→원인→수정→검증 흐름을 기억 후보로 뽑아 장부에 올린다.
+  const harvest=()=>{if(memoryOn())for(const c of deriveFromState(s,taskdir()))propose(root,s.task_id,[c],{role:'protocol',verified:c.verified});};
   const pool=()=>s.configuration.external.available;
   const budget=o=>s.attempts[o]<CAP[o];
   const idleWorkers=()=>pool().filter(e=>budget(e));
@@ -114,7 +118,7 @@ export function run(root,action,input={}) {
    // 모든 위원의 dispatch를 먼저 만든다. 하나라도 실패하면(예: Windows 명령줄 길이) 상태를 바꾸지 않는다.
    const requests=members.map(m=>{
     const a=adapter(m.executor);
-    const brief={task_id:s.task_id,round:n,repo_root:root,objective:latest.objective,scope:latest.scope,constraints:latest.constraints,success_criteria:latest.success_criteria,allowed_actions:['read'],
+    const brief={task_id:s.task_id,round:n,repo_root:root,objective:latest.objective,scope:latest.scope,constraints:latest.constraints,success_criteria:latest.success_criteria,allowed_actions:['read'],...(latest.prior_experience?{prior_experience:latest.prior_experience}:{}),
      consult:{id,mode,member:m.member,question:input.question,focus:input.focus??[],context}};
     const d=a.dispatch(brief,{token:'consult',owner:m.executor},{session:a.newSession(),resume:false,probe:m.cli,promptFile:path.join(taskdir(),`prompt-consult-${id}-${m.member}.txt`),options:s.configuration.executors[m.executor]??{}});
     return [m.member,{transport:'executor-cli',kind:'consult',executor:m.executor,...d,task_id:s.task_id,consult_id:id,member:m.member}];
@@ -214,6 +218,8 @@ export function run(root,action,input={}) {
    s.post_digest=post.digest;s.last_errors=errors;
    art(`validation-${n}.json`,{changed,errors});
    if(errors.length){s.result_failures++;s.phase='RECOVERY_REQUIRED';save();return s;}
+   // 일꾼이 제안한 교훈은 장부에만 올린다. 리드가 승인해야 AnchorMind에 저장된다.
+   if(memoryOn()&&input.result.memory_candidates?.length)propose(root,s.task_id,input.result.memory_candidates,{role:'worker',executor:s.owner,round:n});
    s.result_failures=0;s.phase='REVIEW';save();
    release(root,input.token);s.writer=null;save();return s;
   }
@@ -241,6 +247,7 @@ export function run(root,action,input={}) {
    if(!['VERIFY','REDO','DECISION_REQUIRED'].includes(s.phase))s.escalations.push({...e,from:s.owner,to:s.phase,round:s.iteration,reason:input.rationale,prior_phase:from});
    // 같은 실수가 반복돼 교체할 때는 바로 다음 일꾼에게 넘기기 전에 위원회로 원인부터 보라고 권한다.
    s.hint=e.hard&&s.phase==='ALTERNATIVE_REQUIRED'&&(s.consult_runs??0)+2<=CONSULT_CAP?{suggest:'consult',mode:'committee',reason:'repeated failure; get a root cause and plan before the next worker'}:null;
+   if(s.phase==='BLOCKED')harvest();
    if(['BLOCKED','TAKEOVER_REQUIRED','DECISION_REQUIRED'].includes(s.phase))notify(`HyperFusion ${s.task_id}`,`needs the lead: ${s.phase} after ${s.owner} round ${s.iteration}`,{priority:'high'});
    s.escalation_assessment=e;save();return s;
   }
@@ -253,7 +260,8 @@ export function run(root,action,input={}) {
    phase('VERIFY');
    if(!Array.isArray(input.tests)||!input.tests.length||!input.tests.every(t=>typeof t.command==='string'&&t.command.trim()&&t.status==='pass')||input.acceptance_satisfied!==true)throw Error('Passing verification evidence required');
    if(snapshot(root).digest!==s.post_digest){s.phase='RECOVERY_REQUIRED';save();throw Error('Tree drift during verification');}
-   art('verification.json',input);s.phase='CLOSE';s.closed_at=new Date().toISOString();save();return s;
+   art('verification.json',input);s.phase='CLOSE';s.closed_at=new Date().toISOString();save();
+   harvest();return s;
   }
   if(action==='recover') {
    if(input.quiescent!==true||typeof input.reason!=='string'||!input.reason.trim())throw Error('Recovery requires stopped writers and rationale');

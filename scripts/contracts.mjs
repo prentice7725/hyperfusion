@@ -1,3 +1,4 @@
+import {checkPrior} from './memory-policy.mjs';
 const requireThat=(v,m)=>{if(!v)throw Error(m);};
 const str=v=>typeof v==='string'&&v.trim().length>0;
 const strs=v=>Array.isArray(v)&&v.every(str);
@@ -14,6 +15,7 @@ export function brief(v) {
  // 라우팅 힌트. 없으면 기본 규칙으로 간다.
  requireThat(v.task_kind===undefined||['code','ui','image-asset','tests','refactor','docs'].includes(v.task_kind),'Invalid task_kind');
  requireThat(v.difficulty===undefined||['low','medium','high'].includes(v.difficulty),'Invalid difficulty');
+ checkPrior(v.prior_experience);
  return v;
 }
 export function result(v,task_id,round) {
@@ -26,6 +28,8 @@ export function result(v,task_id,round) {
  requireThat(v.status!=='needs_decision'||v.needs_lead_decision,'Decision flag missing');
  requireThat(Array.isArray(v.tests)&&v.tests.every(x=>str(x.command)&&['pass','fail','not_run'].includes(x.status)),'Invalid tests');
  requireThat(v.status!=='complete'||(!v.needs_lead_decision&&!v.unresolved.length&&!v.tests.some(t=>t.status==='fail')),'Contradictory complete result');
+ // 기억 후보는 선택 항목이다. 내용 검사는 장부에 넣을 때 한다.
+ requireThat(v.memory_candidates===undefined||(Array.isArray(v.memory_candidates)&&v.memory_candidates.length<=3&&v.memory_candidates.every(x=>x&&typeof x==='object')),'Invalid memory_candidates (up to 3)');
  return v;
 }
 export function review(v) {

@@ -27,6 +27,10 @@
 | 일꾼 | Sonnet (`claude --model claude-sonnet-5-5`) | 3라운드 |
 | auto | 배치표 + 실적 + 설치 상태로 선택 | — |
 
+## 기억 계층
+
+`"memory": {"workspace": "<프로젝트별 이름>", "recall_limit": 8, "enabled": true}`. workspace가 없으면 꺼진다. 서버 주소·키는 환경변수 `HF_MEMORY_URL`, `HF_MEMORY_KEY`로만 받는다. 자세한 건 [memory.md](memory.md).
+
 ## 알림
 
 환경변수 `HF_NOTIFY_URL`을 설정하면 일꾼 라운드·상담이 끝날 때, 그리고 BLOCKED·TAKEOVER_REQUIRED·DECISION_REQUIRED가 될 때 그 URL로 POST 한다. [ntfy](https://ntfy.sh) 주소(예: `https://ntfy.sh/내-비밀-토픽`)를 쓰면 휴대폰 앱으로 바로 받는다. 본문은 작업 ID, 일꾼, 상태, 요약 한 줄뿐이며 코드나 출력은 보내지 않는다. 대상 저장소 설정 파일로는 켤 수 없다(저장소 내용이 외부 전송을 결정하지 못하게). 토픽 이름은 추측하기 어렵게 정한다.

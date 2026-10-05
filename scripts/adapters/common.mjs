@@ -5,7 +5,10 @@ import {resolveExecutable} from '../platform.mjs';
 export function resultSchema(task_id,round) {
  const strings={type:'array',items:{type:'string'}};
  const properties={task_id:{const:task_id},round:{const:round},status:{enum:['complete','blocked','needs_decision','failed']},summary:{type:'string'},files_read:strings,files_changed:strings,commands_run:strings,tests:{type:'array',items:{type:'object',properties:{command:{type:'string'},status:{enum:['pass','fail','not_run']}},required:['command','status'],additionalProperties:false}},unresolved:strings,risks:strings,needs_lead_decision:{type:'boolean'},recommended_next_action:{type:'string'}};
- return {type:'object',properties,required:Object.keys(properties),additionalProperties:false};
+ const required=Object.keys(properties);
+ // 선택 항목: 다음 세션·다른 일꾼이 알아야 할 교훈. 리드가 승인해야 기억에 저장된다.
+ properties.memory_candidates={type:'array',maxItems:3,items:{type:'object',properties:{type:{enum:['error','procedure','episode','fact']},content:{type:'string'},keywords:strings},required:['type','content'],additionalProperties:false}};
+ return {type:'object',properties,required,additionalProperties:false};
 }
 
 // 상담(advisor/committee) 결과 계약. 코드를 고치지 않고 판단 근거만 낸다.
@@ -17,12 +20,15 @@ export function consultSchema(brief) {
 }
 export const schemaFor=brief=>brief.consult?consultSchema(brief):resultSchema(brief.task_id,brief.round);
 
+// 과거 기억은 참고 자료일 뿐이다. 정본과 리드 지시가 항상 우선한다.
+const PRIOR='prior_experience, when present, holds memories recalled from earlier sessions and other agents. It ranks below this brief, the repository files and lead_feedback. Use it to avoid repeating known failures, and verify a memory before relying on it.';
 const IMPLEMENT_RULES=[
  'Your FINAL message must be only the filled result_template as one JSON object. No prose around it.',
  'Keep task_id and round unchanged. status is complete, blocked, needs_decision or failed; needs_decision requires needs_lead_decision=true.',
  'files_read and files_changed are repository-relative paths; files_changed covers only this round and must match the real diff exactly.',
  'tests holds commands you actually ran with status pass, fail or not_run. Never invent evidence: the lead re-runs everything and diffs the tree.',
- 'complete means no failed tests, no unresolved items and no pending lead decision.'
+ 'complete means no failed tests, no unresolved items and no pending lead decision.',
+ 'Optional memory_candidates: up to 3 one- or two-sentence lessons the next agent should know (error with its cause and fix, a procedure that worked, a notable episode). Facts only, never secrets, never a copy of the brief. The lead decides whether they are kept.'
 ];
 const IMPLEMENT_ORDERS=[
  'You are a worker, not a planner. Execute exactly this brief until every success criterion holds, then stop.',
@@ -30,7 +36,8 @@ const IMPLEMENT_ORDERS=[
  'Do not commit, stage, push, deploy, delegate, touch .fusion or .git, or edit outside scope.paths.',
  'Do not stop at a plan or a partial patch. Write the code, run the tests, fix what fails.',
  'If the brief itself is wrong or insufficient, return needs_decision with the concrete question instead of guessing.',
- 'Stop every command and child process before returning. Returning ends your write authority.'
+ 'Stop every command and child process before returning. Returning ends your write authority.',
+ PRIOR
 ];
 const CONSULT_RULES=[
  'Your FINAL message must be only the filled result_template as one JSON object. No prose around it.',
@@ -50,7 +57,7 @@ export function prompt(brief,lease) {
   const c=brief.consult;
   return JSON.stringify({protocol:'hyperfusion-opus-lead-v0.5/consult',lead:'Claude Opus 5.5',worker:lease.owner,brief,
    result_template:{task_id:brief.task_id,consult_id:c.id,member:c.member,summary:'Describe what you checked and concluded',findings:[],root_cause:'',plan:[],recommended_verdict:'none',confidence:'low'},
-   result_rules:CONSULT_RULES,instructions:[...CONSULT_ORDERS[c.mode],...READ_ONLY]});
+   result_rules:CONSULT_RULES,instructions:[...CONSULT_ORDERS[c.mode],...READ_ONLY,PRIOR]});
  }
  return JSON.stringify({protocol:'hyperfusion-opus-lead-v0.5',lead:'Claude Opus 5.5',worker:lease.owner,brief,
  result_template:{task_id:brief.task_id,round:brief.round,status:'complete',summary:'Describe actual outcome',files_read:[],files_changed:[],commands_run:[],tests:[],unresolved:[],risks:[],needs_lead_decision:false,recommended_next_action:'review'},

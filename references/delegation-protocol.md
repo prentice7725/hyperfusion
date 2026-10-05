@@ -18,6 +18,8 @@
 }
 ```
 
+`prior_experience`(선택, 최대 12개 `{type, content, id?, assertion?}`)는 리드가 AnchorMind에서 찾아 SOT·Git과 대조한 과거 기억이다. 일꾼에게는 brief·저장소·lead_feedback보다 우선순위가 낮다고 명시해 전달된다. 기각된 기억과 비밀값은 넣을 수 없다([memory.md](memory.md)).
+
 `task_kind`/`difficulty`는 배치 힌트다([routing.md](routing.md)). 종류가 섞인 작업은 쪼갠다.
 
 ## 재지시 명령서 (`lead_feedback`)
