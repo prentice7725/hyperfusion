@@ -1,5 +1,7 @@
 # HyperFusion — Opus 리드 브랜치 (`opus-lead`)
 
+한국어 | [日本語](README.ja.md)
+
 **Claude Opus 5.5가 리드**를 맡고, **Grok·Antigravity·Sonnet이 일꾼**으로 구현과 테스트를 전부 수행하는 Claude Code 스킬. 리드는 작업 종류와 난이도를 보고 일꾼을 골라 투입한다(이미지 애셋은 Grok, 까다로운 코딩은 Sonnet, UI는 Antigravity…).
 
 리드는 계획·반려·최종 검수만 한다. 일꾼에게 예산이 남아 있는 한 리드는 코드를 쓰지 않는다. 반려할 때는 구체적 명령서를 붙여야 하고, 같은 실수를 두 번 하는 일꾼은 다른 일꾼으로 교체된다. 일꾼의 "다 했어요"는 스냅샷 diff와 리드의 재실행으로만 인정된다.
