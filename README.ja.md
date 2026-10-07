@@ -1,4 +1,4 @@
-# HyperFusion — Opusリードブランチ（`opus-lead`）
+# HyperFusion
 
 [한국어](README.md) | 日本語
 
@@ -6,7 +6,7 @@
 
 リードが行うのは計画・差し戻し・最終検収のみです。ワーカーに予算が残っている限り、リードはコードを書きません。差し戻す際は具体的な指示書を必ず添え、同じミスを2回繰り返したワーカーは別のワーカーに交代されます。ワーカーの「完了しました」は、スナップショット差分とリードによる再実行でのみ認められます。
 
-> mainブランチは、GPT-6.1 Sol（Codex）がリード、Claude Codeがワーカーを務めるv0.2.1の構成です。本ブランチは役割を反転させたv0.4以降の構成です。
+> v0.2.1までは、GPT-6.1 Sol（Codex）がリード、Claude Codeがワーカーを務める構成でした。v0.4から役割を反転させ、Opusがリードを務めています。
 
 ## 特徴
 
@@ -17,7 +17,7 @@
 - **相談機能**：別ワーカーによる読み取り専用のdiffレビュー（advisor）や、2者並列の原因分析（committee）
 - **クロスプラットフォーム**：Linux・macOS・Windowsに対応し、CIでUbuntu・Windows × Node 20・24を検証
 
-## main（v0.2.1）の評価
+## v0.2.1の評価
 
 | 項目 | 評価 |
 |---|---|
@@ -96,7 +96,7 @@
 | Antigravityアダプター | 実装済み。`--json-schema`による構造化出力、CLI発行の`conversation_id`で再開、デフォルト`--sandbox` |
 | Sonnetアダプター（v0.4） | 実装済み。Claude Code `-p --model claude-sonnet-5-5`、`--json-schema`、`--safe-mode`、`dontAsk` |
 | 自動ルーティング（v0.4） | 実装済み。配置表＋実績＋インストール状況 |
-| ワーカー予算 | ワーカーあたり3ラウンド（mainは2）、リードのtakeoverは1回 |
+| ワーカー予算 | ワーカーあたり3ラウンド（v0.2.1は2）、リードのtakeoverは1回 |
 | takeover条件 | すべてのワーカーを使い切った場合のみ。それまではコントローラーが拒否 |
 | 空の差し戻し禁止 | 差し戻しに`blocking_criteria`必須、再指示に`lead_feedback`必須 |
 | 自動交代 | 同じ差し戻し理由が2回連続すると別ワーカーへ強制交代 |
@@ -111,12 +111,12 @@ Node.js 20以上、Git、初期コミットのある対象リポジトリ（Linu
 
 ```sh
 # Linux / macOS
-git clone -b opus-lead https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyperfusion
+git clone https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyperfusion
 ```
 
 ```powershell
 # Windows (PowerShell)
-git clone -b opus-lead https://github.com/prentice7725/hyperfusion.git "$env:USERPROFILE\.claude\skills\hyperfusion"
+git clone https://github.com/prentice7725/hyperfusion.git "$env:USERPROFILE\.claude\skills\hyperfusion"
 ```
 
 Windowsではnpmの`.cmd`ラッパーを自動的に解決して実行し、プロセスの後始末は`taskkill /T`で行います。ワーカーが先に終了した後に残った子孫プロセスは自動では捕捉できないため、リードが確認する必要があります。また、agyがTTYなしで停止する既知の問題があるため、`executors.antigravity.timeout_ms`を短めに設定することを推奨します。詳細は[ワーカーランタイムのWindowsの節](references/executor-runtime.md#windows)を参照してください。

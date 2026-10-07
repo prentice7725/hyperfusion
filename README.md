@@ -1,4 +1,4 @@
-# HyperFusion — Opus 리드 브랜치 (`opus-lead`)
+# HyperFusion
 
 한국어 | [日本語](README.ja.md)
 
@@ -6,9 +6,9 @@
 
 리드는 계획·반려·최종 검수만 한다. 일꾼에게 예산이 남아 있는 한 리드는 코드를 쓰지 않는다. 반려할 때는 구체적 명령서를 붙여야 하고, 같은 실수를 두 번 하는 일꾼은 다른 일꾼으로 교체된다. 일꾼의 "다 했어요"는 스냅샷 diff와 리드의 재실행으로만 인정된다.
 
-> main 브랜치는 GPT-6.1 Sol(Codex)이 리드, Claude Code가 일꾼인 v0.2.1 구조다. 이 브랜치는 역할을 뒤집은 v0.4다.
+> v0.2.1까지는 GPT-6.1 Sol(Codex)이 리드, Claude Code가 일꾼인 구조였다. v0.4부터 역할을 뒤집어 Opus가 리드를 맡는다.
 
-## main 평가 요약 (v0.2.1)
+## v0.2.1 평가 요약
 
 | 항목 | 평가 |
 |---|---|
@@ -87,7 +87,7 @@
 | Antigravity 어댑터 | 구현. `--json-schema` 구조화 출력, CLI 발급 `conversation_id`로 재개, 기본 `--sandbox` |
 | Sonnet 어댑터 (v0.4) | 구현. Claude Code `-p --model claude-sonnet-5-5`, `--json-schema`, `--safe-mode`, `dontAsk` |
 | auto-routing (v0.4) | 구현. 배치표 + 실적 + 설치 상태 |
-| 일꾼 예산 | 일꾼당 3라운드(main은 2), 리드 takeover 1회 |
+| 일꾼 예산 | 일꾼당 3라운드(v0.2.1은 2), 리드 takeover 1회 |
 | takeover 조건 | 모든 일꾼이 소진됐을 때만. 그 전엔 컨트롤러가 거절 |
 | 빈 반려 금지 | 반려에 `blocking_criteria` 필수, 재지시에 `lead_feedback` 필수 |
 | 자동 교체 | 같은 반려 사유 2연속이면 다른 일꾼으로 강제 교대 |
@@ -102,12 +102,12 @@ Node.js 20 이상, Git, 초기 커밋이 있는 대상 저장소(Linux·macOS·W
 
 ```sh
 # Linux / macOS
-git clone -b opus-lead https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyperfusion
+git clone https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyperfusion
 ```
 
 ```powershell
 # Windows (PowerShell)
-git clone -b opus-lead https://github.com/prentice7725/hyperfusion.git "$env:USERPROFILE\.claude\skills\hyperfusion"
+git clone https://github.com/prentice7725/hyperfusion.git "$env:USERPROFILE\.claude\skills\hyperfusion"
 ```
 
 Windows에서는 npm `.cmd` 래퍼를 자동으로 풀어서 실행하고, 프로세스 정리는 `taskkill /T`로 한다. 일꾼이 먼저 끝난 뒤 남은 자손 프로세스는 자동으로 못 잡으니 리드가 확인해야 하고, agy가 TTY 없이 멈추는 알려진 문제가 있어 `executors.antigravity.timeout_ms`를 짧게 두길 권한다. 자세한 건 [일꾼 런타임의 Windows 절](references/executor-runtime.md#windows).
