@@ -1,16 +1,98 @@
 {
-  "lead": "sol",
-  "lead_model": "gpt-6.1-sol",
-  "lead_reasoning_effort": "high",
-  "internal_helper": {
-    "provider": "luna"
-  },
+  "lead": "opus",
+  "lead_model": "claude-opus-5-5",
+  "lead_takeover": true,
   "external": {
-    "default": "claude",
+    "default": "auto",
     "available": [
-      "claude",
       "grok",
-      "antigravity"
+      "antigravity",
+      "sonnet"
     ]
+  },
+  "executors": {
+    "antigravity": {
+      "sandbox": true
+    }
+  },
+  "routing": {
+    "learn": true,
+    "min_samples": 3,
+    "demote_below": 0.4,
+    "rules": [
+      {
+        "kind": "image-asset",
+        "executors": [
+          "grok",
+          "antigravity"
+        ]
+      },
+      {
+        "kind": "code",
+        "difficulty": [
+          "medium",
+          "high"
+        ],
+        "executors": [
+          "sonnet",
+          "grok",
+          "antigravity"
+        ]
+      },
+      {
+        "kind": "code",
+        "difficulty": [
+          "low"
+        ],
+        "executors": [
+          "grok",
+          "antigravity",
+          "sonnet"
+        ]
+      },
+      {
+        "kind": "tests",
+        "executors": [
+          "sonnet",
+          "grok",
+          "antigravity"
+        ]
+      },
+      {
+        "kind": "refactor",
+        "executors": [
+          "sonnet",
+          "antigravity",
+          "grok"
+        ]
+      },
+      {
+        "kind": "ui",
+        "executors": [
+          "antigravity",
+          "sonnet",
+          "grok"
+        ]
+      },
+      {
+        "kind": "docs",
+        "executors": [
+          "antigravity",
+          "grok",
+          "sonnet"
+        ]
+      },
+      {
+        "executors": [
+          "sonnet",
+          "grok",
+          "antigravity"
+        ]
+      }
+    ]
+  },
+  "memory": {
+    "workspace": "hyperfusion",
+    "recall_limit": 8
   }
 }

@@ -1,11 +1,9 @@
-# Failure handling
+# 실패 처리
 
-Treat missing adapter/model, broken Git repository, schema errors, out-of-scope edits, changed HEAD/index, interrupted mutation and tree drift as explicit failures. Never convert them to success. Do not send commands after a result has ended a writer's writer authority.
+없는 어댑터, 깨진 Git 저장소, 스키마 오류, 범위 밖 수정, HEAD/index 변경, 중단된 변경, 트리 drift는 명시적 실패다. 성공으로 바꾸지 않는다. 결과를 반환해 쓰기 권한이 끝난 일꾼에게 명령을 더 보내지 않는다.
 
-A syntax or brief validation error before begin does not consume a round. Once a writer lease is issued, any dispatch error consumes it. Normal validation failures preserve raw result and snapshots; the lead must inspect and recover. Unexpected exceptions can leave partially recorded artifacts; use recovery, not a blind replay of finish/begin. control.lock uses exclusive creation to reject concurrent control commands. A crashed controller may leave it behind; see recovery-protocol.md.
+begin 전의 brief/프로브 오류는 시도를 소모하지 않는다. lease 발급 후의 dispatch 오류는 시도를 소모한다. 검증 실패는 원본 결과와 스냅샷을 보존하고, 리드가 확인 후 recover 한다. control.lock은 동시 컨트롤러 명령을 막는다.
 
-No automatic reset --hard, clean, stash, branch checkout, commit, push or deletion. Do not pass credentials or whole conversation logs into briefs or audit artifacts. Metrics unavailable from the host stay null.
+브리지 오류는 writer와 라운드별 실행 증거를 보존한다. 같은 라운드에서 브리지를 다시 실행하지 않는다. 거절된 명령을 다른 일꾼이나 권한 우회 플래그(`--yolo`, `--dangerously-skip-permissions`)로 다시 시도하지 않는다.
 
-Claude bridge errors preserve the writer and per-round launch evidence. Do not rerun the bridge in the same round; resolve the cause and follow recovery. A denied command is not grounds to bypass permissions or retry it through another executor. Probe failures before begin consume no attempt.
-
-Default external selection fails explicitly if absent; never start Luna or lead implementation as a silent fallback. An explicit takeover reason and lease are required for lead source edits. An unsuccessful takeover is BLOCKED.
+자동 reset --hard, clean, stash, checkout, commit, push, 삭제는 없다. brief나 감사 산출물에 인증정보나 전체 대화 기록을 넣지 않는다. 일꾼이 없다고 리드가 조용히 구현하지 않는다. takeover는 기록된 이유와 lease가 있어야 하며 실패하면 BLOCKED다.

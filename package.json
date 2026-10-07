@@ -1,14 +1,14 @@
 {
   "name": "hyperfusion",
-  "version": "0.2.1",
+  "version": "0.7.0",
   "private": true,
-  "description": "Codex skill for external executor implementation and lead review",
+  "description": "Claude Opus 5.5 리드가 Grok·Antigravity·Sonnet 일꾼을 작업별로 골라 부리는 Claude Code 스킬",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test",
     "smoke": "bash tests/smoke.sh"
   }
 }

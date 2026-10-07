@@ -1,28 +1,126 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "HyperFusion external v0.2 state",
+  "title": "HyperFusion Opus-lead v0.3 state",
   "type": "object",
   "required": [
     "schema_version",
+    "architecture",
+    "configuration",
+    "initial_executor",
+    "active_executor",
+    "owner",
+    "attempts",
+    "sessions",
     "task_id",
     "phase",
     "lead",
+    "lead_target_model",
+    "lead_model",
     "iteration",
-    "writer",
     "base_commit",
     "baseline_dirty",
+    "writer",
     "reviews",
     "escalations",
     "result_failures",
-    "attempts",
-    "initial_executor",
-    "active_executor",
-    "configuration",
-    "architecture"
+    "started_at",
+    "routing"
   ],
   "properties": {
     "schema_version": {
-      "const": 3
+      "const": 4
+    },
+    "architecture": {
+      "const": "opus-lead-v0.3"
+    },
+    "configuration": {
+      "type": "object",
+      "required": [
+        "lead",
+        "lead_model",
+        "lead_takeover",
+        "external",
+        "routing"
+      ]
+    },
+    "initial_executor": {
+      "enum": [
+        "grok",
+        "antigravity",
+        "sonnet"
+      ]
+    },
+    "active_executor": {
+      "enum": [
+        "grok",
+        "antigravity",
+        "sonnet"
+      ]
+    },
+    "owner": {
+      "enum": [
+        "grok",
+        "antigravity",
+        "sonnet",
+        "lead",
+        null
+      ]
+    },
+    "attempts": {
+      "type": "object",
+      "required": [
+        "grok",
+        "antigravity",
+        "lead",
+        "sonnet"
+      ],
+      "properties": {
+        "grok": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "antigravity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "lead": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sonnet": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessions": {
+      "type": "object",
+      "properties": {
+        "grok": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "antigravity": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sonnet": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "task_id": {
       "type": "string",
@@ -34,8 +132,6 @@
         "EXECUTING",
         "REVIEW",
         "REDO",
-        "HELPER_REQUIRED",
-        "EXTERNAL_REQUIRED",
         "ALTERNATIVE_REQUIRED",
         "DECISION_REQUIRED",
         "TAKEOVER_REQUIRED",
@@ -47,10 +143,10 @@
       ]
     },
     "lead": {
-      "enum": [
-        "sol",
-        "astra"
-      ]
+      "const": "opus"
+    },
+    "lead_target_model": {
+      "const": "claude-opus-5-5"
     },
     "lead_model": {
       "type": [
@@ -58,24 +154,10 @@
         "null"
       ]
     },
-    "active_sidekick": {
-      "enum": [
-        null,
-        "claude",
-        "luna",
-        "astra"
-      ]
-    },
     "iteration": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 5
-    },
-    "writer": {
-      "type": [
-        "object",
-        "null"
-      ]
+      "maximum": 10
     },
     "base_commit": {
       "type": "string"
@@ -83,20 +165,52 @@
     "baseline_dirty": {
       "type": "boolean"
     },
-    "luna_session": {
+    "writer": {
       "type": [
-        "string",
+        "object",
         "null"
-      ]
-    },
-    "claude_session": {
-      "type": [
-        "string",
-        "null"
-      ]
+      ],
+      "required": [
+        "task_id",
+        "round",
+        "owner",
+        "token",
+        "created_at"
+      ],
+      "properties": {
+        "owner": {
+          "enum": [
+            "grok",
+            "antigravity",
+            "sonnet",
+            "lead"
+          ]
+        }
+      }
     },
     "reviews": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "verdict",
+          "rationale",
+          "blocking_criteria",
+          "owner",
+          "round"
+        ],
+        "properties": {
+          "verdict": {
+            "enum": [
+              "pass",
+              "redo",
+              "alternative",
+              "decision",
+              "takeover"
+            ]
+          }
+        }
+      }
     },
     "escalations": {
       "type": "array"
@@ -108,67 +222,126 @@
     "post_digest": {
       "type": "string"
     },
-    "started_at": {
-      "type": "string"
+    "last_errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
-    "closed_at": {
-      "type": "string"
-    },
-    "attempts": {
-      "type": "object",
-      "required": [
-        "claude",
-        "luna",
-        "astra"
-      ],
-      "properties": {
-        "luna": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 2
-        },
-        "claude": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 2
-        },
-        "astra": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 1
-        }
-      },
-      "additionalProperties": false
-    },
-    "architecture": {
-      "const": "external-v0.2"
-    },
-    "initial_executor": {
-      "enum": [
-        "claude",
-        "grok",
-        "antigravity"
-      ]
-    },
-    "active_executor": {
-      "enum": [
-        "claude",
-        "grok",
-        "antigravity"
-      ]
-    },
-    "configuration": {
+    "escalation_assessment": {
       "type": "object"
     },
-    "lead_target_model": {
-      "const": "gpt-6.1-sol"
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
     },
-    "lead_target_reasoning_effort": {
-      "const": "high"
+    "closed_at": {
+      "type": "string",
+      "format": "date-time"
     },
-    "lead_reasoning_effort": {
+    "routing": {
+      "type": "object",
+      "required": [
+        "mode",
+        "executor",
+        "candidates",
+        "reason"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "auto",
+            "explicit"
+          ]
+        },
+        "executor": {
+          "enum": [
+            "grok",
+            "antigravity",
+            "sonnet"
+          ]
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "grok",
+              "antigravity",
+              "sonnet"
+            ]
+          }
+        },
+        "task_kind": {
+          "enum": [
+            "code",
+            "ui",
+            "image-asset",
+            "tests",
+            "refactor",
+            "docs",
+            null
+          ]
+        },
+        "difficulty": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            null
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "stats": {
+          "type": "object"
+        },
+        "unavailable": {
+          "type": "object"
+        }
+      }
+    },
+    "open_consult": {
       "type": [
-        "string",
+        "object",
+        "null"
+      ],
+      "required": [
+        "id",
+        "mode",
+        "members",
+        "digest"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "advisor",
+            "committee"
+          ]
+        }
+      }
+    },
+    "consults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "mode",
+          "members",
+          "violated",
+          "touched"
+        ]
+      }
+    },
+    "consult_runs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "hint": {
+      "type": [
+        "object",
         "null"
       ]
     }

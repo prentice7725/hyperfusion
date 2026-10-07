@@ -2,23 +2,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {execFileSync} from 'node:child_process';
+import {samePath,renameWithRetry} from './platform.mjs';
 export const hash = v => crypto.createHash('sha256').update(v).digest('hex');
-export const read = f => JSON.parse(fs.readFileSync(f,'utf8'));
+// PowerShell 5.1의 Set-Content -Encoding utf8은 BOM을 붙인다. 입력 JSON의 BOM은 무시한다.
+export const read = f => JSON.parse(fs.readFileSync(f,'utf8').replace(/^\uFEFF/,''));
 export function atomic(f,v) {
   fs.mkdirSync(path.dirname(f),{recursive:true});
   const tmp=f+'.'+crypto.randomUUID()+'.tmp';
   const fd=fs.openSync(tmp,'wx',0o600);
   try { fs.writeFileSync(fd,JSON.stringify(v,null,2)+'\n'); fs.fsyncSync(fd); } finally {fs.closeSync(fd);}
-  fs.renameSync(tmp,f);
+  renameWithRetry(tmp,f);
 }
 export function immutable(f,v) {
   fs.mkdirSync(path.dirname(f),{recursive:true});
   fs.writeFileSync(f,JSON.stringify(v,null,2)+'\n',{flag:'wx',mode:0o600});
 }
-export function git(root,args) {return execFileSync('git',['-C',root,...args],{encoding:'utf8',maxBuffer:64*1024*1024});}
+export function git(root,args) {return execFileSync('git',['-C',root,...args],{encoding:'utf8',maxBuffer:64*1024*1024,windowsHide:true});}
 export function repo(input) {
- const root=fs.realpathSync(git(input,['rev-parse','--show-toplevel']).trim());
- if(fs.realpathSync(input)!==root) throw Error('Use repository root');
+ const root=fs.realpathSync.native(git(input,['rev-parse','--show-toplevel']).trim());
+ if(!samePath(input,root)) throw Error('Use repository root');
  return root;
 }
 export function snapshot(root) {
