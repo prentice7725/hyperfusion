@@ -69,7 +69,11 @@ Claude CodeでOpus 5.5を選び：
 /hyperfusion --executor sonnet <作業内容>
 ```
 
-単体のコマンドやデーモンはありません。リードが[SKILL.md](SKILL.md)に従ってコントローラとブリッジを呼び出します。まず`node scripts/setup-doctor.mjs <リポジトリ>`でインストール状況を点検してください。設定は対象リポジトリの`hyperfusion.config.json`（例：`hyperfusion.config.example.json`）です。
+リードが[SKILL.md](SKILL.md)に従ってコントローラとブリッジを呼び出します。まず`node scripts/setup-doctor.mjs <リポジトリ>`でインストール状況を点検してください。設定は対象リポジトリの`hyperfusion.config.json`（例：`hyperfusion.config.example.json`）です。
+
+初期化済みの作業は`node scripts/fusion-state.mjs autopilot <リポジトリ>`でラウンド実行と独立した委任レビューを自動進行できます。リードが承認した`acceptance_commands`と`review.auto_apply:true`が必要です。VERIFY・設計判断・BLOCKED・takeoverではリードに制御を返し、プロセス停止・スナップショット・予算・検証の確認に失敗した場合も停止します。最終verifyはリードが担当します（[運用説明（韓国語）](references/operations.md#오토파일럿)）。
+
+外部に送るbrief・diff・過去の結果には、メール・IP・キー・パスワードのパターンマスキングを標準適用します。認証に必要なベンダー環境変数は維持します。CLIが直接読み取って送るリポジトリの内容まで保護するDLPではないため、社内コードではファイルアクセスと外部送信の方針も別途管理してください（[送信範囲（韓国語）](references/operations.md#외부-전송-마스킹)）。
 
 ドキュメント：[runtime](references/runtime.md) · [ワーカーランタイム（Windows含む）](references/executor-runtime.md) · [configuration](references/configuration.md) · [state-schema](references/state-schema.json)
 
@@ -79,7 +83,7 @@ Claude CodeでOpus 5.5を選び：
 npm test
 ```
 
-222件のテストが、状態機械、ワーカーアダプタ、配置、レビュー委任、記憶層、プロジェクトの流れ、セキュリティと運用機能を確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 20・24で実行する構成です。再監査後の修正と残る制約は[修正結果の報告書（韓国語）](references/reaudit-v0.10.0.md)にまとめています。
+自動テストが、状態機械、ワーカーアダプタ、配置、レビュー委任、記憶層、プロジェクトの流れ、セキュリティ、マスキングとオートパイロットを確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 20・24で実行する構成です。再監査後の修正と残る制約は[修正結果の報告書（韓国語）](references/reaudit-v0.10.0.md)にまとめています。
 
 **テストの`grok`/`agy`/`claude`/`codex`は代役のCLIです。** 実際のモデル呼び出し、認証、画像生成は、このリポジトリのテストでは検証されていません。インストール済みCLIに必要なフラグがない場合は、実行前に`ADAPTER_UNAVAILABLE`で拒否します。CLIフラグは[Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)、[Antigravity CLI](https://antigravity.google/docs/cli/headless)、[Claude Code](https://code.claude.com/docs/en/headless)のドキュメントを基準にしています。
 

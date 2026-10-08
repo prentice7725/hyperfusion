@@ -936,7 +936,8 @@ if(isMain(import.meta.url)) {
       if(action!=='init'||flags.length!==2||flags[0]!=='--executor')throw Error('Only init accepts --executor NAME');
       input.executor=flags[1];
     }
-    console.log(JSON.stringify(run(root,action,input),null,2));
+    const out=action==='autopilot'?await (await import('./autopilot.mjs')).autopilot(root,input):run(root,action,input);
+    console.log(JSON.stringify(out,null,2));
   } catch(e){
     printError(e);
   }

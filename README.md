@@ -69,7 +69,11 @@ Claude Code에서 Opus 5.5를 고르고:
 /hyperfusion --executor sonnet <작업 내용>
 ```
 
-독립 실행형 명령이나 데몬은 없다. 리드가 [SKILL.md](SKILL.md)에 따라 컨트롤러와 브리지를 호출한다. 먼저 `node scripts/setup-doctor.mjs <저장소>`로 설치 상태를 점검한다. 설정은 대상 저장소의 `hyperfusion.config.json`(예시: `hyperfusion.config.example.json`).
+리드가 [SKILL.md](SKILL.md)에 따라 컨트롤러와 브리지를 호출한다. 먼저 `node scripts/setup-doctor.mjs <저장소>`로 설치 상태를 점검한다. 설정은 대상 저장소의 `hyperfusion.config.json`(예시: `hyperfusion.config.example.json`).
+
+초기화된 작업은 `node scripts/fusion-state.mjs autopilot <저장소>`로 라운드 실행과 독립 위임 리뷰를 자동 진행할 수 있다. 리드가 정한 `acceptance_commands`와 `review.auto_apply:true`가 필요하다. VERIFY·설계 결정·BLOCKED·takeover에서 리드에게 제어를 돌려주며, 정지·스냅샷·예산·검증 확인에 실패하면 멈춘다. 최종 verify는 리드가 한다([운영 설명](references/operations.md#오토파일럿)).
+
+외부로 보내는 brief·diff·이전 결과에는 이메일·IP·키·비밀번호 패턴 마스킹이 기본 적용된다. 인증에 필요한 벤더 환경변수는 유지한다. CLI가 직접 읽어 보내는 저장소 파일까지 가리는 DLP 기능은 아니므로, 회사 코드 사용 시 파일 접근과 외부 전송 정책도 별도로 통제해야 한다([전송 범위](references/operations.md#외부-전송-마스킹)).
 
 문서: [runtime](references/runtime.md) · [일꾼 런타임(Windows 포함)](references/executor-runtime.md) · [configuration](references/configuration.md) · [state-schema](references/state-schema.json)
 
@@ -79,7 +83,7 @@ Claude Code에서 Opus 5.5를 고르고:
 npm test
 ```
 
-222개 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 기억 계층, 프로젝트 흐름, 보안과 운영 기능을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 20·24에서 실행하도록 구성돼 있다. 재감사 후속 수정과 남은 한계는 [수정 결과 보고서](references/reaudit-v0.10.0.md)에 정리했다.
+자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 20·24에서 실행하도록 구성돼 있다. 재감사 후속 수정과 남은 한계는 [수정 결과 보고서](references/reaudit-v0.10.0.md)에 정리했다.
 
 **테스트의 `grok`/`agy`/`claude`/`codex`는 대역 CLI다.** 실제 모델 호출, 인증, 이미지 생성은 이 저장소의 테스트로 검증되지 않았다. 설치된 CLI에 필요한 플래그가 없으면 실행 전에 `ADAPTER_UNAVAILABLE`로 거절한다. CLI 플래그는 [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), [Claude Code](https://code.claude.com/docs/en/headless) 문서를 기준으로 했다.
 

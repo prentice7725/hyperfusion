@@ -1,4 +1,5 @@
 import {spawnSync} from 'node:child_process';
+import {workerEnv} from '../worker-env.mjs';
 import {resolveExecutable} from '../platform.mjs';
 import {controlRoot} from '../control-dir.mjs';
 import {checkBashRules} from '../bash-policy.mjs';
@@ -88,7 +89,8 @@ export function probe(name,binary,requiredFlags,optionalFlags=[],{help:helpArgs=
  const shown=prefix_args.at(-1)??executable;
  // 도움말을 stderr로 내거나 0이 아닌 코드로 끝내는 CLI도 있어 두 스트림을 합쳐 본다.
  const run=(...flag)=>{
-  const r=spawnSync(executable,[...prefix_args,...flag],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true});
+  const executor=/grok/i.test(name)?'grok':/antigravity|agy/i.test(name)?'antigravity':/sonnet|claude/i.test(name)?'sonnet':/codex|sol|luna/i.test(name)?'luna':'probe';
+  const r=spawnSync(executable,[...prefix_args,...flag],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:workerEnv(executor)});
   if(r.error)throw Error(`ADAPTER_UNAVAILABLE: ${name} ${flag.join(' ')} failed at ${shown}: ${r.error.code==='ETIMEDOUT'?'timed out (CLI may need a TTY)':r.error.message}`);
   return `${r.stdout??''}\n${r.stderr??''}`;
  };
