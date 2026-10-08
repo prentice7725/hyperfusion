@@ -208,6 +208,15 @@
               "decision",
               "takeover"
             ]
+          },
+          "reviewed_by": {
+            "enum": [
+              "lead",
+              "codex",
+              "grok",
+              "antigravity",
+              "sonnet"
+            ]
           }
         }
       }
@@ -344,6 +353,30 @@
         "object",
         "null"
       ]
+    },
+    "pending_review": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "auto_apply가 꺼졌거나 적용할 수 없는 위임 판정"
+    },
+    "review_runs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2
+      }
+    },
+    "review_failed": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
     }
   }
 }

@@ -27,6 +27,10 @@
 | 일꾼 | Sonnet (`claude --model claude-sonnet-5-5`) | 3라운드 |
 | auto | 배치표 + 실적 + 설치 상태로 선택 | — |
 
+## 리뷰 주체
+
+`"review": {"by": "lead" | "delegate", "reviewers": ["codex","sonnet","antigravity","grok"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. Codex 설정은 `executors.codex.model`(예: `gpt-6.1-sol`)과 `executors.codex.reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
+
 ## 기억 계층
 
 `"memory": {"workspace": "<프로젝트별 이름>", "recall_limit": 8, "enabled": true}`. workspace가 없으면 꺼진다. 외부 서버 없이 `~/.hyperfusion/memory/<workspace>.json`에 저장한다(`HF_MEMORY_DIR`로 위치 변경). 자세한 건 [memory.md](memory.md).

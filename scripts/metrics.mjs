@@ -21,7 +21,9 @@ export function measure(root,observations=null) {
   lead_usage:lead,lead_tokens_per_success:s.phase==='CLOSE'&&lead?lead.lead_tokens:null,
   task_kind:s.routing?.task_kind??null,difficulty:s.routing?.difficulty??null,routing_mode:s.routing?.mode??null,routed_executor:s.routing?.executor??null,final_owner:s.owner??null,
   // router 학습용. 어떤 일꾼이 어떤 판정을 받았는지.
-  review_outcomes:(s.reviews??[]).map(r=>({owner:r.owner,verdict:r.verdict,round:r.round})),
+  review_outcomes:(s.reviews??[]).map(r=>({owner:r.owner,verdict:r.verdict,round:r.round,reviewed_by:r.reviewed_by??'lead',...(r.overrode?{overrode:r.overrode}:{})})),
+  // 리드가 직접 본 리뷰 대 위임 리뷰. 위임 비율이 오르면 Opus 토큰이 줄어야 한다.
+  delegated_reviews:(s.reviews??[]).filter(r=>r.reviewed_by&&r.reviewed_by!=='lead').length,lead_overrides:(s.reviews??[]).filter(r=>r.overrode).length,
   consults:(s.consults??[]).map(c=>({id:c.id,mode:c.mode,violated:c.violated,members:c.members.map(m=>({executor:m.executor,ok:m.ok,recommended_verdict:m.recommended_verdict??null}))})),consult_runs:s.consult_runs??0,
   worker_usage:usage,worker_rounds:Object.fromEntries(['grok','antigravity','sonnet'].map(e=>[e,byExecutor(e).length])),
   worker_cost_estimate_usd:usage.length&&usage.every(u=>known(u.total_cost_usd))?usage.reduce((a,u)=>a+u.total_cost_usd,0):null,

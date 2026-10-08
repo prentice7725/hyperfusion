@@ -16,6 +16,8 @@ export function consultSchema(brief) {
  const c=brief.consult;
  const finding={type:'object',properties:{file:{type:'string'},line:{type:'integer',minimum:0},severity:{enum:['blocker','major','minor','nit']},issue:{type:'string'},suggestion:{type:'string'}},required:['file','line','severity','issue','suggestion'],additionalProperties:false};
  const properties={task_id:{const:brief.task_id},consult_id:{const:c.id},member:{const:c.member},summary:{type:'string'},findings:{type:'array',items:finding},root_cause:{type:'string'},plan:{type:'array',items:{type:'string'}},recommended_verdict:{enum:['pass','redo','alternative','decision','none']},confidence:{enum:['low','medium','high']}};
+ // 위임 리뷰는 판정이 그대로 적용되므로 'none'을 허용하지 않고, 반려 사유 목록을 따로 받는다.
+ if(c.mode==='review'){properties.recommended_verdict={enum:['pass','redo','alternative','decision']};properties.blocking_criteria={type:'array',items:{type:'string'}};}
  return {type:'object',properties,required:Object.keys(properties),additionalProperties:false};
 }
 export const schemaFor=brief=>brief.consult?consultSchema(brief):resultSchema(brief.task_id,brief.round);
@@ -48,6 +50,10 @@ const CONSULT_RULES=[
 ];
 const CONSULT_ORDERS={
  advisor:['You are an independent reviewer hired by the lead. Another worker produced the change described in context. Find what is wrong or missing against the success criteria.'],
+ review:['You are the reviewer of record for this round. The lead applies your verdict as-is unless it overrides you, so be exact.',
+  'Check the actual change (context.diff, and read new files directly) against every success criterion. pass only if every criterion is met by code you read and nothing in scope regresses.',
+  'For anything but pass, blocking_criteria must list each unmet criterion id (e.g. AC2) or a short concrete defect. Every finding needs file and line so the next worker can act without the lead re-reading the diff.',
+  'Verdict: redo when the same worker can fix it, alternative when the approach itself is wrong, decision only when requirements or architecture are ambiguous and the lead must choose.'],
  committee:['You are one member of a two-member committee hired by the lead because the task is stuck. Step back: identify the root cause of the repeated failure and propose a concrete plan the next worker can execute.','The other member is a different model. Think independently; do not assume the last attempt was on the right track.']
 };
 const READ_ONLY=['This is a READ-ONLY consultation. Do not create, edit, move or delete any file. Do not run builds, tests, installers or any command that writes to disk. The lead diffs the whole tree afterwards; any change voids your answer and counts against you.'];
@@ -56,7 +62,7 @@ export function prompt(brief,lease) {
  if(brief.consult){
   const c=brief.consult;
   return JSON.stringify({protocol:'hyperfusion-opus-lead-v0.5/consult',lead:'Claude Opus 5.5',worker:lease.owner,brief,
-   result_template:{task_id:brief.task_id,consult_id:c.id,member:c.member,summary:'Describe what you checked and concluded',findings:[],root_cause:'',plan:[],recommended_verdict:'none',confidence:'low'},
+   result_template:{task_id:brief.task_id,consult_id:c.id,member:c.member,summary:'Describe what you checked and concluded',findings:[],root_cause:'',plan:[],recommended_verdict:c.mode==='review'?'redo':'none',confidence:'low',...(c.mode==='review'?{blocking_criteria:[]}:{})},
    result_rules:CONSULT_RULES,instructions:[...CONSULT_ORDERS[c.mode],...READ_ONLY,PRIOR]});
  }
  return JSON.stringify({protocol:'hyperfusion-opus-lead-v0.5',lead:'Claude Opus 5.5',worker:lease.owner,brief,
@@ -74,17 +80,18 @@ export function bashRules(brief) {
 
 // 실행 파일과 필수 플래그를 확인한다. 인증은 실제 호출에서만 드러난다.
 // optionalFlags는 있으면 쓰고 없어도 통과하는 플래그다. 결과의 supports에 기록된다.
-export function probe(name,binary,requiredFlags,optionalFlags=[]) {
+// help는 도움말을 여는 인자. 하위 명령의 플래그를 봐야 하는 CLI(codex exec)는 따로 준다.
+export function probe(name,binary,requiredFlags,optionalFlags=[],{help:helpArgs=['--help']}={}) {
  const {executable,prefix_args}=resolveExecutable(name,binary);
  const shown=prefix_args.at(-1)??executable;
  // 도움말을 stderr로 내거나 0이 아닌 코드로 끝내는 CLI도 있어 두 스트림을 합쳐 본다.
- const run=flag=>{
-  const r=spawnSync(executable,[...prefix_args,flag],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true});
-  if(r.error)throw Error(`ADAPTER_UNAVAILABLE: ${name} ${flag} failed at ${shown}: ${r.error.code==='ETIMEDOUT'?'timed out (CLI may need a TTY)':r.error.message}`);
+ const run=(...flag)=>{
+  const r=spawnSync(executable,[...prefix_args,...flag],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true});
+  if(r.error)throw Error(`ADAPTER_UNAVAILABLE: ${name} ${flag.join(' ')} failed at ${shown}: ${r.error.code==='ETIMEDOUT'?'timed out (CLI may need a TTY)':r.error.message}`);
   return `${r.stdout??''}\n${r.stderr??''}`;
  };
  const version=run('--version').trim().split(/\r?\n/)[0];
- const help=run('--help');
+ const help=run(...helpArgs);
  const missing=requiredFlags.filter(f=>!help.includes(f));
  // 어떤 파일이 잡혔고 무엇을 출력했는지 남겨야 엉뚱한 실행 파일(IDE 실행기 등)을 알아챌 수 있다.
  if(missing.length)throw Error(`ADAPTER_UNAVAILABLE: missing ${name} flags ${missing.join(', ')} (resolved ${shown}, version "${version}", help starts "${help.trim().split(/\r?\n/).slice(0,2).join(' | ').slice(0,160)}")`);
