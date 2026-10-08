@@ -90,3 +90,27 @@ npm run test:live
 ```
 
 임시 저장소에서 파일 하나를 실제 모델로 고치고 finish·review·verify까지 확인한다. HF_LIVE가 1일 때만 실행하며 기본 테스트와 CI에서는 건너뛴다. 지정한 CLI의 설치·인증과 모델 호출 비용이 필요하다. HF_LIVE_EXECUTOR는 grok·antigravity·sonnet·luna 중 하나다.
+
+## 외부 전송 마스킹
+
+브리지가 원본 dispatch를 재검증한 다음, 모델로 보내기 직전에 공통 마스킹을 적용한다. 구현과 상담·리뷰 모두 적용되며 stdin, Grok prompt 파일, Antigravity `-p` 인자를 처리한다. 이메일, IPv4/IPv6, 알려진 API 키·JWT·Bearer 토큰·PEM 개인키, 비밀번호·키·비밀값 할당을 `[REDACTED:종류]`로 바꾼다. brief, diff, 이전 결과, prior_experience에 포함된 JSON과 다시 인코딩된 JSON도 처리한다. 원본 객체는 바꾸지 않는다.
+
+작업 ID·필수 경로·CLI 규칙을 가리면 결과의 출처나 파일 접근이 깨질 수 있다. 그런 필드에서 민감 패턴을 찾으면 `REDACTION_UNSAFE`로 실행을 거절한다. 이름·경로를 정리한 뒤 새 요청을 작성해야 한다. 저장소 설정으로 마스킹을 끌 수 없다. 환경변수는 기존 허용 목록을 유지하며, 도움말 프로브에도 같은 필터를 적용한다. CLI 자체 인증에 필요한 벤더 변수와 운영자가 `HF_ENV_PASS`로 허용한 값은 유지한다.
+
+`redaction-<라운드 또는 상담>.json`에는 종류별 개수만 기록한다. 원본 dispatch·brief·결과·envelope는 로컬 감사 기록으로 보존되므로 제어 디렉터리의 접근 권한도 관리해야 한다. 패턴 필터는 모든 비밀을 판별하는 DLP가 아니다. CLI가 Read/Grep 등의 도구로 저장소 파일을 직접 읽거나 세션에 이미 남아 있는 내용에는 이 필터가 적용되지 않는다. 회사 코드 전체의 외부 전송을 막아야 한다면 파일 접근·격리·벤더 정책을 별도로 적용해야 한다.
+
+## 오토파일럿
+
+리드가 범위·수용 기준·`acceptance_commands`를 정해 init한 작업에서 실행한다. `review.auto_apply:true`가 필수이며, 리뷰 설정이 lead여도 이 명령을 호출하면 다른 모델에게 리뷰를 위임한다. 독립 리뷰어가 설치되지 않았거나 판정을 적용할 수 없으면 리드에게 제어를 반환한다.
+
+```sh
+node scripts/fusion-state.mjs autopilot REPO
+```
+
+JSON 파일 또는 stdin(`-`)으로 `{"max_steps":64}`를 줄 수 있다(기본 64, 1~256). 별도 데몬은 아니며 명령이 실행되는 동안 begin → 브리지 → finish → delegate-review → 리뷰 브리지 → consult-finish를 반복한다. 각 호출은 한 단계다. 재지시에는 최신 brief와 `lead_feedback:"@review"`를 사용하고, 교체 대상은 기존 컨트롤러가 선택한다.
+
+VERIFY, DECISION_REQUIRED, BLOCKED, TAKEOVER_REQUIRED, RECOVERY_REQUIRED, CLOSE, ARCHIVED에서 멈춘다. 최종 verify·설계 결정·takeover·복구는 리드가 한다. 실패한 수용 테스트는 기존 규칙대로 피드백을 붙여 재시도하지만, 무시된 실행 입력 변경으로 테스트를 건너뛴 경우에는 멈춘다. 트리·HEAD/index·범위 검사, 라운드/리뷰 예산과 비용·시간 상한을 그대로 적용한다. 비용 상한은 보고된 비용만 계산하며, 보고되지 않은 비용은 보장하지 못한다.
+
+오토파일럿 브리지는 프로세스 표를 관측하고 PID와 생성 시각으로 자손을 추적해 `quiescence-*.json`에 정지 증거를 남긴다. 확인 불가·잔존 자손·불확실한 종료에서는 자동 finish하지 않고 writer lease 또는 open_consult를 유지한다. 관측 사이에 부모 연결을 끊고 빠져나간 프로세스까지 완전히 추적하는 OS 격리는 아니다. 그런 실행이 가능한 회사 환경에서는 별도 프로세스 격리가 필요하다.
+
+동시 실행은 `autopilot.lock`으로 막으며, 실행 장부는 작업 폴더의 `autopilot-<UUID>.json`에 남긴다. 반환값은 `NEEDS_LEAD`, 현재 단계, 중단 사유, 수행 단계 수와 다음 동작을 담는다. 단계 상한·중단·전송 실패 후에는 status와 장부를 확인한다. 기존 launch 표식이나 open_consult가 있으면 재실행하거나 결과만 보고 자동 finish하지 않는다. 리드가 정지를 확인하고 finish/consult-finish 또는 recover한 후 다시 실행한다. 자동 commit·push나 프로젝트 승인·범위 확대는 하지 않는다.

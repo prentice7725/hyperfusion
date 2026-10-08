@@ -20,6 +20,7 @@
 | consult-finish | quiescent:true → 위원별 결과. 트리가 바뀌었으면 답변 폐기 후 RECOVERY_REQUIRED |
 | status | 기본은 전체 상태. `--summary`면 task_id·phase·owner·remaining·next_action만 출력 |
 | report | 현재 작업의 라운드별 담당·판정·소요 시간·비용. 과거 작업은 입력에 task_id 지정 |
+| autopilot | 초기화된 작업에서 begin → 브리지 → finish → 독립 위임 리뷰 → consult-finish를 반복. `acceptance_commands`와 `review.auto_apply:true` 필수. VERIFY·DECISION_REQUIRED·BLOCKED·TAKEOVER_REQUIRED 및 안전 확인 실패에서 리드에게 제어 반환. 입력 `{"max_steps":64}`(1~256, 기본 64). [운영 설명](operations.md#오토파일럿) |
 
 일꾼 begin은 lease와 시도를 쓰기 전에 CLI를 프로브한다. 반환된 `command`/`args`(executor-bridge)를 라운드당 한 번 실행한다. RESULT_READY 후에도 lease는 유지되고, 리드가 정지 확인 후 finish 한다.
 
