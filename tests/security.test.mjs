@@ -114,7 +114,9 @@ test('the bridge refuses a dispatch file that points at another executable',asyn
  f.begin();
  const file=path.join(f.control,'tasks/HF-test/dispatch-1.json');
  const d=read(file);
- d.cli.executable=process.execPath;
+ // Windows에서는 대역 CLI가 node로 실행되므로(executable이 이미 node) 실행 파일과 앞 인자를 함께 바꾼다.
+ d.cli.executable=path.join(f.temp,'another-program');
+ d.cli.prefix_args=[...(d.cli.prefix_args??[]),'--evil'];
  fs.writeFileSync(file,JSON.stringify(d));
  await assert.rejects(()=>execute(f.root),/DISPATCH_TAMPERED/);
 });
