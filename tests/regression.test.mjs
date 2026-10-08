@@ -159,6 +159,50 @@ const blockTask=f=>{
 };
 const taskStatus=(f,id)=>project.loadProject(f.root).milestones.flatMap(m=>m.tasks).find(x=>x.id===id).status;
 
+test('begin settles a saved BLOCKED transition even when it throws, before the next project task',t=>{
+ const f=approved(t);task(f,'T1');
+ const file=path.join(f.control,'state.json'),s=f.state();
+ s.configuration.lead_takeover=false;
+ s.configuration.external.available=['grok','luna'];
+ s.phase='ALTERNATIVE_REQUIRED';s.owner='grok';s.attempts.grok=3;
+ fs.writeFileSync(file,JSON.stringify(s));
+ process.env.HF_CODEX_BIN=path.join(f.temp,'gone');
+ assert.throws(()=>f.begin(),/phase is now BLOCKED/);
+ assert.equal(taskStatus(f,'T1'),'blocked');
+ assert.ok(fs.existsSync(path.join(f.control,'metrics/T1.json')));
+ task(f,'T2');closeTask(f);
+ assert.deepEqual(project.status(f.root).checkpoint_due,['M1']);
+});
+
+for(const takeover of [true,false])test(`a temporary help failure preserves worker budget and retry (takeover=${takeover})`,t=>{
+ const f=fixture(t,{initialize:false});
+ writeConfig(f,{lead_takeover:takeover,external:{default:'grok',available:['grok']}});
+ run(f.root,'init',{...f.brief,executor:'grok'});f.begin();f.finish();
+ const binary=process.env.HF_GROK_BIN,original=fs.readFileSync(binary,'utf8');
+ fs.writeFileSync(binary,"console.log('temporarily updating');",{mode:0o755});
+ assert.equal(f.review('redo').phase,'REDO');
+ assert.throws(()=>f.begin(),/missing Grok flags/);
+ assert.equal(f.state().phase,'REDO');assert.equal(f.state().attempts.grok,1);
+ assert.ok(!fs.existsSync(path.join(f.control,'locks/writer.json')));
+ fs.writeFileSync(binary,original,{mode:0o755});
+ assert.equal(f.begin().executor,'grok');assert.equal(f.state().attempts.grok,2);
+});
+
+for(const phase of ['PLAN','REDO'])test(`a missing ${phase} worker can be replaced without archiving`,t=>{
+ const f=fixture(t);
+ if(phase==='REDO'){f.begin();f.finish();f.review('redo');}
+ process.env.HF_GROK_BIN=path.join(f.temp,'gone');
+ assert.throws(()=>f.begin(),/ALTERNATIVE_REQUIRED/);
+ assert.equal(f.state().phase,'ALTERNATIVE_REQUIRED');
+ assert.equal(f.begin({executor:'sonnet'}).executor,'sonnet');
+});
+
+test('a missing worker can be replaced in the same begin call',t=>{
+ const f=fixture(t);f.begin();f.finish();f.review('redo');
+ process.env.HF_GROK_BIN=path.join(f.temp,'gone');
+ assert.equal(f.begin({executor:'sonnet'}).executor,'sonnet');
+});
+
 test('a blocked task lets the next task of the milestone start, and the checkpoint still shows it as blocked',t=>{
  const f=approved(t);
  task(f,'T1');blockTask(f);

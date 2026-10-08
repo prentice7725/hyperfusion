@@ -88,6 +88,9 @@ export function guardFiles(root) {
   for(const f of walk(path.join(common,'hooks')))add(f,'.git/'+path.relative(common,f).split(path.sep).join('/'));
  }
  const rel=f=>path.relative(root,f).split(path.sep).join('/');
+ // 자기 자신까지 무시하는 .gitignore도 감시한다. 숨긴 테스트 코드가 비교에서 사라지는 것을 막는다.
+ const ignores=git(root,['ls-files','-z','--others','--ignored','--exclude-standard','--','.gitignore','**/.gitignore']).split('\0').filter(Boolean);
+ for(const name of ignores)add(path.join(root,name),name);
  let top=[];try{top=fs.readdirSync(root);}catch{}
  for(const name of top)if(/^\.env(\..*)?$/.test(name)||['.npmrc','.yarnrc','.yarnrc.yml','.pnpmfile.cjs'].includes(name))add(path.join(root,name),name);
  for(const dir of ['.husky','.githooks','.vscode','node_modules/.bin'])for(const f of walk(path.join(root,dir)))add(f,rel(f));

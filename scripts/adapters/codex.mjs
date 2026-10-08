@@ -28,7 +28,7 @@ function member(name,{model,canWrite}) {
  }
  // codex exec는 진행 상황을 stderr로, 최종 메시지만 stdout으로 낸다. 세션은 라운드마다 새로 연다.
  const parse=stdout=>({session_id:null,result:extractResult(stdout),usage:{total_cost_usd:null,note:'codex exec reports usage on stderr only'}});
- return {name,defaultModel:model,canWrite,probe,newSession:()=>null,dispatch,parse};
+ return {name,binary,defaultModel:model,canWrite,probe,newSession:()=>null,dispatch,parse};
 }
 
 export const sol=member('sol',{model:'gpt-6.1-sol',canWrite:false});

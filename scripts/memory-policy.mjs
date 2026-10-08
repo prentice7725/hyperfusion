@@ -27,7 +27,7 @@ const SECRET=[
  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,/-----BEGIN (?:PGP|OPENSSH|RSA|EC|DSA)/,/\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/i,/\bBasic\s+[A-Za-z0-9+/=]{16,}/,
  /\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:[^\s@/]{3,}@/i,
  // "이름 = 값", "이름은 값" 형태
- /\b\w*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential)\w*\b\s*[:=]\s*\S{4,}/i,
+ /\b\w*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential)\w*\b["']?\s*[:=]\s*\S{4,}/i,
  /\b(?:password|passwd|passphrase|secret|token|api key|credential)s?\s+(?:is|was|are|=|:)\s*\S{4,}/i,
  /(?:비밀번호|암호|패스워드|토큰|시크릿)\s*(?:은|는|이|가|:|=)?\s*[A-Za-z0-9!@#$%^&*._-]{6,}/,
  // 길고 무작위로 보이는 문자열: 16진 40자 이상

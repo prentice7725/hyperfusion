@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {isMain} from './platform.mjs';
+import {isMain,resolveExecutable} from './platform.mjs';
 import {config,selectExecutor,CAP,CONSULT_CAP,REVIEWERS,REVIEW_RUNS_PER_ROUND} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
@@ -55,13 +55,13 @@ function openControl(root) {
   c.pool=()=>c.s.configuration.external.available;
   c.budget=owner=>c.s.attempts[owner]<CAP[owner];
 
-  // 일꾼 CLI가 설치돼 있는지. 컨트롤러 호출 한 번 안에서는 한 번만 확인하고, 호출마다 새로 확인한다.
-  // 그래서 나중에 설치하면 바로 반영되고, 설치되지 않은 일꾼 때문에 작업이 멈추지 않는다.
+  // 배치 판단은 실행 파일 존재만 확인한다. 도움말 프로브의 일시적 실패로 예산을 버리지 않는다.
   const installMemo=new Map();
   c.installError=name=>{
     if(!installMemo.has(name)){
       try{
-        adapter(name).probe(c.s.configuration.executors[name]??{});
+        const a=adapter(name);
+        resolveExecutable(name,a.binary());
         installMemo.set(name,null);
       } catch(err){
         installMemo.set(name,err.message);
@@ -491,6 +491,16 @@ function begin(c,input) {
     if(owner===s.owner)throw Error('Alternative requires a different executor than the one just rejected');
   } else {
     owner=s.phase==='PLAN'?s.active_executor:s.owner;
+    if(c.installError(owner)){
+      s.phase=c.exhausted();
+      c.save();
+      if(s.phase!=='ALTERNATIVE_REQUIRED')throw Error(`ADAPTER_UNAVAILABLE: ${owner}; phase is now ${s.phase}`);
+      const requested=input.executor;
+      if(requested===undefined||requested===owner||requested==='auto'){
+        throw Error(`ADAPTER_UNAVAILABLE: ${owner}; phase is now ALTERNATIVE_REQUIRED; retry begin with an available executor`);
+      }
+      owner=selectExecutor(s.configuration,requested);
+    }
     if(input.executor!==undefined&&input.executor!==owner)throw Error('Executor switch requires an alternative verdict');
   }
 
@@ -518,6 +528,7 @@ function begin(c,input) {
   const brief={...input,repo_root:c.root,round};
 
   // 프로브와 인자 검증은 lease 획득·시도 소모 전에 끝낸다.
+  // 실패해도 phase와 시도 예산을 유지해 같은 일꾼으로 다시 시작할 수 있다.
   const cli=a?a.probe(options):null;
   if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options});
 
@@ -771,7 +782,15 @@ export function run(root,action,input={}) {
     c.action=action;
     c.load();
     const before=c.s?.phase;
-    const result=dispatch(c,action,input);
+    let result;
+    try{
+      result=dispatch(c,action,input);
+    } catch(e){
+      // 액션이 상태를 저장한 뒤 예외를 던져도 종료 정산은 빠뜨리지 않는다.
+      c.load();
+      afterTransition(c,before);
+      throw e;
+    }
     afterTransition(c,before);
     return result;
   } finally {

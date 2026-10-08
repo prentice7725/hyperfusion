@@ -23,6 +23,16 @@ test('npm .cmd wrapper is unwrapped to its real entry instead of going through c
  fs.writeFileSync(shim,'@echo off\r\nsomething-else %*\r\n');assert.equal(unwrapShim(shim),null);
 });
 test('missing executable is reported, never guessed',()=>{assert.throws(()=>resolveExecutable('X',path.join(os.tmpdir(),'definitely-missing-hf-cli')),/ADAPTER_UNAVAILABLE/);});
+test('Windows selects an npm .cmd shim before the extensionless POSIX script', {skip:!isWin},t=>{
+ const d=tmp(t),entry=path.join(d,'cli.js');fs.writeFileSync(entry,'');
+ fs.writeFileSync(path.join(d,'codex'),'#!/bin/sh\nexit 1\n');
+ fs.writeFileSync(path.join(d,'codex.cmd'),'@echo off\r\n"%dp0%\\cli.js" %*\r\n');
+ const oldPath=process.env.PATH,oldExt=process.env.PATHEXT;
+ process.env.PATH=d;process.env.PATHEXT='.EXE;.CMD';
+ t.after(()=>{process.env.PATH=oldPath;if(oldExt===undefined)delete process.env.PATHEXT;else process.env.PATHEXT=oldExt;});
+ assert.deepEqual(resolveExecutable('Codex','codex'),{executable:process.execPath,prefix_args:[fs.realpathSync(entry)]});
+ assert.deepEqual(resolveExecutable('Codex',path.join(d,'codex')),resolveExecutable('Codex','codex'));
+});
 test('samePath tolerates separator differences',t=>{const d=tmp(t);assert.ok(samePath(d,d+path.sep));assert.ok(samePath(d,path.join(d,'x','..')));});
 test('Windows command-line length guard',()=>{if(!isWin){assertCommandLine('x',['y'.repeat(40000)]);return;}assert.throws(()=>assertCommandLine('x',['y'.repeat(40000)]),/too long/);});
 test('backslash paths from a Windows worker are normalized before validation',async t=>{const f=fixture(t);f.begin();f.mode('backslash');const out=await execute(f.root);assert.deepEqual(read(out.result_file).files_read,['sub/a.txt']);});

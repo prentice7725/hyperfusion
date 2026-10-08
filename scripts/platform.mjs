@@ -27,7 +27,7 @@ export function unwrapShim(file) {
 
 // 실행 파일을 찾아 {executable, prefix_args}로 돌려준다. 스크립트 진입점은 현재 node로 실행한다.
 export function resolveExecutable(name,binary) {
- const exts=isWin?['',...(process.env.PATHEXT||'.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean).map(e=>e.toLowerCase())]:[''];
+ const exts=isWin?[...(process.env.PATHEXT||'.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean).map(e=>e.toLowerCase()),'']:[''];
  const dirs=/[\\/]/.test(binary)?['']:(process.env.PATH||'').split(path.delimiter).filter(Boolean);
  let found;
  for(const d of dirs){for(const e of exts){const f=path.resolve(d,binary+e);if(executable(f)){found=f;break;}}if(found)break;}

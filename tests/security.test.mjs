@@ -428,7 +428,32 @@ test('a protocol directory swapped for a symlink is refused before anything is w
  t.after(()=>fs.rmSync(elsewhere,{recursive:true,force:true}));
  fs.mkdirSync(path.join(f.control,'tasks'),{recursive:true});
  fs.rmSync(path.join(f.control,'tasks'),{recursive:true,force:true});
- fs.symlinkSync(elsewhere,path.join(f.control,'tasks'),'dir');
+ fs.symlinkSync(elsewhere,path.join(f.control,'tasks'),process.platform==='win32'?'junction':'dir');
  assert.throws(()=>f.begin(),/Symlink/);
  assert.deepEqual(fs.readdirSync(elsewhere),[]);
+});
+
+test('a self-ignored .gitignore hiding test code is caught during verification',t=>{
+ const f=fixture(t);f.begin();f.finish();f.review('pass');
+ const hidden=path.join(f.root,'hidden');fs.mkdirSync(hidden);
+ fs.writeFileSync(path.join(hidden,'.gitignore'),'*\n');
+ fs.writeFileSync(path.join(hidden,'conftest.py'),'raise RuntimeError("hidden test code")\n');
+ assert.throws(()=>run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'test',status:'pass'}]}),/Tree drift/);
+ assert.equal(f.state().phase,'RECOVERY_REQUIRED');
+});
+
+test('quoted JSON and YAML credentials are rejected and redacted from the ledger',t=>{
+ const f=fixture(t);
+ for(const content of ['{"password": "fake-example-value"}','{"apiKey": "fake-example-value"}',"'token': 'fake-example-value'"]){
+  assert.equal(looksSecret(content),true);
+  const ledger=propose(f.root,'T1',[{type:'error',content}],{role:'worker'});
+  assert.ok(!JSON.stringify(ledger).includes('fake-example-value'));
+ }
+});
+
+test('tamper CLI probes do not write to the calling directory',t=>{
+ const f=fixture(t);f.mode('tamper');
+ const caller=path.join(f.temp,'caller');fs.mkdirSync(caller);
+ const out=spawnSync(process.execPath,[process.env.HF_GROK_BIN,'--version'],{cwd:caller,encoding:'utf8'});
+ assert.equal(out.status,0);assert.deepEqual(fs.readdirSync(caller),[]);
 });

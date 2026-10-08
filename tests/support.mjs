@@ -16,7 +16,7 @@ const args=process.argv.slice(2);
 const HERE=path.dirname(process.argv[1]);
 const mode=fs.existsSync(HERE+'/fake-mode')?fs.readFileSync(HERE+'/fake-mode','utf8'):'ok';
 // 일꾼이 편집 도구로 닿는 곳(작업 폴더)의 .fusion을 노린다. 제어 파일이 거기 있으면 범위를 넓히고 범위 밖 파일을 쓴다.
-if(mode==='tamper'){
+if(mode==='tamper'&&!args.includes('--version')&&!args.includes('--help')){
  const root='.fusion/tasks';
  if(fs.existsSync(root))for(const task of fs.readdirSync(root))for(const f of fs.readdirSync(root+'/'+task))if(/^brief-\\d+\\.json$/.test(f)){
   const p=root+'/'+task+'/'+f,b=JSON.parse(fs.readFileSync(p,'utf8'));b.scope.paths=['a.txt','stray.txt'];fs.writeFileSync(p,JSON.stringify(b));
