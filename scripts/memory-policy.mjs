@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {read,atomic} from './artifact.mjs';
+import {controlPath} from './control-dir.mjs';
 
 // 기억 계층(AnchorMind 설계를 들여온 것)은 정본(SOT)이 아니라 에이전트들의 장기 작업기억이다.
 // 이 모듈은 무엇을 기억시켜도 되는지 정하는 규칙과, 작업마다 쌓이는 후보 장부를 다룬다.
@@ -18,12 +19,29 @@ export const MAX_PRIOR=12;
 
 // 비밀값으로 보이면 내용과 상관없이 거절한다. 오탐은 허용, 미탐은 허용하지 않는 쪽으로 넓게 잡는다.
 const SECRET=[
- /\bsk-[A-Za-z0-9_-]{16,}/,/\bsk-ant-[A-Za-z0-9_-]{8,}/,/\bxai-[A-Za-z0-9]{16,}/,/\bgh[pousr]_[A-Za-z0-9]{20,}/,/\bgithub_pat_[A-Za-z0-9_]{20,}/,
- /\bAKIA[0-9A-Z]{16}\b/,/\bAIza[0-9A-Za-z_-]{30,}/,/\bxox[abpr]-[A-Za-z0-9-]{10,}/,/-----BEGIN [A-Z ]*PRIVATE KEY-----/,
- /\b(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|bearer)\b\s*[:=]\s*\S{4,}/i,/\bBearer\s+[A-Za-z0-9._-]{16,}/,
- /\b[A-Fa-f0-9]{40,}\b/,/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./
+ // 알려진 서비스의 토큰 모양
+ /\bsk-[A-Za-z0-9_-]{16,}/,/\bsk-ant-[A-Za-z0-9_-]{8,}/,/\b[sr]k_(?:live|test)_[A-Za-z0-9]{12,}/,/\bxai-[A-Za-z0-9]{16,}/,/\bgh[pousr]_[A-Za-z0-9]{20,}/,/\bgithub_pat_[A-Za-z0-9_]{20,}/,
+ /\bglpat-[A-Za-z0-9_-]{16,}/,/\bnpm_[A-Za-z0-9]{30,}/,/\bhf_[A-Za-z0-9]{30,}/,/\bya29\.[A-Za-z0-9_-]{16,}/,
+ /\bAKIA[0-9A-Z]{16}\b/,/\bASIA[0-9A-Z]{16}\b/,/\bAIza[0-9A-Za-z_-]{30,}/,/\bxox[abpr]-[A-Za-z0-9-]{10,}/,/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,
+ // 개인 키, 헤더, 접속 문자열
+ /-----BEGIN [A-Z ]*PRIVATE KEY-----/,/-----BEGIN (?:PGP|OPENSSH|RSA|EC|DSA)/,/\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/i,/\bBasic\s+[A-Za-z0-9+/=]{16,}/,
+ /\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:[^\s@/]{3,}@/i,
+ // "이름 = 값", "이름은 값" 형태
+ /\b\w*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential)\w*\b\s*[:=]\s*\S{4,}/i,
+ /\b(?:password|passwd|passphrase|secret|token|api key|credential)s?\s+(?:is|was|are|=|:)\s*\S{4,}/i,
+ /(?:비밀번호|암호|패스워드|토큰|시크릿)\s*(?:은|는|이|가|:|=)?\s*[A-Za-z0-9!@#$%^&*._-]{6,}/,
+ // 길고 무작위로 보이는 문자열: 16진 40자 이상
+ /\b[A-Fa-f0-9]{40,}\b/
 ];
-export const looksSecret=text=>SECRET.some(r=>r.test(text));
+// 공백이나 보이지 않는 글자를 끼워 넣어 필터를 피하는 경우를 막으려고 정규화한 문장도 함께 본다.
+const squeeze=text=>String(text).normalize('NFKC').replace(/[\u200b-\u200f\u2060\ufeff\u00ad]/g,'');
+// 영문 대소문자와 숫자가 섞인 32자 이상 토큰(base64 비밀값 등). 경로나 일반 단어는 걸리지 않게 슬래시가 많은 토큰은 제외한다.
+const randomLooking=token=>token.length>=32&&/[A-Z]/.test(token)&&/[a-z]/.test(token)&&/\d/.test(token)&&(token.match(/\//g)??[]).length<3;
+export function looksSecret(text) {
+ const t=squeeze(text);
+ if(SECRET.some(r=>r.test(t)||r.test(String(text))))return true;
+ return t.split(/\s+/).some(w=>/^[A-Za-z0-9+/_=-]+$/.test(w)&&randomLooking(w))||t.split(/[\s:=,]+/).some(w=>/^[A-Za-z0-9+/_=-]+$/.test(w)&&randomLooking(w)&&!w.includes('/'));
+}
 
 const str=v=>typeof v==='string'&&v.trim().length>0;
 
@@ -54,6 +72,7 @@ export function checkCandidate(c,role) {
  if(c.ttl_days!==undefined&&!(Number.isInteger(c.ttl_days)&&c.ttl_days>0&&c.ttl_days<=3650))problems.push('ttl_days must be 1..3650');
  if(c.ttl_days!==undefined&&c.anchor_key)problems.push('anchors do not expire');
  if(role==='lead'&&RESTRICTED_TYPES.includes(c.type)&&!str(c.reason))problems.push(`${c.type} is restricted; give a reason`);
+ if(c.reason!==undefined&&(typeof c.reason!=='string'||looksSecret(c.reason)))problems.push('reason must be plain text and must not contain a credential');
  return problems;
 }
 
@@ -64,7 +83,7 @@ export function checkPrior(v) {
   throw Error(`Invalid prior_experience (up to ${MAX_PRIOR} recalled fragments {type, content, id?, assertion?}; rejected memories never go to workers)`);
 }
 
-const ledgerFile=(root,task)=>path.join(root,'.fusion/tasks',task,'memory-candidates.json');
+const ledgerFile=(root,task)=>controlPath(root,'tasks',task,'memory-candidates.json');
 export const readLedger=(root,task)=>{const f=ledgerFile(root,task);return fs.existsSync(f)?read(f):{task_id:task,candidates:[]};};
 export const writeLedger=(root,task,v)=>atomic(ledgerFile(root,task),v);
 
@@ -72,10 +91,14 @@ export const writeLedger=(root,task,v)=>atomic(ledgerFile(root,task),v);
 export function propose(root,task,items,source) {
  const ledger=readLedger(root,task);
  for(const c of items){
+  if(!c||typeof c!=='object')continue;
   const problems=checkCandidate(c,source.role);
-  const key=crypto.createHash('sha256').update(c.type+'\0'+c.content).digest('hex').slice(0,12);
+  const key=crypto.createHash('sha256').update(String(c.type)+'\0'+String(c.content)).digest('hex').slice(0,12);
   if(ledger.candidates.some(x=>x.key===key))continue;
-  ledger.candidates.push({id:'m'+(ledger.candidates.length+1),key,type:c.type,content:c.content,keywords:c.keywords??[],importance:c.importance??'medium',
+  // 비밀값으로 보이는 후보는 사유만 남기고 내용과 키워드는 장부에 쓰지 않는다. 거절한 내용을 디스크에 남기면 거절의 의미가 없다.
+  const withheld=problems.some(p=>/credential/.test(p));
+  const text=typeof c.content==='string'?c.content:'';
+  ledger.candidates.push({id:'m'+(ledger.candidates.length+1),key,type:c.type,content:withheld?'[withheld: looked like a credential]':text.slice(0,MAX_CONTENT*2),keywords:withheld?[]:(Array.isArray(c.keywords)?c.keywords.filter(k=>typeof k==='string'&&!looksSecret(k)).slice(0,10):[]),importance:c.importance??'medium',
    anchor_key:c.anchor_key,reason:c.reason,ttl_days:c.ttl_days,source,status:problems.length?'invalid':'pending',problems,proposed_at:new Date().toISOString()});
  }
  writeLedger(root,task,ledger);

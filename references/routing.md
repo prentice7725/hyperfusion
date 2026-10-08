@@ -30,7 +30,7 @@
 
 ## 실적 반영
 
-`.fusion/metrics/*.json`(매 작업 종료 시 `metrics.mjs`로 기록)에서 같은 `task_kind`에 대해 일꾼별로 "참여한 작업 중 pass 판정을 받은 비율"을 센다. 표본이 `min_samples`(기본 3) 이상이고 비율이 `demote_below`(기본 0.4) 미만이면 그 일꾼을 순서 맨 뒤로 민다. 제외하지는 않는다. `routing.learn:false`로 끈다.
+제어 폴더의 `metrics/*.json`(매 작업 종료 시 `metrics.mjs`로 기록)에서 같은 `task_kind`에 대해 일꾼별로 "참여한 작업 중 pass 판정을 받은 비율"을 센다. 표본이 `min_samples`(기본 3) 이상이고 비율이 `demote_below`(기본 0.4) 미만이면 그 일꾼을 순서 맨 뒤로 민다. 제외하지는 않는다. `routing.learn:false`로 끈다.
 
 그래서 **CLOSE든 BLOCKED든 작업이 끝나면 항상 `metrics.mjs`를 돌린다.** 안 돌리면 router가 배우지 못한다.
 

@@ -16,7 +16,7 @@
 - `available`은 사용자가 고용한 일꾼 명단이다. 한 명만 넣으면 교체 없이 그 일꾼을 예산 끝까지 돌린다.
 - `lead_takeover:false`면 모든 일꾼이 모두 소진됐을 때 리드가 코드를 쓰지 않고 BLOCKED로 끝난다.
 - `executors.<이름>.timeout_ms`: 일꾼 한 라운드의 상한(기본 1,200,000 = 20분). Windows에서 agy가 멈추는 문제가 있으면 짧게 잡는다.
-- `executors.antigravity.sandbox:false`는 바깥 샌드박스 안에서 agy `--sandbox`가 시작되지 못할 때만 쓴다(`sandbox_apply: Operation not permitted`). 끄면 agy 터미널 실행은 제한되지 않는다는 점을 사용자에게 알린다.
+- `executors.antigravity.sandbox:false`는 바깥 샌드박스 안에서 agy `--sandbox`가 시작되지 못할 때만 쓴다(`sandbox_apply: Operation not permitted`). 저장소 안의 설정 파일은 일꾼이나 복제한 저장소가 쓴 것일 수 있으므로, **운영자가 환경변수 `HF_ALLOW_UNSANDBOXED=1`을 직접 설정해야만** 받아들여진다(없으면 설정 오류). 허용해도 상담·리뷰는 항상 `--sandbox`로 실행한다. 끄면 구현 라운드의 agy 터미널 실행이 제한되지 않는다는 점을 사용자에게 알린다.
 - `lead: sol|astra` 등 main 브랜치(Codex 리드) 설정은 거절한다. 조용히 변환하지 않는다.
 
 | 역할 | 누구 | 예산 |
@@ -37,6 +37,20 @@
 
 ## 알림
 
-환경변수 `HF_NOTIFY_URL`을 설정하면 일꾼 라운드·상담이 끝날 때, 그리고 BLOCKED·TAKEOVER_REQUIRED·DECISION_REQUIRED가 될 때 그 URL로 POST 한다. [ntfy](https://ntfy.sh) 주소(예: `https://ntfy.sh/내-비밀-토픽`)를 쓰면 휴대폰 앱으로 바로 받는다. 본문은 작업 ID, 일꾼, 상태, 요약 한 줄뿐이며 코드나 출력은 보내지 않는다. 대상 저장소 설정 파일로는 켤 수 없다(저장소 내용이 외부 전송을 결정하지 못하게). 토픽 이름은 추측하기 어렵게 정한다.
+환경변수 `HF_NOTIFY_URL`을 설정하면 일꾼 라운드·상담이 끝날 때, 그리고 BLOCKED·TAKEOVER_REQUIRED·DECISION_REQUIRED가 될 때 그 URL로 POST 한다. [ntfy](https://ntfy.sh) 주소(예: `https://ntfy.sh/내-비밀-토픽`)를 쓰면 휴대폰 앱으로 바로 받는다. 본문은 작업 ID, 일꾼, 라운드, 상태 같은 고정 형식뿐이다. 일꾼이 쓴 요약이나 오류 문장, 코드, 출력은 보내지 않는다(외부 서비스에 남을 수 있다). 평문 `http://`는 localhost에서만 허용하고, 그 밖은 `https://`여야 한다(꼭 필요하면 `HF_NOTIFY_ALLOW_HTTP=1`). 대상 저장소 설정 파일로는 켤 수 없다(저장소 내용이 외부 전송을 결정하지 못하게). 토픽 이름은 추측하기 어렵게 정한다.
 
 환경변수 `HF_GROK_BIN`, `HF_AGY_BIN`, `HF_CLAUDE_BIN`은 실행 파일 경로다(공백 포함 가능). 셸 명령이나 추가 인자가 아니다.
+
+## 보안 관련 환경변수
+
+| 변수 | 의미 |
+|---|---|
+| `HF_STATE_DIR` | 제어 폴더의 부모 위치(아래 참고) |
+| `HF_ENV_PASS` | 일꾼 프로세스에 추가로 넘길 환경변수 이름(쉼표 구분). 기본은 실행에 필요한 변수와 그 일꾼 벤더의 인증값(`XAI_*`, `ANTHROPIC_*`, `GOOGLE_*`, `OPENAI_*` 등)만 넘어간다. `GITHUB_TOKEN`, `AWS_*`, DB 주소는 넘어가지 않는다 |
+| `HF_BASH_POLICY=permissive` | `executor_bash_rules`의 "검증 명령 모양" 제한만 푼다. 셸 메타문자, 인터프리터, 네트워크 도구는 계속 거절 |
+| `HF_ALLOW_UNSANDBOXED=1` | `executors.antigravity.sandbox:false`를 받아들인다 |
+| `HF_NOTIFY_ALLOW_HTTP=1` | 로컬이 아닌 평문 http 알림 주소를 허용 |
+
+## 제어 폴더 위치
+
+상태·brief·스냅샷·lease·지표는 작업 폴더 밖 `~/.hyperfusion/state/<저장소 이름>-<경로 해시>/`에 저장된다(`HF_STATE_DIR`로 부모 폴더 변경). 일꾼의 편집 도구가 닿지 못해야 범위 검사가 의미가 있기 때문이다. 예전 버전이 만든 `<저장소>/.fusion/`은 `node fusion-state.mjs migrate REPO`로 옮긴다(해시 검증 후 원본 삭제). 옮기기 전에는 새 작업이 `LEGACY_CONTROL_DIR`로 거절된다. 위치는 `node control-dir.mjs path REPO`로 확인한다.

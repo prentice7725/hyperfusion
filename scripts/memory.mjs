@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {isMain} from './platform.mjs';
 import {read,repo} from './artifact.mjs';
+import {controlPath,repoId,acquireLock} from './control-dir.mjs';
 import {config} from './executor-config.mjs';
 import * as store from './memory-store.mjs';
 import {workspaceOf,readLedger,writeLedger,propose,checkCandidate} from './memory-policy.mjs';
@@ -12,8 +13,17 @@ import {workspaceOf,readLedger,writeLedger,propose,checkCandidate} from './memor
 const workspace=root=>{
  const w=workspaceOf(config(root));
  if(!w)throw Error('MEMORY_DISABLED: set memory.workspace in hyperfusion.config.json (one workspace per project)');
+ store.assertBound(w,repoId(root));
  return w;
 };
+
+// 이 저장소가 설정에 적힌 워크스페이스를 써도 된다고 사용자가 확인한 뒤에만 부른다.
+export function bind(root) {
+ root=repo(root);
+ const w=workspaceOf(config(root));
+ if(!w)throw Error('MEMORY_DISABLED: set memory.workspace in hyperfusion.config.json first');
+ return store.bind(w,repoId(root));
+}
 
 export function context(root) {
  root=repo(root);const w=workspace(root);
@@ -29,16 +39,16 @@ export function recall(root,query,{type,limit}={}) {
   next_action:'check each hit against Drive SOT / Git HEAD, then copy only the confirmed ones into brief.prior_experience; settle needs_review items with resolve'};
 }
 
-const lockOf=root=>path.join(root,'.fusion/locks/control.lock');
+const lockOf=root=>controlPath(root,'locks/control.lock');
 
 // 장부 후보를 승인·수정·기각하고, 승인분만 저장한다. 저장 시 중복은 병합, 충돌은 검토 대기열로 간다.
 export function commit(root,input) {
  root=repo(root);const w=workspace(root);
- const state=read(path.join(root,'.fusion/state.json'));
+ const state=read(controlPath(root,'state.json'));
  const task=input.task??state.task_id;
- const closed=task===state.task_id?state.phase==='CLOSE':fs.existsSync(path.join(root,'.fusion/tasks',task,'verification.json'));
+ const closed=task===state.task_id?state.phase==='CLOSE':fs.existsSync(controlPath(root,'tasks',task,'verification.json'));
  // 컨트롤러와 동시에 장부를 건드리지 않도록 같은 잠금을 잡는다.
- fs.closeSync(fs.openSync(lockOf(root),'wx',0o600));
+ const release=acquireLock(lockOf(root));
  try{
   // 리드가 이번에 직접 추가한 항목은 곧바로 승인 대상이다.
   const before=readLedger(root,task).candidates.length;
@@ -65,12 +75,12 @@ export function commit(root,input) {
   }
   writeLedger(root,task,ledger);
   return {workspace:w,task,results,pending:ledger.candidates.filter(c=>c.status==='pending').map(c=>c.id)};
- } finally {fs.unlinkSync(lockOf(root));}
+ } finally {release();}
 }
 
 export function candidates(root,task) {
  root=repo(root);
- return readLedger(root,task??read(path.join(root,'.fusion/state.json')).task_id);
+ return readLedger(root,task??read(controlPath(root,'state.json')).task_id);
 }
 export const resolve=(root,input)=>store.resolve(workspace(repo(root)),input);
 export const reflect=root=>({...store.reflect(workspace(repo(root))),...store.stats(workspace(repo(root)))});
@@ -81,6 +91,7 @@ if(isMain(import.meta.url)) {
   const [cmd,root,...rest]=process.argv.slice(2);
   const flag=n=>{const i=rest.indexOf(n);return i>=0?rest[i+1]:undefined;};
   const out={
+   bind:()=>bind(root),
    context:()=>context(root),
    recall:()=>recall(root,rest[0],{type:flag('--type'),limit:flag('--limit')?Number(flag('--limit')):undefined}),
    candidates:()=>candidates(root,rest[0]),
@@ -90,7 +101,7 @@ if(isMain(import.meta.url)) {
    forget:()=>forget(root,rest[0]),
    stats:()=>store.stats(workspace(repo(root)))
   }[cmd];
-  if(!out)throw Error('Usage: memory.mjs context|recall "query" [--type T] [--limit N]|candidates [TASK]|commit INPUT.json|resolve INPUT.json|reflect|forget ID|stats  (each takes REPO first)');
+  if(!out)throw Error('Usage: memory.mjs bind|context|recall "query" [--type T] [--limit N]|candidates [TASK]|commit INPUT.json|resolve INPUT.json|reflect|forget ID|stats  (each takes REPO first)');
   console.log(JSON.stringify(out(),null,2));
  }catch(e){console.error(e.message);process.exitCode=1;}
 }

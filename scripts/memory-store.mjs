@@ -18,6 +18,30 @@ const DAY=86400000;
 export const storeDir=()=>process.env.HF_MEMORY_DIR||path.join(os.homedir(),'.hyperfusion','memory');
 const fileOf=w=>path.join(storeDir(),w+'.json');
 
+// 워크스페이스는 저장소 하나의 것이다. 저장소의 hyperfusion.config.json은 일꾼이나 복제한 저장소가 쓴 파일일 수 있어서,
+// 거기 적힌 이름만으로 다른 프로젝트의 기억을 읽거나 쓰게 두면 안 된다. 처음 쓰는 저장소가 소유하고,
+// 다른 저장소가 같은 이름을 쓰려면 사용자가 `memory.mjs bind`로 직접 허락해야 한다.
+const bindFile=w=>path.join(storeDir(),'bindings',w+'.json');
+const foreign=(w,why)=>Error(`MEMORY_WORKSPACE_FOREIGN: workspace "${w}" ${why}. If this repository really shares it, ask the user, then run: node memory.mjs bind REPO`);
+export function bindingStatus(w,id) {
+ const f=bindFile(w);
+ if(fs.existsSync(f))return read(f).repos?.includes(id)?'bound':'foreign';
+ return fs.existsSync(fileOf(w))?'unclaimed':'new';
+}
+export function assertBound(w,id) {
+ const status=bindingStatus(w,id);
+ if(status==='bound')return;
+ if(status==='foreign')throw foreign(w,'belongs to other repositories');
+ if(status==='unclaimed')throw foreign(w,'already holds memories but is not bound to any repository');
+ bind(w,id);
+}
+export function bind(w,id) {
+ const f=bindFile(w);
+ const prior=fs.existsSync(f)?read(f):{workspace:w,repos:[]};
+ atomic(f,{...prior,repos:[...new Set([...prior.repos,id])],updated_at:new Date().toISOString()});
+ return {workspace:w,repos:[...new Set([...prior.repos,id])].length};
+}
+
 // 영문은 단어, 한글은 단어와 글자 bigram까지 색인한다. 붙여 쓴 한국어도 걸리게 하려는 것이다.
 const STOP=new Set(['a','an','the','is','are','was','of','to','and','or','in','on','for','with','by','at','it','this','that','be','as','from']);
 export function tokens(text) {

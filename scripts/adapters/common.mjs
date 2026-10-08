@@ -1,5 +1,7 @@
 import {spawnSync} from 'node:child_process';
 import {resolveExecutable} from '../platform.mjs';
+import {controlRoot} from '../control-dir.mjs';
+import {checkBashRules} from '../bash-policy.mjs';
 
 // 외부 일꾼(Grok, Antigravity)이 공통으로 따르는 결과 계약과 지시문.
 export function resultSchema(task_id,round) {
@@ -73,9 +75,7 @@ export function prompt(brief,lease) {
 export function bashRules(brief) {
  // 상담은 명령 실행 권한을 주지 않는다.
  if(brief.consult)return [];
- const rules=brief.executor_bash_rules??[];
- if(!Array.isArray(rules)||rules.some(r=>typeof r!=='string'||!/^Bash\([^(),\n]+\)$/.test(r)||r==='Bash(*)'))throw Error('Invalid executor_bash_rules');
- return rules;
+ return checkBashRules(brief.executor_bash_rules);
 }
 
 // 실행 파일과 필수 플래그를 확인한다. 인증은 실제 호출에서만 드러난다.
@@ -107,3 +107,12 @@ export function extractResult(text) {
  if(!blocks.length)throw Error('Executor final text has no result JSON');
  try{return JSON.parse(blocks.at(-1)[1]);}catch{throw Error('Executor result JSON is malformed');}
 }
+
+// 일꾼의 편집 도구가 고치면 안 되는 곳: .git(훅, 설정), 예전 .fusion, 제어 폴더. 중첩된 폴더도 막는다.
+// 절대 경로 표기는 Claude Code 규칙 문법(`//` 로 시작, Windows는 `//c/...`)을 따른다.
+// 이것은 도구 수준 규칙이다. 셸로 우회하는 일은 스냅샷 비교(변경 검사)가 잡는다.
+export function protectedPaths(brief) {
+ const abs=controlRoot(brief.repo_root).replaceAll('\\','/').replace(/^([A-Za-z]):/,(_,d)=>'/'+d.toLowerCase());
+ return ['.git','.fusion'].flatMap(d=>[`${d}/**`,`**/${d}/**`]).concat(`/${abs}/**`);
+}
+export const editDeny=brief=>['Edit','Write'].flatMap(tool=>protectedPaths(brief).map(p=>`${tool}(${p})`));

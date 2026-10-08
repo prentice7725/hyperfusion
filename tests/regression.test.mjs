@@ -106,13 +106,13 @@ test('verify is the last line of defence: it compares everything to the original
  const f=fixture(t);
  recoverRound(f,stray(f),{allow_out_of_scope:[{path:'b.txt',reason:'accepted'}]});
  goodRound(f);f.review('pass');
- const stateFile=path.join(f.root,'.fusion/state.json');
+ const stateFile=path.join(f.control,'state.json');
  const tampered=read(stateFile);tampered.scope_exceptions=[];fs.writeFileSync(stateFile,JSON.stringify(tampered));
  const evidence={acceptance_satisfied:true,tests:[{command:'t',status:'pass'}]};
  assert.throws(()=>run(f.root,'verify',evidence),/Out-of-scope changes since the baseline: b\.txt/);
  assert.equal(f.state().phase,'VERIFY');
  assert.equal(run(f.root,'verify',{...evidence,allow_out_of_scope:[{path:'b.txt',reason:'accepted at verify'}]}).phase,'CLOSE');
- assert.equal(read(path.join(f.root,'.fusion/tasks/HF-test/verification.json')).allow_out_of_scope[0].path,'b.txt');
+ assert.equal(read(path.join(f.control,'tasks/HF-test/verification.json')).allow_out_of_scope[0].path,'b.txt');
 });
 test('a user edit made between rounds is caught by verify, not silently shipped',t=>{
  const f=fixture(t);
@@ -237,7 +237,7 @@ test('README does not claim Luna was removed without saying it came back',()=>{
 
 test('a metrics failure is reported instead of swallowed, and the task still closes',t=>{
  const f=fixture(t);
- fs.writeFileSync(path.join(f.root,'.fusion/metrics'),'not a directory');
+ fs.writeFileSync(path.join(f.control,'metrics'),'not a directory');
  f.begin();f.finish();f.review('pass');
  const s=run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'t',status:'pass'}]});
  assert.equal(s.phase,'CLOSE');
@@ -251,7 +251,7 @@ test('reaching BLOCKED through decide or recover also records metrics and settle
  grind(a,3);a.begin({takeover_reason:'x'});a.finish();a.review('decision');
  assert.equal(run(a.root,'decide',{decision:'give up'}).phase,'BLOCKED');
  // measure()를 직접 부르면 파일이 생기므로, 컨트롤러가 이미 남겼는지 먼저 본다.
- assert.ok(fs.existsSync(path.join(a.root,'.fusion/metrics/HF-test.json')),'metrics written when decide ended the task');
+ assert.ok(fs.existsSync(path.join(a.control,'metrics/HF-test.json')),'metrics written when decide ended the task');
  // recover 경로: takeover 라운드가 형식 오류로 끝나 복구하면 BLOCKED가 된다.
  const b=approved(t);
  task(b,'T1');
@@ -261,14 +261,14 @@ test('reaching BLOCKED through decide or recover also records metrics and settle
  assert.equal(b.finish({}).phase,'RECOVERY_REQUIRED');
  assert.equal(run(b.root,'recover',{token,quiescent:true,reason:'lead round invalid; inspected'}).phase,'BLOCKED');
  assert.equal(taskStatus(b,'T1'),'blocked');
- assert.ok(fs.existsSync(path.join(b.root,'.fusion/metrics/T1.json')));
+ assert.ok(fs.existsSync(path.join(b.control,'metrics/T1.json')));
 });
 test('a failing memory ledger cannot break finish or leave a closed task active in the project',t=>{
  memDir(t);
  const f=approved(t);
  writeConfig(f,{memory:{workspace:'regression'}});
  task(f,'T1');
- const ledger=path.join(f.root,'.fusion/tasks/T1/memory-candidates.json');
+ const ledger=path.join(f.control,'tasks/T1/memory-candidates.json');
  fs.mkdirSync(ledger);
  f.begin();
  const r=f.result();r.memory_candidates=[{type:'error',content:'A failed because B'}];

@@ -6,6 +6,9 @@ import {assertCommandLine} from '../platform.mjs';
 export const name='antigravity';
 export const requiredFlags=['--output-format','--json-schema','--conversation','--mode','--add-dir','--print'];
 export const binary=()=>process.env.HF_AGY_BIN||'agy';
+// 샌드박스를 끌 수 있는 것은 운영자가 허용한 구현 라운드뿐이다. 상담과 리뷰는 설정과 상관없이 항상 --sandbox를 넘긴다
+// (CLI가 그 플래그를 모르면 상담이 실패한다. 읽기 전용이어야 할 일꾼을 풀어 두는 것보다 낫다).
+const unsandboxed=(options,brief)=>options.sandbox===false&&!brief?.consult;
 export const probe=(options={})=>probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox'])],['--print-timeout']);
 // agy가 스스로 먼저 끝내도록 브리지 timeout보다 30초 짧게 잡는다. 그래야 강제 종료 대신 정상 envelope가 남는다.
 export const printTimeout=options=>Math.max(30,Math.floor(((options.timeout_ms??1200000)-30000)/1000))+'s';
@@ -19,7 +22,7 @@ export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
  const args=['--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),
   // 상담은 plan 모드(읽기·계획만), 구현은 accept-edits.
   ...(brief.consult?['--mode','plan']:brief.allowed_actions.includes('edit')?['--mode','accept-edits']:[]),'--add-dir',brief.repo_root,
-  ...(options.sandbox===false?[]:['--sandbox']),...(cli.supports?.['--print-timeout']?['--print-timeout',printTimeout(options)]:[]),
+  ...(unsandboxed(options,brief)?[]:['--sandbox']),...(cli.supports?.['--print-timeout']?['--print-timeout',printTimeout(options)]:[]),
   ...(resume?['--conversation',session]:[]),'-p',text];
  // 프롬프트를 명령줄로 넘기므로 Windows 길이 제한을 lease 획득 전에 확인한다.
  assertCommandLine(cli.executable,[...(cli.prefix_args??[]),...args]);

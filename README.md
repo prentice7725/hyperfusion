@@ -19,6 +19,24 @@
 | 코드 가독성 | 한 줄에 로직을 몰아넣은 압축 스타일. 동작은 맞지만 리뷰 비용이 큼 |
 | 테스트 | 36개 통과. 대역 CLI로 프로세스/프로토콜만 검증하며 실제 모델 호출은 없음(정직하게 명시됨) |
 
+## 보안 리뷰로 찾은 결함 수정 (v0.10)
+
+보안 리뷰에서 지적된 결함을 고쳤다. 공격을 재현하는 회귀 테스트(`tests/security.test.mjs`)를 먼저 만들어 실패를 확인한 뒤 고쳤다.
+
+| 결함 | 수정 |
+|---|---|
+| **H1** 제어 파일(상태, brief, 스냅샷, lease)이 작업 폴더의 `.fusion/`에 있어, 편집 도구를 가진 일꾼이 brief의 범위를 넓히고 범위 밖 파일을 써도 `REVIEW`로 통과(재현 확인). Grok 외에는 `.fusion` 편집 차단도 없었음. 브리지는 dispatch 파일을 그대로 믿음 | 제어 폴더를 **작업 폴더 밖** `~/.hyperfusion/state/<저장소>-<해시>/`로 옮김(`HF_STATE_DIR`로 변경). 예전 `.fusion/`이 있으면 새 작업을 거절(`LEGACY_CONTROL_DIR`)하고 `fusion-state.mjs migrate REPO`가 해시 검증 후 옮김. Grok·Sonnet은 `.git`·`.fusion`·제어 폴더 Edit/Write를 중첩까지 차단. 브리지는 실행 직전 brief와 상태로 요청을 다시 만들어 다르면 `DISPATCH_TAMPERED` |
+| **H2** 스냅샷이 `.gitignore`된 파일과 `.git/config`·훅을 못 봄. 저장소 설정(fsmonitor, filter, 외부 diff)이 컨트롤러의 `git status`로 코드를 실행 | 스냅샷에 `.git/config`·`hooks/*`·`info/*`, `.env*`, `.npmrc`, `.husky`, `.vscode`, `node_modules/.bin`을 포함해 범위 밖 변경으로 적발. 컨트롤러의 git은 fsmonitor·filter·외부 diff·textconv를 끄고 호출. `setup-doctor`가 실행 가능한 저장소 설정과 활성 훅을 경고 |
+| **M1** `Bash(npm test*)`가 `; curl … \| sh`를 통과시킬 수 있고, `git -C dir push`가 `git push*` 차단을 우회 | `executor_bash_rules`는 테스트·린트·빌드·읽기 전용 명령 모양만 허용(메타문자·인터프리터·네트워크 도구 거절, `HF_BASH_POLICY=permissive`로만 완화). git 차단 규칙에 옵션 삽입 모양과 변경 명령 전반, curl/wget/ssh/sudo 추가 |
+| **M2** scope 경로 검증 허점(글롭, `~`, 드라이브, NTFS 스트림, `.GIT`·`GIT~1`) | scope와 `allow_out_of_scope`는 모두 거절. 일꾼이 보고하는 경로는 글롭만 허용하되 같은 `.git` 우회를 거절 |
+| **M3** 저장소 설정으로 샌드박스를 끄거나 다른 프로젝트의 기억 워크스페이스를 가리킬 수 있음 | 샌드박스 해제는 운영자의 `HF_ALLOW_UNSANDBOXED=1`이 있을 때만, 상담·리뷰는 항상 샌드박스. 워크스페이스는 처음 쓴 저장소에 묶이고 다른 저장소는 `memory.mjs bind`로만 허용 |
+| **M4** 일꾼에게 컨트롤러의 환경변수 전체가 넘어감 | 실행에 필요한 변수와 해당 벤더 인증값만 넘김(`HF_ENV_PASS`로 추가) |
+| **M5** 알림에 일꾼 요약·오류 문장이 실리고 평문 http도 허용 | 고정 형식(작업 ID, 일꾼, 라운드, 상태)만 전송, 평문 http는 localhost만 |
+| **M6** 기억 비밀값 필터 누락, 거절된 후보의 내용이 장부에 남음 | 패턴 확대(npm·GitLab·Stripe 토큰, 접속 문자열, `password is …`, 긴 무작위 토큰, 유니코드 우회), 거절된 후보는 사유만 남김 |
+| **LOW** router 지표의 `__proto__` 오염, 형식이 틀린 기억 후보가 라운드를 실패시킴, 죽은 컨트롤러의 `control.lock`, 하위 폴더 심볼릭 링크 | 실제 일꾼 이름만 집계, 기억 후보는 걸러내고 라운드는 유지, lock에 소유자(pid·호스트·시각)를 적어 죽은 프로세스의 것만 치움, 쓰기 전 링크 검사 |
+
+**남은 위험(솔직하게):** 이 보호는 협업 통제이지 OS 샌드박스가 아니다. 셸을 쓸 수 있는 일꾼은 홈 폴더의 다른 파일에 닿을 수 있다(제어 폴더도 이론상 포함). 스냅샷 비교가 작업 폴더 안의 변경을 적발하지만, 폴더 밖 변경은 막지 못한다. git의 clean/smudge 필터가 사용자 전역 설정에 있으면 컨트롤러 호출에서는 꺼지지만 사람이 쓰는 git에서는 그대로다. Codex(Luna/Sol)와 Antigravity는 도구 수준 편집 차단 규칙이 없어, Codex는 `workspace-write` 샌드박스에, Antigravity는 `--sandbox`에 의존한다. 일꾼이 `npm install`로 `node_modules/.bin`을 바꾸면 범위 밖으로 적발되므로 의존성 설치가 필요한 작업은 scope에 `node_modules`를 넣거나 `allow_out_of_scope`로 받아들인다.
+
 ## 코드 리뷰로 찾은 결함 수정 (v0.9.1)
 
 코드 리뷰에서 재현으로 확인된 결함을 고쳤다. 각각 실패하는 회귀 테스트를 먼저 만들었다.
@@ -117,7 +135,7 @@
 | advisor | Paseo `/paseo-advisor` | 다른 일꾼이 읽기 전용으로 diff를 먼저 검사하고 findings(파일·줄·심각도)를 낸다. Opus는 그걸 단서로 검수해 읽을 양을 줄인다 |
 | committee | Paseo `/paseo-committee` | 서로 다른 일꾼 둘이 병렬로 근본 원인과 실행 계획을 낸다. 같은 실수가 반복되면 상태에 권고(`hint`)가 붙는다 |
 | 줄 단위 피드백 | Orca diff annotate | `lead_feedback`에 `{file, line, comment}`. 상담 findings를 그대로 넘길 수 있다 |
-| 알림 | 둘 다 | `HF_NOTIFY_URL`(예: ntfy)로 일꾼 완료, 상담 완료, 리드 판단 필요 시 휴대폰 푸시 |
+| 알림 | 둘 다 | `HF_NOTIFY_URL`(예: ntfy)로 일꾼 완료, 상담 완료, 리드 판단 필요 시 휴대폰 푸시(고정 형식, 요약·오류 문장은 제외) |
 
 상담은 writer lease 없이 돌고 구현 예산을 쓰지 않는다(작업당 위원 실행 4회 상한). 읽기 전용은 CLI 설정(Sonnet은 읽기 도구만, agy `--mode plan`, Grok 편집·셸 deny)에 더해 **상담 전후 스냅샷 비교**로 보증한다. 트리를 건드린 상담은 답변을 버리고 복구로 넘어가며, 그 일꾼은 router 실적이 깎인다. 자세한 건 [consult](references/consult.md).
 
@@ -178,18 +196,18 @@ Claude Code(Opus 5.5 선택)에서:
 npm test
 ```
 
-156개 테스트가 코드 리뷰 회귀(설치 안 된 일꾼, 범위 밖 파일의 누적 검사와 허용, 막힌 작업 정산, 보고서-배치 일치, 정산 경로·실패 기록, 문서-코드 일치), 프로젝트(팀원 전원 결정 강제, Sol 담당 금지, 팀 구성 보고서, 승인 전 작업 거절, 마일스톤 밖 작업 거절, 팀 설정 고정·제외 팀원 차단, 체크포인트 보고·확인 전 다음 마일스톤 차단, 재승인이 필요한 변경 구분, 확인과 함께 팀 변경, 완료 후 게이트 해제), Luna 구현(workspace-write), 리뷰 위임(Sol 우선 배정, 자기 리뷰 금지, 판정 자동 적용·보류·채택·덮어쓰기 기록, `@review` 지시 전달, 리뷰어 실패 시 교체·라운드 상한, 형식 오류 판정 폐기, 미완료 라운드 pass 차단, 읽기 전용 위반 폐기, takeover 코드 리뷰, Codex 구현 금지·설정 검증), 기억 계층(비밀값·크기·권한 차단, 후보 장부, 프로토콜 자동 추출, 리드 승인 저장, verified/inferred, 중복 병합, 모순 검토 대기열, 감쇠·재공고화·TTL, 연상 확산, 한글 검색, workspace 격리, 파일 잠금),  상담(advisor/committee) 실행·읽기 전용 위반 적발·상담 중 잠금·예산, 줄 단위 피드백, 알림 전송, Windows 경로 처리(.cmd 래퍼 해석, .js 진입점, 역슬래시 경로, 명령줄 길이)와 Grok/Antigravity/Sonnet 정상 실행, 작업별 배치·설치 상태 반영·실적 기반 강등·교체 순서, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. GitHub Actions가 Ubuntu·Windows × Node 20·24에서 실행한다. 테스트의 `grok`/`agy`/`claude`/`codex`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
+192개 테스트가 보안 회귀(제어 파일 변조·`.git` 훅·`.env` 심기 적발, 저장소 설정으로 인한 코드 실행 차단, dispatch 재검증, 환경변수 허용목록, Bash 규칙·scope 경로 우회, 기억 워크스페이스 격리, 알림 최소화, 비밀값 필터, 잠금·링크), 코드 리뷰 회귀(설치 안 된 일꾼, 범위 밖 파일의 누적 검사와 허용, 막힌 작업 정산, 보고서-배치 일치, 정산 경로·실패 기록, 문서-코드 일치), 프로젝트(팀원 전원 결정 강제, Sol 담당 금지, 팀 구성 보고서, 승인 전 작업 거절, 마일스톤 밖 작업 거절, 팀 설정 고정·제외 팀원 차단, 체크포인트 보고·확인 전 다음 마일스톤 차단, 재승인이 필요한 변경 구분, 확인과 함께 팀 변경, 완료 후 게이트 해제), Luna 구현(workspace-write), 리뷰 위임(Sol 우선 배정, 자기 리뷰 금지, 판정 자동 적용·보류·채택·덮어쓰기 기록, `@review` 지시 전달, 리뷰어 실패 시 교체·라운드 상한, 형식 오류 판정 폐기, 미완료 라운드 pass 차단, 읽기 전용 위반 폐기, takeover 코드 리뷰, Codex 구현 금지·설정 검증), 기억 계층(비밀값·크기·권한 차단, 후보 장부, 프로토콜 자동 추출, 리드 승인 저장, verified/inferred, 중복 병합, 모순 검토 대기열, 감쇠·재공고화·TTL, 연상 확산, 한글 검색, workspace 격리, 파일 잠금),  상담(advisor/committee) 실행·읽기 전용 위반 적발·상담 중 잠금·예산, 줄 단위 피드백, 알림 전송, Windows 경로 처리(.cmd 래퍼 해석, .js 진입점, 역슬래시 경로, 명령줄 길이)와 Grok/Antigravity/Sonnet 정상 실행, 작업별 배치·설치 상태 반영·실적 기반 강등·교체 순서, 세션 재개, 중복 실행 차단, 오류·timeout·출력 상한·결과 검증, 빈 반려 거절, 같은 실수 반복 시 교체, 일꾼이 남아 있을 때 takeover 거절, 예산 소진 후 단 1회 takeover, 거짓 변경 신고 적발, 리드/일꾼 사용량 분리 집계를 확인한다. GitHub Actions가 Ubuntu·Windows × Node 20·24에서 실행한다. 테스트의 `grok`/`agy`/`claude`/`codex`는 명시적으로 표시된 대역이며 실제 모델을 호출하지 않는다.
 
 ## 완료보고 진단
 
-대상 저장소 `.fusion/tasks/<task_id>/`:
+제어 폴더(기본 `~/.hyperfusion/state/<저장소>-<해시>/`, 작업 폴더 밖) `tasks/<task_id>/`:
 
 - `dispatch-N.json`: 일꾼, CLI 인자, 세션
 - `envelope-N.json`: 종료 코드, 중단 이유, 원본 stdout/stderr
 - `result-N.json`, `session-N.json`, `usage-N.json`: 검증된 결과, 세션 ID, 일꾼 보고 사용량
 - `review-N.json`: 리드 판정과 반려 사유
-- `.fusion/state.json`: 단계, 배치 결과와 근거(`routing`), 일꾼별 남은 예산, 교체 이력
-- `.fusion/metrics/<task_id>.json`: router가 학습하는 작업별 기록
+- `state.json`: 단계, 배치 결과와 근거(`routing`), 일꾼별 남은 예산, 교체 이력
+- `metrics/<task_id>.json`: router가 학습하는 작업별 기록
 
 ## 운영 원칙
 
@@ -197,4 +215,4 @@ writer는 한 명이다. lock은 협업 통제이며 OS 샌드박스가 아니�
 
 목표 지표는 **성공 작업당 Opus 리드 토큰**이다. 실패 작업도 분자에 포함한다. 일꾼 비용과 소요 시간은 별도 가드레일로 기록한다(Antigravity는 비용을 보고하지 않으므로 null). 작업이 끝날 때마다 `metrics.mjs`를 돌려야 router가 실적을 배운다. 측정되지 않은 값은 null이다.
 
-실행 로그·세션·인증정보는 이 저장소에 포함하지 않는다. `.fusion/`은 대상 저장소의 비공개 로컬 작업 기록이다.
+실행 로그·세션·인증정보는 이 저장소에 포함하지 않는다. 제어 폴더는 일꾼의 편집 도구가 닿지 못하도록 작업 폴더 밖에 둔 비공개 로컬 작업 기록이다. 예전 버전의 `.fusion/`은 `node scripts/fusion-state.mjs migrate <저장소>`로 옮긴다.

@@ -8,13 +8,14 @@
 - `launch-N.json`(create-once)이 같은 라운드의 중복 실행을 막는다. `process-N.json`, `envelope-N.json`에 PID와 원본 출력을 남긴다.
 - 성공해도 lease는 유지된다. 리드가 빠져나간 자손 프로세스가 없음을 확인한 뒤 finish 한다.
 - 결과는 공통 result 계약으로 검증한다. 오류 envelope, 세션 불일치, 미완료 중단, JSON 아님은 전부 실패다.
-- `executor_bash_rules`(선택): `["Bash(npm test*)"]` 같은 좁은 규칙만. `Bash(*)`나 commit/push/deploy 규칙은 금지. 리드가 실제로 확인한 테스트·빌드 명령에서 고른다.
+- `executor_bash_rules`(선택): 테스트·린트·빌드·읽기 전용 조회 모양의 규칙만 받는다(`Bash(npm test*)`, `Bash(node --test*)`, `Bash(pytest*)`, `Bash(git diff*)` 등). 와일드카드는 맨 끝의 `*` 하나만, 셸 메타문자(`; & | < > ` + "`" + ` $ ( )`)·따옴표·줄바꿈·인터프리터·네트워크 도구(`node *`, `sh -c`, `curl`)·`npm *`처럼 열린 규칙은 `init` 때 거절된다. 모양 제한은 `HF_BASH_POLICY=permissive`로만 풀 수 있다.
+- **브리지는 dispatch 파일을 믿지 않는다.** 실행 직전에 brief와 상태로 같은 요청을 다시 만들어 실행 파일, 인자, 프롬프트가 하나라도 다르면 `DISPATCH_TAMPERED`로 멈춘다(상담도 읽기 전용 brief인지 확인). 일꾼에게는 필요한 환경변수만 넘긴다(`HF_ENV_PASS` 참고).
 
 ## Grok (`grok`)
 
-- 헤드리스는 stdin을 프롬프트로 읽지 않는다. 브리지가 `.fusion/tasks/<id>/prompt-N.txt`를 만들고 `--prompt-file`로 넘긴다.
+- 헤드리스는 stdin을 프롬프트로 읽지 않는다. 브리지가 제어 폴더의 `tasks/<id>/prompt-N.txt`를 만들고 `--prompt-file`로 넘긴다.
 - 인자: `--output-format json --cwd REPO --max-turns 40`, 첫 라운드 `--session-id <UUID>`(컨트롤러가 미리 발급), 이후 `--resume <UUID>`.
-- 권한: edit 허용 시 scope 경로마다 `--allow Edit(path)`, `--allow Edit(path/**)`. 항상 `--deny`로 `.fusion`/`.git` 편집과 git commit/push/reset/clean/stash/checkout/add 차단. `--yolo`나 `bypassPermissions`는 쓰지 않는다.
+- 권한: edit 허용 시 scope 경로마다 `--allow Edit(path)`, `--allow Edit(path/**)`. 항상 `--deny`로 `.git`·`.fusion`·제어 폴더 절대 경로의 Edit/Write(중첩 포함)와 git 변경 명령(`git -C dir push`처럼 옵션이 끼어든 모양 포함), curl/wget/ssh/sudo 같은 도구를 차단. `--yolo`나 `bypassPermissions`는 쓰지 않는다.
 - 스키마 강제가 없으므로 최종 `text`가 결과 JSON 자체이거나 마지막 ```json 블록이어야 한다. `stopReason`이 `end_turn`이 아니면(예: max_turns) 실패. `sessionId`가 발급한 UUID와 다르면 실패.
 - 사용량: `usage`, `modelUsage`, `num_turns`, `total_cost_usd`(클라이언트 추정치)를 `usage-N.json`에 기록.
 
@@ -56,7 +57,7 @@
 - **명령줄 길이**: Antigravity는 프롬프트를 명령줄 인자로 받는데 Windows는 약 32,000자 제한이 있다. 넘으면 lease 획득 전에 거절하므로 brief를 줄인다.
 - **경로 표기**: 일꾼이 `src\a.ts`처럼 역슬래시로 보고해도 브리지가 `src/a.ts`로 맞춘 뒤 검증한다.
 - **알려진 문제**: agy `-p`가 TTY 없는 Windows 환경에서 멈춘다는 보고가 있다([antigravity-cli#318](https://github.com/google-antigravity/antigravity-cli/issues/318)). 브리지는 파이프로 실행하므로 해당 버전에서는 timeout까지 기다리게 된다. `executors.antigravity.timeout_ms`를 짧게(예: 300000) 잡아 두면 빨리 실패하고 router가 다음 일꾼으로 넘긴다. Grok Build CLI의 Windows 지원 여부는 확인하지 못했다.
-- 파일 권한(0600)은 Windows에서 적용되지 않는다. `.fusion/`은 사용자 프로필 아래 저장소에 두고 공유 폴더에 두지 않는다.
+- 파일 권한(0600)은 Windows에서 적용되지 않는다. 제어 폴더(`~/.hyperfusion/state`)는 사용자 프로필 아래에 두고 공유 폴더에 두지 않는다.
 
 ## 하지 말 것
 

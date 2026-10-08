@@ -8,6 +8,9 @@ import {result as validateResult,consultResult} from './contracts.mjs';
 import {adapter} from './adapters/index.mjs';
 import {notify} from './notify.mjs';
 import {EXECUTORS} from './executor-config.mjs';
+import {controlPath,ensureControl} from './control-dir.mjs';
+import {workerEnv} from './worker-env.mjs';
+import {verifyExecute,verifyConsult} from './dispatch-verify.mjs';
 
 const timeoutFor=(state,executor,override)=>{
  // 일꾼별 timeout_ms 설정이 있으면 그 값, 없으면 20분.
@@ -32,7 +35,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes}) {
   exit=await new Promise(resolve=>{
    forceResolve=resolve;
    // Windows에는 프로세스 그룹이 없어 detached를 쓰지 않고(새 콘솔이 뜬다) taskkill /T로 트리를 정리한다.
-   child=spawn(request.cli.executable,[...(request.cli.prefix_args??[]),...request.cli.args],{cwd:root,stdio:[request.stdin===undefined?'ignore':'pipe','pipe','pipe'],shell:false,detached:!isWin,windowsHide:true});
+   child=spawn(request.cli.executable,[...(request.cli.prefix_args??[]),...request.cli.args],{cwd:root,stdio:[request.stdin===undefined?'ignore':'pipe','pipe','pipe'],shell:false,env:workerEnv(request.executor),detached:!isWin,windowsHide:true});
    alive=!!child.pid;child.on('exit',()=>{alive=false;});
    if(child.pid)immutable(path.join(dir,`process-${tag}.json`),{executor:request.executor,pid:child.pid,process_group:isWin?null:child.pid,tree_kill:isWin?'taskkill /T /F':'process group',platform:process.platform,session_id:request.cli.session_id});
    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
@@ -65,24 +68,26 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes}) {
 // 리드가 넘긴 구현 라운드 dispatch 한 건을 정확히 한 번 실행하고 결과를 검증해 남긴다.
 export async function execute(root,{timeoutMs,maxBytes=8*1024*1024}={}) {
  root=repo(root);
- const state=read(path.join(root,'.fusion/state.json'));
+ ensureControl(root);
+ const state=read(controlPath(root,'state.json'));
  if(state.phase!=='EXECUTING'||!EXECUTORS.includes(state.owner))throw Error('No active executor round');
  timeoutMs=timeoutFor(state,state.owner,timeoutMs);
- const dir=path.join(root,'.fusion/tasks',state.task_id),n=state.iteration;
+ const dir=controlPath(root,'tasks',state.task_id),n=state.iteration;
  const request=read(path.join(dir,`dispatch-${n}.json`));
  const lease=assertLease(root,request.token);
  if(lease.owner!==state.owner||request.executor!==state.owner||lease.task_id!==state.task_id||lease.round!==n||request.task_id!==state.task_id||request.round!==n)throw Error('Executor writer provenance mismatch');
  let result,parsed;
  try{
-  parsed=await supervise(root,dir,n,request,{timeoutMs,maxBytes});
+  // 파일이 아니라 컨트롤러가 다시 만든 요청으로 실행한다. 달라졌으면 여기서 멈춘다.
+  parsed=await supervise(root,dir,n,{...request,...verifyExecute(root,state,dir,request,lease)},{timeoutMs,maxBytes});
   result=validateResult(parsed.result,request.task_id,request.round);
  }catch(e){
-  await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} failed: ${e.message}`,{priority:'high'});
+  await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} failed`,{priority:'high'});
   throw e;
  }
  immutable(path.join(dir,`session-${n}.json`),{executor:request.executor,session_id:parsed.session_id});
  immutable(path.join(dir,`result-${n}.json`),result);
- await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} done (${result.status}): ${result.summary}`);
+ await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} done (${result.status})`);
  // 여기서 lease를 놓지 않는다. 리드가 정지 여부를 확인하고 finish 해야 한다.
  return {status:'RESULT_READY',executor:request.executor,task_id:state.task_id,round:n,result_file:path.join(dir,`result-${n}.json`),next_action:'confirm quiescence, then fusion-state finish with writer token and result'};
 }
@@ -90,12 +95,14 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024}={}) {
 // 상담(advisor/committee) 한 건의 위원을 병렬로 실행한다. writer lease 없이 읽기 전용으로 돈다.
 export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024}={}) {
  root=repo(root);
- const state=read(path.join(root,'.fusion/state.json'));
+ ensureControl(root);
+ const state=read(controlPath(root,'state.json'));
  const open=state.open_consult;
  if(!open||open.id!==id)throw Error('No open consult '+id);
- const dir=path.join(root,'.fusion/tasks',state.task_id);
+ const dir=controlPath(root,'tasks',state.task_id);
  const runs=await Promise.allSettled(open.members.map(async m=>{
-  const request=read(path.join(dir,`consult-${id}-${m.member}.json`));
+  const sent=read(path.join(dir,`consult-${id}-${m.member}.json`));
+  const request={...sent,...verifyConsult(root,state,dir,sent,{id,member:m.member,executor:m.executor})};
   const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,request,{timeoutMs:timeoutFor(state,m.executor,timeoutMs),maxBytes});
   const result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);
   const file=path.join(dir,`consult-result-${id}-${m.member}.json`);

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
-import {recall,commit,candidates,context,resolve,reflect} from '../scripts/memory.mjs';
+import {recall,commit,candidates,context,resolve,reflect,bind} from '../scripts/memory.mjs';
 import * as store from '../scripts/memory-store.mjs';
 import {checkCandidate,looksSecret} from '../scripts/memory-policy.mjs';
 
@@ -135,6 +135,7 @@ test('workspaces never see each other',t=>{
 });
 test('lead recall hands back prior_experience that reaches the worker with its lower rank spelled out',t=>{
  const f=withMemory(t);
+ bind(f.root);
  put('hyperfusion-test','error','PixelOEPixelize+ raised ModuleNotFoundError; do not retry the same setup');
  const prior=recall(f.root,'PixelOEPixelize').prior_experience;
  assert.equal(prior.length,1);

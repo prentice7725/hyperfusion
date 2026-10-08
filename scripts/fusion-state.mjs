@@ -6,13 +6,14 @@ import {isMain} from './platform.mjs';
 import {config,selectExecutor,CAP,CONSULT_CAP,REVIEWERS,REVIEW_RUNS_PER_ROUND} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
-import {atomic,immutable,read,repo,snapshot,changes,git} from './artifact.mjs';
+import {atomic,immutable,read,repo,snapshot,changes,git,SAFE_DIFF} from './artifact.mjs';
 import {acquire,assertLease,release} from './writer-lease.mjs';
 import {notify} from './notify.mjs';
 import {loadProject,saveProject,teamConfig,activeMilestone,settleTask} from './project.mjs';
 import {measure} from './metrics.mjs';
 import {workspaceOf,propose,deriveFromState} from './memory-policy.mjs';
 import * as contract from './contracts.mjs';
+import {ensureControl,isLegacy,migrate,controlRoot,acquireLock} from './control-dir.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 // 상담 위원에게 직접 넣어 주는 diff의 최대 길이.
@@ -26,21 +27,18 @@ const CONTEXT_DIFF_MAX=12000;
 //   run           잠금을 잡고 알맞은 액션으로 보낸다.
 
 function openControl(root) {
-  const dir=path.join(root,'.fusion');
-  fs.mkdirSync(path.join(dir,'locks'),{recursive:true});
-  if(fs.lstatSync(dir).isSymbolicLink()||fs.lstatSync(path.join(dir,'locks')).isSymbolicLink()){
-    throw Error('Symlink protocol directory forbidden');
-  }
+  // 제어 파일은 작업 폴더 밖에 둔다. 일꾼의 편집 도구가 닿지 않는 곳이어야 범위 검사를 믿을 수 있다.
+  const dir=ensureControl(root);
   // 컨트롤러 명령끼리 겹치지 않도록 배타적으로 만든다. 이미 있으면 EEXIST로 실패한다.
   const guard=path.join(dir,'locks/control.lock');
-  fs.closeSync(fs.openSync(guard,'wx',0o600));
+  const releaseLock=acquireLock(guard);
 
   const stateFile=path.join(dir,'state.json');
   const c={root,dir,s:null,action:''};
 
   c.load=()=>{c.s=fs.existsSync(stateFile)?read(stateFile):null;};
   c.save=()=>atomic(stateFile,c.s);
-  c.unlock=()=>fs.unlinkSync(guard);
+  c.unlock=releaseLock;
   c.taskdir=()=>path.join(dir,'tasks',c.s.task_id);
   // 한 번만 쓰는 작업 산출물.
   c.art=(name,value)=>immutable(path.join(c.taskdir(),name),value);
@@ -196,6 +194,10 @@ function init(c,input) {
   }
 
   const requested=selectExecutor(configuration,input.executor);
+  // 예전 버전의 기록이 작업 폴더 안(.fusion)에 있으면 새 작업을 시작하지 않는다. 일꾼이 그 폴더를 고칠 수 있기 때문이다.
+  if(isLegacy(c.root)){
+    throw Error(`LEGACY_CONTROL_DIR: records are inside the workspace (${controlRoot(c.root)}), where workers can edit them. Run: node fusion-state.mjs migrate REPO`);
+  }
   // 끝난 작업(완료, 막힘, 보관) 뒤에는 새 작업을 시작할 수 있다. 막힌 작업의 기록은 그대로 남는다.
   if(c.s&&!['CLOSE','ARCHIVED','BLOCKED'].includes(c.s.phase))throw Error('Existing unfinished task; inspect/recover');
   contract.brief(input);
@@ -343,7 +345,7 @@ function consult(c,input) {
   const latest=c.optional(`brief-${n}.json`)??c.optional('initial-brief.json');
   const changed=n?(c.optional(`validation-${n}.json`)?.changed??[]):[];
   // 읽기 전용 위원(Sonnet은 Bash도 없다)이 diff를 볼 수 있게 직접 넣어 준다. 새 파일은 목록만 있으므로 직접 읽어야 한다.
-  const diff=changed.length?git(c.root,['diff','HEAD','--',...changed]):'';
+  const diff=changed.length?git(c.root,['diff',...SAFE_DIFF,'HEAD','--',...changed]):'';
   const context={
     round:n,last_worker:s.owner,last_result:n?c.optional(`raw-result-${n}.json`):null,changed_files:changed,
     diff:diff.slice(0,CONTEXT_DIFF_MAX),diff_truncated:diff.length>CONTEXT_DIFF_MAX,
@@ -601,7 +603,8 @@ function finish(c,input) {
   // 기억 장부는 선택 기능이다. 실패해도 이미 검증을 통과한 라운드를 버리지 않고 사실만 남긴다.
   if(memoryOn(c)&&input.result.memory_candidates?.length){
     try{
-      propose(c.root,s.task_id,input.result.memory_candidates,{role:'worker',executor:s.owner,round:n});
+      // 최대 3건. 객체가 아닌 항목은 propose가 건너뛰고, 모양이 틀린 항목은 invalid로 사유와 함께 장부에 남는다.
+      propose(c.root,s.task_id,input.result.memory_candidates.slice(0,3),{role:'worker',executor:s.owner,round:n});
     } catch(e){
       s.memory_error=`worker lessons not recorded: ${e.message}`;
     }
@@ -809,6 +812,11 @@ if(isMain(import.meta.url)) {
   try {
     const [action,root,file,...flags]=process.argv.slice(2);
     if(!action||!root)throw Error('Usage: node fusion-state.mjs ACTION REPO_ROOT [INPUT.json] [--executor NAME]');
+    // migrate는 상태가 없어도 되고 컨트롤러 잠금도 쓰지 않는다(옮기는 대상이 잠금 폴더 자체이기 때문).
+    if(action==='migrate'){
+      console.log(JSON.stringify(migrate(repo(root)),null,2));
+      process.exit(0);
+    }
     const input=file?read(file):{};
     if(flags.length){
       if(action!=='init'||flags.length!==2||flags[0]!=='--executor')throw Error('Only init accepts --executor NAME');
