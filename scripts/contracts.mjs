@@ -33,6 +33,12 @@ export function brief(v) {
  // 라우팅 힌트. 없으면 기본 규칙으로 간다.
  requireThat(v.task_kind===undefined||['code','ui','image-asset','tests','refactor','docs'].includes(v.task_kind),'Invalid task_kind');
  requireThat(v.difficulty===undefined||['low','medium','high'].includes(v.difficulty),'Invalid difficulty');
+ // 수용 테스트. 컨트롤러가 finish 직후와 VERIFY에서 직접 실행한다. 리드가 쓴 brief에서만 받는다.
+ requireThat(v.acceptance_commands===undefined||(Array.isArray(v.acceptance_commands)&&v.acceptance_commands.length>0&&v.acceptance_commands.length<=10
+  &&v.acceptance_commands.every(x=>str(x)&&x.length<=500&&!CONTROL.test(x))),'Invalid acceptance_commands (1-10 single-line commands)');
+ requireThat(v.acceptance_timeout_ms===undefined||(Number.isSafeInteger(v.acceptance_timeout_ms)&&v.acceptance_timeout_ms>0&&v.acceptance_timeout_ms<=3600000),'Invalid acceptance_timeout_ms');
+ requireThat(v.acceptance_artifacts===undefined||(strs(v.acceptance_artifacts)&&v.acceptance_artifacts.length<=20&&v.acceptance_artifacts.every(g=>reportedPath(g.replace(/\*\*?|\?/g,'x'))&&!/^(?:\*\*\/)*\*{1,2}$/.test(g))),'Invalid acceptance_artifacts (repository-relative globs, not "**")');
+ requireThat(v.acceptance_commands!==undefined||(v.acceptance_timeout_ms===undefined&&v.acceptance_artifacts===undefined),'acceptance options need acceptance_commands');
  checkPrior(v.prior_experience);
  // 일꾼에게 열어 줄 Bash 규칙은 작업을 시작하기 전에 거른다(디스패치 때 한 번 더 확인한다).
  checkBashRules(v.executor_bash_rules);

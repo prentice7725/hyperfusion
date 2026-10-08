@@ -26,5 +26,7 @@ export function workerEnv(executor,env=process.env) {
   if(value===undefined)continue;
   if(BASE.has(k)||extra.has(k)||prefixes.some(p=>k.startsWith(p)))out[key]=value;
  }
+ // 바이트코드 캐시(.pyc)는 무시된 위치에 실행 가능한 파일을 만든다. 수용 테스트 전 무시된 파일 비교를 흔들지 않게 끈다.
+ out.PYTHONDONTWRITEBYTECODE='1';
  return out;
 }

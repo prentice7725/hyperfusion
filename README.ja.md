@@ -46,7 +46,7 @@
 - ブリッジは実行直前にリクエストを再生成して照合します。ワーカーには必要な環境変数だけを渡します。
 - Bashの許可ルールはテスト・lint・ビルドの形だけを受け付けます。サンドボックス解除などの緩和は、リポジトリ設定ではなくオペレーターの環境変数でのみ有効にします。
 
-シェルを使えるワーカーは作業フォルダ外のファイルに触れ得ます。CodexとAntigravityはそれぞれのサンドボックスに依存します。既に無視されている通常の依存ファイル（例：`node_modules/dep/index.js`）の内容変更はスナップショットで監視しないため、信頼できる依存ファイルで検証してください。旧バージョンから更新した場合は`fusion-state.mjs migrate <リポジトリ>`を一度実行してください。詳細は[configuration](references/configuration.md)、[recovery](references/recovery-protocol.md)。
+シェルを使えるワーカーは作業フォルダ外のファイルに触れ得ます。CodexとAntigravityはそれぞれのサンドボックスに依存します。既に無視されている通常の依存ファイル（例：`node_modules/dep/index.js`）の内容変更はスナップショットで監視しません。コントローラが受け入れテストを直接実行する際は、無視されたファイルのメタデータを比較し、変化があれば実行しません（[operations](references/operations.md#수용-테스트-자동-실행)）。旧バージョンから更新した場合は`fusion-state.mjs migrate <リポジトリ>`を一度実行してください。詳細は[configuration](references/configuration.md)、[recovery](references/recovery-protocol.md)。
 
 ## インストールと使い方
 

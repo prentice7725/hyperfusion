@@ -12,7 +12,7 @@
 | finish | token, quiescent:true, 선택 result(생략하면 브리지의 result-N.json) → REVIEW 또는 RECOVERY_REQUIRED. 브리지가 남긴 세션 ID를 묶음 |
 | review | 판정/근거/증거 → 다음 단계. `{"adopt":true}`면 보류된 위임 판정 채택 |
 | decide | decision → 같은 일꾼 REDO(예산 내) |
-| verify | acceptance_satisfied:true, 실제 통과 테스트 → CLOSE. 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 거절한다. 알고 받아들일 때만 `allow_out_of_scope: [{path, reason}]` |
+| verify | acceptance_satisfied:true, 실제 통과 테스트 → CLOSE. brief에 `acceptance_commands`가 있으면 컨트롤러가 직접 돌린 결과가 증거이고 `tests`는 선택이다(finish 직후 실행이 통과했고 트리가 그대로면 재사용). 무시된 파일이 바뀌어 실행을 건너뛰었으면 확인 후 `acceptance_trust_ignored:true`. 여기서 실패하면 REDO로 되돌린다. 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 거절한다. 알고 받아들일 때만 `allow_out_of_scope: [{path, reason}]` |
 | recover | token(보유 시), quiescent:true, reason, 선택 `allow_out_of_scope: [{path, reason}]`(범위 밖에 남은 파일을 알고 받아들일 때) |
 | archive | quiescent:true, reason, token(보유 시) → ARCHIVED |
 | consult | mode(advisor/committee), question, focus?, executors? → 읽기 전용 상담 dispatch. [consult.md](consult.md) |

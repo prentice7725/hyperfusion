@@ -46,7 +46,7 @@
 - 브리지는 실행 직전에 요청을 다시 만들어 대조한다. 일꾼에게는 필요한 환경변수만 넘긴다.
 - Bash 허용 규칙은 테스트·린트·빌드 모양만 받는다. 샌드박스 해제 같은 완화는 저장소 설정이 아니라 운영자의 환경변수로만 켠다.
 
-셸을 쓸 수 있는 일꾼은 작업 폴더 밖 파일에 닿을 수 있고, Codex와 Antigravity는 각자의 샌드박스에 의존한다. 이미 무시된 일반 의존성 파일(예: `node_modules/dep/index.js`)의 내용 변경은 스냅샷이 감시하지 않으므로 신뢰할 수 있는 의존성 설치본에서 검증해야 한다. 이전 버전에서 올라오면 `fusion-state.mjs migrate <저장소>`를 한 번 실행한다. 자세한 건 [configuration](references/configuration.md), [recovery](references/recovery-protocol.md).
+셸을 쓸 수 있는 일꾼은 작업 폴더 밖 파일에 닿을 수 있고, Codex와 Antigravity는 각자의 샌드박스에 의존한다. 이미 무시된 일반 의존성 파일(예: `node_modules/dep/index.js`)의 내용 변경은 스냅샷이 감시하지 않는다. 컨트롤러가 수용 테스트를 직접 돌릴 때는 무시된 파일의 메타데이터를 비교해 바뀌었으면 실행하지 않는다([operations](references/operations.md#수용-테스트-자동-실행)). 이전 버전에서 올라오면 `fusion-state.mjs migrate <저장소>`를 한 번 실행한다. 자세한 건 [configuration](references/configuration.md), [recovery](references/recovery-protocol.md).
 
 ## 설치와 사용
 

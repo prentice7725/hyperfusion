@@ -19,6 +19,7 @@ import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
 import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
 import {ensureControl,isLegacy,migrate,controlRoot,acquireLock} from './control-dir.mjs';
+import {ignoredManifest,ignoredChanges,runCommands,failureFeedback} from './acceptance.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 // 상담 위원에게 직접 넣어 주는 diff의 최대 길이.
@@ -270,7 +271,8 @@ function archive(c,input) {
 function status(c,input={}) {
   const s=c.s;
   const remaining=Object.fromEntries(Object.keys(CAP).map(k=>[k,CAP[k]-s.attempts[k]]));
-  if(input.summary===true)return {task_id:s.task_id,phase:s.phase,owner:s.owner,remaining,next_action:nextAction(s.phase,!!s.open_consult)};
+  if(input.summary===true)return {task_id:s.task_id,phase:s.phase,owner:s.owner,remaining,next_action:nextAction(s.phase,!!s.open_consult),
+    ...(s.acceptance?{acceptance:{round:s.acceptance.round,stage:s.acceptance.stage,status:s.acceptance.status}}:{})};
   return {
     ...s,
     lease_present:c.writerHeld(),
@@ -518,7 +520,8 @@ function begin(c,input) {
       .map(f=>({file:f.file,...(f.line?{line:f.line}:{}),comment:`${f.issue}${f.suggestion?' → '+f.suggestion:''}`}));
     const unmet=(last?.blocking_criteria??[])
       .map(criterion=>`Unmet: ${criterion}${last.rationale?' ('+last.rationale.slice(0,200)+')':''}`);
-    const items=[...located,...unmet];
+    // 수용 테스트 실패로 컨트롤러가 되돌린 라운드는 실패 출력이 곧 명령서다.
+    const items=last?.acceptance_feedback?.length?[...located,...last.acceptance_feedback]:[...located,...unmet];
     if(!items.length)throw Error('Last review has no findings or blocking criteria to forward; write lead_feedback yourself');
     input={...input,lead_feedback:items};
   }
@@ -553,6 +556,8 @@ function begin(c,input) {
   c.save();
   c.art(`brief-${round}.json`,input);
   c.art(`base-${round}.json`,snapshot(c.root));
+  // 수용 테스트를 돌릴 라운드는 무시된 파일의 기준선도 남긴다. 일꾼이 거기 코드를 심었는지 실행 전에 비교한다.
+  if(input.acceptance_commands)c.art(`ignored-base-${round}.json`,ignoredManifest(c.root,input.acceptance_artifacts));
 
   const request=a
     ?{
@@ -629,13 +634,58 @@ function finish(c,input) {
       s.memory_error=`worker lessons not recorded: ${e.message}`;
     }
   }
+  const acc=brief.acceptance_commands&&input.result.status==='complete'
+    ?acceptanceRun(c,brief,'finish',c.optional(`ignored-base-${n}.json`)):null;
+  if(acc?.tree_changed?.length){
+    s.last_errors=['Acceptance commands changed the tree: '+acc.tree_changed.join(', ')+'; make the tests leave the tree clean (or gitignore their outputs), then recover'];
+    s.phase='RECOVERY_REQUIRED';
+    c.save();
+    return s;
+  }
   s.result_failures=0;
   s.phase='REVIEW';
   c.save();
   release(c.root,input.token);
   s.writer=null;
   c.save();
+  // 수용 테스트가 실패한 일꾼 라운드는 리드가 볼 필요 없이 실패 출력과 함께 같은 일꾼에게 되돌린다.
+  // 일반 반려와 같은 규칙(예산, 같은 실패 반복 시 교체)을 거친다. 리드 takeover 라운드는 리드가 직접 판정한다.
+  if(acc?.status==='fail'&&s.owner!=='lead'){
+    const failed=acc.results.filter(r=>r.status!=='pass');
+    return applyReview(c,{verdict:'redo',reviewed_by:'controller',
+      rationale:`Acceptance commands failed after finish (${failed.map(r=>r.command).join(', ')}); returned to the worker without lead review`,
+      blocking_criteria:failed.map(r=>'Acceptance: '+r.command),commands_run:brief.acceptance_commands,
+      independent_diff_review:true,acceptance_feedback:failureFeedback(acc.results)});
+  }
   return s;
+}
+
+// 수용 테스트를 실행하고 기록한다. reference는 비교할 무시된 파일 목록(라운드 시작 또는 직전 실행 후).
+// 그 뒤로 무시된 파일이 바뀌었으면 trust 없이는 실행하지 않는다. 실행이 트리를 바꿨으면 tree_changed에 남긴다.
+function acceptanceRun(c,brief,stage,reference,{trust=false}={}) {
+  const s=c.s,n=s.iteration;
+  const ignoredNow=ignoredManifest(c.root,brief.acceptance_artifacts);
+  const touched=reference?ignoredChanges(reference,ignoredNow):['(no ignored-file baseline for this round)'];
+  const record={stage,round:n,at:new Date().toISOString(),commands:brief.acceptance_commands};
+  const name=`acceptance-${n}-${stage}${stage==='finish'?'':'-'+Date.now()}`;
+  if(touched.length&&!trust){
+    Object.assign(record,{status:'skipped',ignored_changes:touched.slice(0,50),
+      reason:'gitignored files changed since the reference point, so repository code may not be what the snapshot shows; inspect them, then verify with acceptance_trust_ignored:true'});
+  } else {
+    const before=snapshot(c.root);
+    record.results=runCommands(c.root,brief.acceptance_commands,{timeout_ms:brief.acceptance_timeout_ms});
+    record.status=record.results.every(r=>r.status==='pass')?'pass':'fail';
+    if(touched.length)record.trusted_ignored_changes=touched.slice(0,50);
+    const after=snapshot(c.root);
+    record.tree_changed=changes(before,after);
+    if(!record.tree_changed.length&&after.digest!==before.digest)record.tree_changed=['(git status or index)'];
+    record.tree_digest=after.digest;
+    c.art(`${name}-ignored.json`,ignoredManifest(c.root,brief.acceptance_artifacts));
+    record.ignored_after=`${name}-ignored.json`;
+  }
+  c.art(`${name}.json`,record);
+  s.acceptance={round:n,stage,status:record.status,file:`${name}.json`,tree_digest:record.tree_digest??null,ignored_after:record.ignored_after??null};
+  return record;
 }
 
 // ── 리뷰 ────────────────────────────────────────────────────────────
@@ -662,7 +712,8 @@ function applyReview(c,input) {
   }
 
   const record={...input,verdict,owner:s.owner,round:s.iteration};
-  c.art(`review-${s.iteration}.json`,record);
+  // VERIFY에서 수용 테스트가 되돌린 경우 같은 라운드에 리드의 pass 기록이 이미 있다.
+  c.art(fs.existsSync(path.join(c.taskdir(),`review-${s.iteration}.json`))?`review-${s.iteration}-verify.json`:`review-${s.iteration}.json`,record);
   s.reviews.push(record);
   s.pending_review=null;
   const assessment=contract.escalation(s.reviews.filter(r=>r.owner===s.owner),s.result_failures,input.complexity??{});
@@ -714,10 +765,13 @@ function decide(c,input) {
 
 function verify(c,input) {
   const s=c.s;
-  const passing=Array.isArray(input.tests)&&input.tests.length
-    &&input.tests.every(t=>typeof t.command==='string'&&t.command.trim()&&t.status==='pass')
-    &&input.acceptance_satisfied===true;
-  if(!passing)throw Error('Passing verification evidence required');
+  const brief=read(path.join(c.taskdir(),`brief-${s.iteration}.json`));
+  const auto=!!brief.acceptance_commands;
+  // brief에 acceptance_commands가 있으면 컨트롤러가 직접 돌린 결과가 증거다. 리드가 적는 tests는 그때 선택 사항이다.
+  const manual=Array.isArray(input.tests)&&input.tests.length>0;
+  const passing=input.acceptance_satisfied===true&&(manual||auto)
+    &&(!manual||input.tests.every(t=>typeof t.command==='string'&&t.command.trim()&&t.status==='pass'));
+  if(!passing)throw Error(auto?'acceptance_satisfied:true required (the controller runs acceptance_commands itself)':'Passing verification evidence required');
   const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope);
   const now=snapshot(c.root);
   if(now.digest!==s.post_digest){
@@ -733,7 +787,38 @@ function verify(c,input) {
     s.scope_exceptions=before;
     throw Error(`Out-of-scope changes since the baseline: ${stray.join(', ')}; revert them (the task will need another round), or pass allow_out_of_scope [{path, reason}] to accept them knowingly`);
   }
-  c.art('verification.json',input);
+  let evidence=null;
+  if(auto){
+    // finish 직후 실행이 통과했고 그 뒤로 트리와 무시된 파일이 그대로면 같은 상태에 대한 같은 증거이므로 다시 돌리지 않는다.
+    const prev=s.acceptance?.round===s.iteration?s.acceptance:null;
+    const after=prev?.ignored_after?c.optional(prev.ignored_after):null;
+    const ignoredNow=after&&prev.status==='pass'&&prev.tree_digest===now.digest?ignoredManifest(c.root,brief.acceptance_artifacts):null;
+    if(ignoredNow&&!ignoredChanges(after,ignoredNow).length)evidence={status:'pass',reused:prev.file};
+    else {
+      evidence=acceptanceRun(c,brief,'verify',after??c.optional(`ignored-base-${s.iteration}.json`),{trust:input.acceptance_trust_ignored===true});
+      if(evidence.tree_changed?.length){
+        s.scope_exceptions=before;
+        s.phase='RECOVERY_REQUIRED';
+        c.save();
+        throw Error('Acceptance commands changed the tree during verification: '+evidence.tree_changed.join(', '));
+      }
+      if(evidence.status==='skipped'){
+        s.scope_exceptions=before;
+        c.save();
+        throw Error(`Acceptance commands not run: ${evidence.reason}. Changed: ${evidence.ignored_changes.join(', ')}`);
+      }
+      // VERIFY에서 실패하면 닫지 않고 finish 때와 같은 규칙으로 되돌린다(리드 라운드는 BLOCKED).
+      if(evidence.status==='fail'){
+        s.scope_exceptions=before;
+        const failed=evidence.results.filter(r=>r.status!=='pass');
+        return applyReview(c,{verdict:'redo',reviewed_by:'controller',
+          rationale:`Acceptance commands failed during verification (${failed.map(r=>r.command).join(', ')})`,
+          blocking_criteria:failed.map(r=>'Acceptance: '+r.command),commands_run:brief.acceptance_commands,
+          independent_diff_review:true,acceptance_feedback:failureFeedback(evidence.results)});
+      }
+    }
+  }
+  c.art('verification.json',{...input,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{})});
   s.phase='CLOSE';
   s.closed_at=new Date().toISOString();
   c.save();
