@@ -59,6 +59,7 @@ const CONSULT_ORDERS={
   'Verdict: redo when the same worker can fix it, alternative when the approach itself is wrong, decision only when requirements or architecture are ambiguous and the lead must choose.'],
  committee:['You are one member of a two-member committee hired by the lead because the task is stuck. Step back: identify the root cause of the repeated failure and propose a concrete plan the next worker can execute.','The other member is a different model. Think independently; do not assume the last attempt was on the right track.']
 };
+const ACCEPTANCE='After you finish, the controller itself runs every command in brief.acceptance_commands. If any fails, the round comes straight back to you with the output. Run them yourself before reporting complete, and leave the tree clean: no new untracked files, and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
 const READ_ONLY=['This is a READ-ONLY consultation. Do not create, edit, move or delete any file. Do not run builds, tests, installers or any command that writes to disk. The lead diffs the whole tree afterwards; any change voids your answer and counts against you.'];
 
 export function prompt(brief,lease) {
@@ -70,7 +71,7 @@ export function prompt(brief,lease) {
  }
  return JSON.stringify({protocol:PROTOCOL,package_version:VERSION,lead:'Claude Opus 5.5',worker:lease.owner,brief,
  result_template:{task_id:brief.task_id,round:brief.round,status:'complete',summary:'Describe actual outcome',files_read:[],files_changed:[],commands_run:[],tests:[],unresolved:[],risks:[],needs_lead_decision:false,recommended_next_action:'review'},
- result_rules:IMPLEMENT_RULES,instructions:IMPLEMENT_ORDERS});
+ result_rules:IMPLEMENT_RULES,instructions:brief.acceptance_commands?[...IMPLEMENT_ORDERS,ACCEPTANCE]:IMPLEMENT_ORDERS});
 }
 
 export function bashRules(brief) {

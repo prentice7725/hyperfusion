@@ -479,6 +479,54 @@
     },
     "budget_error": {
       "type": "string"
+    },
+    "acceptance": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Last controller-run acceptance result for this task (acceptance-N-<stage>.json holds the full record).",
+      "properties": {
+        "round": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stage": {
+          "enum": [
+            "finish",
+            "verify"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "skipped"
+          ]
+        },
+        "file": {
+          "type": "string"
+        },
+        "tree_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ignored_after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "round",
+        "stage",
+        "status",
+        "file"
+      ],
+      "additionalProperties": false
     }
   }
 }

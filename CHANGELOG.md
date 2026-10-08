@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0
+
+- 수용 테스트 자동 실행: brief의 `acceptance_commands`를 컨트롤러가 finish 직후와 VERIFY에서 직접 실행하고 종료 코드·출력 해시를 증거로 남긴다. 실패한 라운드는 리뷰 전에 실패 출력과 함께 같은 일꾼에게 되돌린다.
+- H2 남은 부분 보완: 수용 테스트 실행 전 무시된 파일의 메타데이터를 라운드 시작 때와 비교해, 바뀌었으면 리드가 확인하기 전까지 실행하지 않는다. 일꾼과 수용 테스트에 `PYTHONDONTWRITEBYTECODE=1`.
+- 리드 가드 훅(`scripts/lead-guard.mjs`): lease가 걸려 있거나 takeover가 아닌 진행 중 단계에서 리드의 Edit/Write를 차단한다. 설정은 `npm run guard:settings`.
+
 ## 0.11.0
 
 - 브리지 결과 자동 읽기, brief 고정값 자동 완성, stdin JSON, 요약 status로 리드 입력을 줄인다.

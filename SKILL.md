@@ -2,7 +2,7 @@
 name: hyperfusion
 description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검수만 하고, 구현과 테스트는 작업 종류에 맞춰 고른 일꾼(Grok Build CLI, Antigravity CLI, Claude Code Sonnet, Codex Luna)에게 시키고 리뷰는 Sol(Codex)에게 맡길 수 있는 오케스트레이션 스킬. 단일 writer, 감사 가능한 라운드 기록, 반려 시 구체적 명령서 필수, 같은 실수 반복 시 일꾼 교체. HyperFusion, Grok, Antigravity, agy, Sonnet에게 코딩이나 이미지 애셋 작업을 맡기라는 요청에 사용한다.
 ---
-# HyperFusion v0.11.0 — Opus 리드, Sonnet·Grok·Antigravity·Luna 일꾼, Sol 리뷰어
+# HyperFusion v0.12.0 — Opus 리드, Sonnet·Grok·Antigravity·Luna 일꾼, Sol 리뷰어
 
 **리드: Claude Opus 5.5 (`claude-opus-5-5`)**. 리드는 분해, 계획, 범위 확정, 반려, 최종 검증만 한다. **코드는 일꾼이 쓴다.** 일꾼은 Grok(`grok`), Antigravity(`agy`), Sonnet(`claude --model claude-sonnet-5-5` 하위 프로세스), Luna(`codex exec`, 구현). Sol(`codex exec`, GPT-6.1 Sol)은 리뷰·상담만 한다. 스킬은 호스트 모델을 바꿀 수 없다. 호스트가 Opus 5.5가 아니면 그렇다고 밝히고 진행하며 `lead_model`은 확인 전까지 null로 둔다.
 
@@ -48,10 +48,10 @@ description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검�
 1. 기억 계층이 켜져 있으면 `memory.mjs context`, 관련 주제로 `recall`을 먼저 본다. 확인된 것만 brief의 `prior_experience`에 넣는다. 그다음 저장소 지침, 관련 코드, 기존 dirty 변경을 확인한다. 계획을 결정하는 탐색만 리드가 하고, 구현 탐색과 테스트 반복은 일꾼에게 넘긴다. 안정적인 기준 ID(AC1, AC2…)로 수용 기준을 쓰고 `task_kind`/`difficulty`를 정한다. 필요하면 `router.mjs REPO BRIEF.json`으로 배치를 미리 본다.
 2. `node $HF_SKILL/scripts/setup-doctor.mjs $HF_REPO [--executor NAME]`. 선택된 일꾼과 대기 일꾼(bench) 모두의 CLI 상태가 나온다. 제어 파일(상태, brief, 스냅샷, lease)은 일꾼이 닿지 못하도록 작업 폴더 밖(`~/.hyperfusion/state/<저장소>-<해시>/`, `HF_STATE_DIR`로 변경)에 저장된다. 예전 `.fusion/`이 남아 있으면 doctor가 `LEGACY_CONTROL_DIR`로 알리고 새 작업을 막으므로 `fusion-state.mjs migrate $HF_REPO`로 먼저 옮긴다.
 3. `fusion-state.mjs init REPO BRIEF.json [--executor NAME]` 후 `begin`. 반환된 `command`/`args`(executor-bridge)를 호스트 Bash 도구로 **한 번** 실행한다. 저장된 CLI 인자를 직접 실행하지 않는다.
-4. 일꾼이 writer lease를 쥐고 있는 동안 리드는 대상 트리를 수정·빌드·테스트하지 않는다. 읽기 전용 조사나 다음 검수 준비만 한다. 소스 파일을 반복 폴링하지 않는다.
+4. 일꾼이 writer lease를 쥐고 있는 동안 리드는 대상 트리를 수정·빌드·테스트하지 않는다. 사용자가 리드 가드 훅을 설치했다면 이 규칙과 규칙 1은 훅이 Edit/Write를 막아 강제한다([operations.md](references/operations.md#리드-가드-훅)). 읽기 전용 조사나 다음 검수 준비만 한다. 소스 파일을 반복 폴링하지 않는다.
 5. 브리지 성공은 RESULT_READY일 뿐이다. 프로세스 정지를 확인하고 `finish`에 writer token과 `quiescent:true`만 넘긴다. 컨트롤러가 브리지의 `result-N.json`을 직접 읽는다. 리드 takeover 결과는 직접 전달한다. 오류는 [failure-protocol.md](references/failure-protocol.md), [recovery-protocol.md](references/recovery-protocol.md)를 따른다. launch 표식을 재실행하거나 lease를 훔치지 않는다.
 6. `review.by`가 `delegate`면 `delegate-review`로 판정을 맡기고 결과만 확인한다. `lead`면 중·고난도 작업에서 먼저 `consult` advisor로 다른 일꾼에게 diff를 검사시킨다. 그다음 findings를 단서로 실제 diff를 독립 검수한다([review-protocol.md](references/review-protocol.md)). `hint`가 committee를 권하면 교체 전에 위원회를 연다. 판정: `pass`, `redo`(같은 일꾼·같은 세션), `alternative`(다른 일꾼, 생략 시 배치 순서상 다음), `decision`(리드가 설계 결정), `takeover`(모든 일꾼 소진 후에만). 반려 사유는 다음 brief의 `lead_feedback`(문자열 또는 `{file, line, comment}`)으로 그대로 들이민다.
-7. VERIFY에서 리드가 직접 수용 테스트를 돌려 `verify`에 실제 증거를 기록한다. CLOSE만 성공이다. CLOSE/BLOCKED 정산은 컨트롤러가 자동으로 한다. 호스트의 리드 사용량을 추가할 때만 `metrics.mjs`를 다시 호출한다. 기억 계층이 켜져 있으면 `memory.mjs candidates`로 후보를 보고 `commit`으로 승인·기각한다. router가 이 기록으로 일꾼 실적을 배운다. 호스트가 리드 토큰 사용량을 제공하면 함께 넣는다([metrics-policy.md](references/metrics-policy.md)).
+7. VERIFY에서 수용 테스트 증거를 남긴다. brief에 `acceptance_commands`를 넣었으면 컨트롤러가 finish 직후와 VERIFY에서 직접 실행하므로 `verify`에는 `acceptance_satisfied:true`만 준다. 실패한 라운드는 리뷰 전에 일꾼에게 자동으로 되돌아가니 다음 `begin`에 `lead_feedback:"@review"`만 준다. 넣지 않았으면 리드가 직접 돌려 `tests`에 기록한다. CLOSE만 성공이다. CLOSE/BLOCKED 정산은 컨트롤러가 자동으로 한다. 호스트의 리드 사용량을 추가할 때만 `metrics.mjs`를 다시 호출한다. 기억 계층이 켜져 있으면 `memory.mjs candidates`로 후보를 보고 `commit`으로 승인·기각한다. router가 이 기록으로 일꾼 실적을 배운다. 호스트가 리드 토큰 사용량을 제공하면 함께 넣는다([metrics-policy.md](references/metrics-policy.md)).
 
 입력은 JSON 파일 또는 stdin(`-`)으로 받는다. 간단한 확인은 `status REPO --summary`, 라운드 기록은 `report REPO`를 쓴다. 작업별 비용·시간 상한, 별도 worktree 병렬 실행은 필요할 때만 [operations.md](references/operations.md)를 읽는다.
 
