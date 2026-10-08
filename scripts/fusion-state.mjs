@@ -8,6 +8,8 @@ import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
 import {atomic,immutable,read,repo,snapshot,changes,git} from './artifact.mjs';
 import {notify} from './notify.mjs';
+import {loadProject,saveProject,teamConfig,activeMilestone,settleTask} from './project.mjs';
+import {measure} from './metrics.mjs';
 import {workspaceOf,propose,deriveFromState} from './memory-policy.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
@@ -32,7 +34,20 @@ export function run(root,action,input={}) {
  try {
   s=fs.existsSync(sf)?read(sf):null;
   if(action==='init') {
-   const configuration=config(root);
+   let configuration=config(root);
+   // 프로젝트가 있으면 사용자가 승인한 팀으로, 현재 마일스톤에 계획된 작업만 시작한다.
+   const project=loadProject(root);let ptask=null;
+   if(project&&project.status!=='COMPLETE'){
+    if(project.status!=='ACTIVE')throw Error('PROJECT_NOT_APPROVED: show the team report to the user and record their approval (project.mjs approve)');
+    const ms=activeMilestone(project);
+    if(!ms){const due=project.milestones.find(m=>['checkpoint_due','reported'].includes(m.status));throw Error(due?`PROJECT_CHECKPOINT_PENDING: ${due.id} is finished; report the checkpoint and record the user's ack`:'No active milestone');}
+    ptask=ms.tasks.find(t=>t.id===input.task_id);
+    if(!ptask)throw Error(`Task ${input.task_id} is not in milestone ${ms.id}; planned: ${ms.tasks.filter(t=>t.status==='planned').map(t=>t.id).join(', ')||'none'} (add tasks with project.mjs amend)`);
+    if(ptask.status!=='planned')throw Error(`Project task ${ptask.id} is ${ptask.status}`);
+    configuration=teamConfig(project,configuration);
+    input={task_kind:ptask.kind,...(ptask.difficulty?{difficulty:ptask.difficulty}:{}),...input};
+    ptask={...ptask,milestone:ms.id,project:project.name};
+   }
    const requested=selectExecutor(configuration,input.executor);
    if(s&&!['CLOSE','ARCHIVED'].includes(s.phase))throw Error('Existing unfinished task; inspect/recover');
    contract.brief(input);
@@ -45,10 +60,12 @@ export function run(root,action,input={}) {
    const executor=routing.executor;
    const base=snapshot(root);
    s={schema_version:4,architecture:'opus-lead-v0.3',configuration,routing,initial_executor:executor,active_executor:executor,owner:null,
-    attempts:{grok:0,antigravity:0,sonnet:0,lead:0},sessions:{grok:null,antigravity:null,sonnet:null},task_id:input.task_id,phase:'PLAN',
+    attempts:{grok:0,antigravity:0,sonnet:0,luna:0,lead:0},sessions:{grok:null,antigravity:null,sonnet:null,luna:null},task_id:input.task_id,phase:'PLAN',
     lead:configuration.lead,lead_target_model:configuration.lead_model,lead_model:null,iteration:0,base_commit:base.head,baseline_dirty:!!base.status,
-    writer:null,reviews:[],escalations:[],result_failures:0,started_at:new Date().toISOString()};
-   art('initial-brief.json',input);art('baseline.json',base);save();return s;
+    writer:null,reviews:[],escalations:[],result_failures:0,started_at:new Date().toISOString(),...(ptask?{project:{name:ptask.project,milestone:ptask.milestone,task:ptask.id}}:{})};
+   art('initial-brief.json',input);art('baseline.json',base);save();
+   if(ptask){const p=loadProject(root),t=p.milestones.flatMap(m=>m.tasks).find(t=>t.id===ptask.id);t.status='active';t.started_at=s.started_at;saveProject(root,p);}
+   return s;
   }
   if(!s)throw Error('Initialize first');
   if(action==='archive') {
@@ -56,7 +73,9 @@ export function run(root,action,input={}) {
    if(writerHeld())assertLease(root,input.token);
    art(`archive-${crypto.randomUUID()}.json`,{reason:input.reason,previous:s,current:snapshot(root)});
    if(writerHeld())release(root,input.token);
-   s.writer=null;s.phase='ARCHIVED';save();return s;
+   s.writer=null;s.phase='ARCHIVED';save();
+   if(s.project)settleTask(root,s.task_id,'archived');
+   return s;
   }
   // 다른 스키마(main 브랜치의 Codex 리드 작업 포함)는 재해석하지 않는다.
   if(s.schema_version!==4){
@@ -65,6 +84,12 @@ export function run(root,action,input={}) {
   }
   const memoryOn=()=>!!workspaceOf(s.configuration);
   // 작업이 끝나면(CLOSE/BLOCKED) 실패→원인→수정→검증 흐름을 기억 후보로 뽑아 장부에 올린다.
+  // 작업이 끝나면(CLOSE/BLOCKED) 지표를 자동으로 남기고, 프로젝트 작업이면 마일스톤 진행을 갱신한다.
+  const settle=status=>{
+   try{measure(root);}catch{}
+   if(!s.project)return;
+   if(settleTask(root,s.task_id,status)==='checkpoint_due')notify(`HyperFusion ${s.project.name}`,`milestone ${s.project.milestone} finished; checkpoint report due`,{priority:'high'});
+  };
   const harvest=()=>{if(memoryOn())for(const c of deriveFromState(s,taskdir()))propose(root,s.task_id,[c],{role:'protocol',verified:c.verified});};
   const pool=()=>s.configuration.external.available;
   const budget=o=>s.attempts[o]<CAP[o];
@@ -296,7 +321,9 @@ export function run(root,action,input={}) {
    s.hint=e.hard&&s.phase==='ALTERNATIVE_REQUIRED'&&(s.consult_runs??0)+2<=CONSULT_CAP?{suggest:'consult',mode:'committee',reason:'repeated failure; get a root cause and plan before the next worker'}:null;
    if(s.phase==='BLOCKED')harvest();
    if(['BLOCKED','TAKEOVER_REQUIRED','DECISION_REQUIRED'].includes(s.phase))notify(`HyperFusion ${s.task_id}`,`needs the lead: ${s.phase} after ${s.owner} round ${s.iteration}`,{priority:'high'});
-   s.escalation_assessment=e;save();return s;
+   s.escalation_assessment=e;save();
+   if(s.phase==='BLOCKED')settle('blocked');
+   return s;
   }
   if(action==='review') {
    phase('REVIEW');
@@ -319,7 +346,7 @@ export function run(root,action,input={}) {
    if(!Array.isArray(input.tests)||!input.tests.length||!input.tests.every(t=>typeof t.command==='string'&&t.command.trim()&&t.status==='pass')||input.acceptance_satisfied!==true)throw Error('Passing verification evidence required');
    if(snapshot(root).digest!==s.post_digest){s.phase='RECOVERY_REQUIRED';save();throw Error('Tree drift during verification');}
    art('verification.json',input);s.phase='CLOSE';s.closed_at=new Date().toISOString();save();
-   harvest();return s;
+   harvest();settle('closed');return s;
   }
   if(action==='recover') {
    if(input.quiescent!==true||typeof input.reason!=='string'||!input.reason.trim())throw Error('Recovery requires stopped writers and rationale');

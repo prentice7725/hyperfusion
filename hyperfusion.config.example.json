@@ -7,15 +7,20 @@
     "available": [
       "grok",
       "antigravity",
-      "sonnet"
+      "sonnet",
+      "luna"
     ]
   },
   "executors": {
     "antigravity": {
       "sandbox": true
     },
-    "codex": {
+    "sol": {
+      "model": "gpt-6.1-sol",
       "reasoning_effort": "high"
+    },
+    "luna": {
+      "model": "gpt-6-luna"
     }
   },
   "routing": {
@@ -101,10 +106,11 @@
   "review": {
     "by": "lead",
     "reviewers": [
-      "codex",
+      "sol",
       "sonnet",
       "antigravity",
-      "grok"
+      "grok",
+      "luna"
     ],
     "auto_apply": true
   }

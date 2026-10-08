@@ -38,10 +38,13 @@
 - `--max-turns`는 일부 버전의 `--help`에 표시되지 않아 프로브하지 않는다(2.1.288에서 확인). 인자로는 넘기며, 인식하지 못하는 버전이면 실행이 실패로 끝난다.
 - 실행 파일 경로는 `HF_CLAUDE_BIN`(기본 `claude`).
 
-## Codex (`codex exec`, 리뷰·상담 전용)
+## Codex: Sol과 Luna (`codex exec`)
 
-- 구현 lease는 받지 않는다. 위임 리뷰와 advisor/committee에만 쓴다.
-- 인자: `exec --sandbox read-only --cd REPO --output-schema <스키마 파일> [--ephemeral] [-m MODEL] [-c model_reasoning_effort="…"] -`. 프롬프트는 stdin(`-`)으로 넘긴다. 스키마 파일은 브리지가 실행 직전에 만든다.
+같은 CLI로 두 팀원을 만든다. 모델과 권한만 다르다.
+- **Sol**(`gpt-6.1-sol`): 리뷰·상담 전용, 구현 lease를 받지 않음, 항상 `--sandbox read-only`.
+- **Luna**(`gpt-6-luna`): 구현 일꾼. 구현 라운드는 `--sandbox workspace-write`, 상담·리뷰는 `read-only`. 커밋 같은 저장소 조작은 sandbox가 막지 않으므로 HEAD/index 스냅샷 검사로 잡는다. 세션은 라운드마다 새로 열고, 이전 지적은 `lead_feedback`로 넘긴다.
+- 모델: `executors.sol.model`, `executors.luna.model`(기본값은 설치 환경에서 실제 ID를 확인할 것), 추론 강도 `reasoning_effort`.
+- 인자: `exec --sandbox <read-only|workspace-write> --cd REPO --output-schema <스키마 파일> [--ephemeral] -m MODEL [-c model_reasoning_effort="…"] -`. 프롬프트는 stdin(`-`)으로 넘긴다. 스키마 파일은 브리지가 실행 직전에 만든다.
 - `codex exec`는 진행 상황을 stderr로, 최종 메시지만 stdout으로 낸다. stdout의 JSON을 리뷰 계약으로 검증한다.
 - 프로브는 `codex exec --help`로 필수 플래그(`--sandbox`, `--output-schema`, `--cd`)를 확인한다. 세션은 이어 쓰지 않는다(리뷰마다 새로).
 - 사용량은 stderr로만 나와서 기록하지 않는다(null).

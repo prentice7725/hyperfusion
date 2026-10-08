@@ -5,6 +5,7 @@ import {adapter} from './adapters/index.mjs';
 import {repo,git,read} from './artifact.mjs';
 import {workspaceOf} from './memory-policy.mjs';
 import {stats as memoryStats} from './memory-store.mjs';
+import {status as projectStatus} from './project.mjs';
 
 // 실행 전 점검. 일꾼 CLI는 모두 프로브해서 교체 가능한 인력을 미리 파악한다.
 const checks=[];
@@ -49,5 +50,7 @@ if(c?.review.by==='delegate'){
 // 기억 계층은 선택 사항이라 실패해도 전체 점검을 막지 않는다.
 let memory=null;
 try{const w=c?workspaceOf(c):null;if(w)memory=memoryStats(w);}catch(e){memory={error:e.message};}
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,bench,reviewers,memory,review:c?.review??null,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
+let project=null;
+try{if(root)project=projectStatus(root);}catch(e){project={error:e.message};}
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,bench,reviewers,memory,project,review:c?.review??null,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;
