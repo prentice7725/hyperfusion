@@ -20,21 +20,21 @@ const delegated=(t,{review={},pool,executor='grok'}={})=>{
 const delegate=async(f,input={})=>{const c=run(f.root,'delegate-review',input);await consult(f.root,c.consult_id);return {c,out:run(f.root,'consult-finish',{quiescent:true})};};
 const argsOf=(f,name)=>read(path.join(f.root,`.fusion/fake-${name}-args.json`));
 
-test('a different model reviews the round and its verdict is applied; Codex goes first',async t=>{
+test('a different model reviews the round and its verdict is applied; Sol goes first',async t=>{
  const f=delegated(t);f.begin();f.finish();
  const {c,out}=await delegate(f);
- assert.equal(c.members[0].executor,'codex');
+ assert.equal(c.members[0].executor,'sol');
  assert.equal(out.review.status,'applied');assert.equal(out.review.verdict,'pass');assert.equal(f.state().phase,'VERIFY');
- const r=f.state().reviews[0];assert.equal(r.reviewed_by,'codex');assert.equal(r.owner,'grok');assert.equal(r.independent_diff_review,true);
+ const r=f.state().reviews[0];assert.equal(r.reviewed_by,'sol');assert.equal(r.owner,'grok');assert.equal(r.independent_diff_review,true);
  const a=argsOf(f,'codex');
  assert.equal(a[0],'exec');assert.equal(a[a.indexOf('--sandbox')+1],'read-only');assert.equal(a.at(-1),'-');
  assert.ok(fs.existsSync(a[a.indexOf('--output-schema')+1]));
  assert.equal(f.state().consult_runs??0,0);
 });
 test('nobody reviews their own round',async t=>{
- const f=delegated(t,{review:{reviewers:['sonnet','codex']},executor:'sonnet'});f.begin();f.finish();
+ const f=delegated(t,{review:{reviewers:['sonnet','sol']},executor:'sonnet'});f.begin();f.finish();
  assert.throws(()=>run(f.root,'delegate-review',{executors:['sonnet']}),/pick a different reviewer/);
- const {c}=await delegate(f);assert.equal(c.members[0].executor,'codex');
+ const {c}=await delegate(f);assert.equal(c.members[0].executor,'sol');
 });
 test('a redo verdict comes with file/line findings that "@review" forwards to the next worker',async t=>{
  const f=delegated(t);f.begin();f.finish();
@@ -54,13 +54,13 @@ test('with auto_apply off the lead adopts or overrides, and overrides are record
  const {out}=await delegate(f);
  assert.equal(out.review.status,'pending');assert.equal(f.state().phase,'REVIEW');
  const s=run(f.root,'review',{verdict:'redo',rationale:'Codex missed the empty-input case',blocking_criteria:['AC1'],commands_run:['git diff'],independent_diff_review:true});
- assert.equal(s.phase,'REDO');const r=s.reviews[0];assert.equal(r.reviewed_by,'lead');assert.equal(r.overrode,'codex');assert.equal(r.overrode_verdict,'pass');
+ assert.equal(s.phase,'REDO');const r=s.reviews[0];assert.equal(r.reviewed_by,'lead');assert.equal(r.overrode,'sol');assert.equal(r.overrode_verdict,'pass');
  assert.equal(measure(f.root).lead_overrides,1);
 });
 test('adopting a pending delegated verdict',async t=>{
  const f=delegated(t,{review:{auto_apply:false}});f.begin();f.finish();await delegate(f);
  assert.throws(()=>run(f.root,'review',{adopt:false,verdict:'pass'}),/Invalid review evidence/);
- const s=run(f.root,'review',{adopt:true});assert.equal(s.phase,'VERIFY');assert.equal(s.reviews[0].reviewed_by,'codex');assert.equal(s.reviews[0].adopted_by_lead,true);
+ const s=run(f.root,'review',{adopt:true});assert.equal(s.phase,'VERIFY');assert.equal(s.reviews[0].reviewed_by,'sol');assert.equal(s.reviews[0].adopted_by_lead,true);
  assert.equal(measure(f.root).delegated_reviews,1);
 });
 test('a crashed reviewer is replaced by the next one, then the round cap sends it back to the lead',async t=>{
@@ -103,21 +103,21 @@ test('code the lead wrote during a takeover is reviewed by another model too',as
  assert.equal(f.state().phase,'TAKEOVER_REQUIRED');
  f.begin({takeover_reason:'three rounds failed'});f.finish();
  const {c,out}=await delegate(f);
- assert.equal(c.members[0].executor,'codex');assert.equal(out.review.status,'applied');assert.equal(f.state().reviews.at(-1).owner,'lead');
+ assert.equal(c.members[0].executor,'sol');assert.equal(out.review.status,'applied');assert.equal(f.state().reviews.at(-1).owner,'lead');
 });
 test('Codex reviews and advises but never implements; config is validated',t=>{
  const f=fixture(t,{initialize:false});
- assert.throws(()=>selectExecutor(config(f.root),'codex'),/Executor must be/);
- for(const bad of [{review:{by:'robot'}},{review:{reviewers:['gpt']}},{review:{reviewers:[]}},{executors:{codex:{reasoning_effort:'turbo'}}}]){
+ assert.throws(()=>selectExecutor(config(f.root),'sol'),/only reviews/);
+ for(const bad of [{review:{by:'robot'}},{review:{reviewers:['gpt']}},{review:{reviewers:[]}},{executors:{sol:{reasoning_effort:'turbo'}}}]){
   fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify(bad));assert.throws(()=>config(f.root),/Invalid/,JSON.stringify(bad));
  }
- fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{codex:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
- assert.equal(config(f.root).executors.codex.model,'gpt-6.1-sol');
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sol:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
+ assert.equal(config(f.root).executors.sol.model,'gpt-6.1-sol');
 });
 test('Codex model and reasoning effort reach the CLI; Codex can sit on a committee',async t=>{
- const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{codex:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
+ const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sol:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
  run(f.root,'init',{...f.brief,executor:'grok'});
- const c=run(f.root,'consult',{mode:'committee',question:'Why?',executors:['codex','sonnet']});await consult(f.root,c.consult_id);run(f.root,'consult-finish',{quiescent:true});
+ const c=run(f.root,'consult',{mode:'committee',question:'Why?',executors:['sol','sonnet']});await consult(f.root,c.consult_id);run(f.root,'consult-finish',{quiescent:true});
  const a=argsOf(f,'codex');assert.equal(a[a.indexOf('-m')+1],'gpt-6.1-sol');assert.ok(a.includes('model_reasoning_effort="high"'));
 });
 test('review is the lead\'s by default; delegate-review only in REVIEW',t=>{
@@ -128,5 +128,5 @@ test('doctor checks reviewers when review is delegated',t=>{
  const f=delegated(t);
  const out=spawnSync(process.execPath,[fileURLToPath(new URL('../scripts/setup-doctor.mjs',import.meta.url)),f.root,'--executor','grok'],{encoding:'utf8'});
  const j=JSON.parse(out.stdout);
- assert.equal(j.checks.find(c=>c.name==='reviewers').ok,true);assert.ok(j.reviewers.some(r=>r.name==='codex'&&r.ok));
+ assert.equal(j.checks.find(c=>c.name==='reviewers').ok,true);assert.ok(j.reviewers.some(r=>r.name==='sol'&&r.ok));
 });

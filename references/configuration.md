@@ -29,7 +29,7 @@
 
 ## 리뷰 주체
 
-`"review": {"by": "lead" | "delegate", "reviewers": ["codex","sonnet","antigravity","grok"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. Codex 설정은 `executors.codex.model`(예: `gpt-6.1-sol`)과 `executors.codex.reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
+`"review": {"by": "lead" | "delegate", "reviewers": ["sol","sonnet","antigravity","grok","luna"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. Codex 팀원 설정은 `executors.sol` / `executors.luna`의 `model`과 `reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 기본 모델은 sol `gpt-6.1-sol`, luna `gpt-6-luna`이다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
 
 ## 기억 계층
 

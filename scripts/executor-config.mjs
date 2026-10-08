@@ -3,13 +3,13 @@ import path from 'node:path';
 import {read} from './artifact.mjs';
 import {workspaceOf} from './memory-policy.mjs';
 
-// 리드는 Claude Opus 5.5 하나로 고정. 일꾼은 Grok, Antigravity, Sonnet.
-export const EXECUTORS=['grok','antigravity','sonnet'];
-// 리뷰·상담만 하는 인력까지 포함한 명단. Codex는 쓰기 lease를 받지 않는다.
-export const REVIEWERS=['codex',...EXECUTORS];
+// 리드는 Claude Opus 5.5 하나로 고정. 구현 일꾼은 Grok, Antigravity, Sonnet, Luna(Codex).
+export const EXECUTORS=['grok','antigravity','sonnet','luna'];
+// 리뷰·상담만 하는 인력까지 포함한 명단. Sol(Codex)은 쓰기 lease를 받지 않는다.
+export const REVIEWERS=['sol',...EXECUTORS];
 // 위임 리뷰는 라운드당 이 횟수까지(리뷰어가 실패하면 한 번 더). 상담 예산과 별도다.
 export const REVIEW_RUNS_PER_ROUND=2;
-export const CAP={grok:3,antigravity:3,sonnet:3,lead:1};
+export const CAP={grok:3,antigravity:3,sonnet:3,luna:3,lead:1};
 // 상담(advisor 1명, committee 2명) 위원 실행 총량. 구현 예산과 별도다.
 export const CONSULT_CAP=4;
 export const TASK_KINDS=['code','ui','image-asset','tests','refactor','docs'];
@@ -28,11 +28,11 @@ export const DEFAULT_RULES=[
  {executors:['sonnet','grok','antigravity'],why:'분류 없는 작업의 기본 순서'}
 ];
 export const DEFAULT_CONFIG={lead:'opus',lead_model:'claude-opus-5-5',lead_takeover:true,
- external:{default:'auto',available:['grok','antigravity','sonnet']},
+ external:{default:'auto',available:['grok','antigravity','sonnet','luna']},
  executors:{antigravity:{sandbox:true}},
  routing:{rules:DEFAULT_RULES,learn:true,min_samples:3,demote_below:0.4},
  // 리뷰 주체. lead는 Opus가 직접, delegate는 다른 모델(기본 Codex 우선)이 읽기 전용으로 판정하고 그 판정을 적용한다.
- review:{by:'lead',reviewers:['codex','sonnet','antigravity','grok'],auto_apply:true}};
+ review:{by:'lead',reviewers:['sol','sonnet','antigravity','grok','luna'],auto_apply:true}};
 
 const validRule=r=>r&&Array.isArray(r.executors)&&r.executors.length&&r.executors.every(x=>EXECUTORS.includes(x))&&new Set(r.executors).size===r.executors.length
  &&(r.kind===undefined||TASK_KINDS.includes(r.kind))&&(r.difficulty===undefined||(Array.isArray(r.difficulty)&&r.difficulty.every(d=>DIFFICULTIES.includes(d))));
@@ -66,8 +66,9 @@ export function config(root) {
 export function selectExecutor(c,requested) {
  const name=requested??c.external.default;
  if(name==='auto')return 'auto';
- if(['claude','opus','luna'].includes(name))throw Error('Opus is the lead, not a worker. Executor must be grok, antigravity, sonnet or auto');
- if(!EXECUTORS.includes(name))throw Error('Executor must be grok, antigravity, sonnet or auto');
+ if(['claude','opus'].includes(name))throw Error('Opus is the lead, not a worker. Executor must be grok, antigravity, sonnet, luna or auto');
+ if(name==='sol')throw Error('Executor must be an implementer; sol only reviews and advises');
+ if(!EXECUTORS.includes(name))throw Error('Executor must be grok, antigravity, sonnet, luna or auto');
  if(!c.external.available.includes(name))throw Error('Executor not enabled in configuration: '+name);
  return name;
 }

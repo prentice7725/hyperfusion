@@ -4,7 +4,7 @@
 
 | 동작 / 상태 | 입력 / 결과 |
 |---|---|
-| init | brief(+task_kind, difficulty), 선택 executor 또는 auto → PLAN, 기준 스냅샷, 고정된 설정, 배치 결과(`routing`) |
+| init | (프로젝트가 있으면 승인된 상태 + 현재 마일스톤의 계획된 작업 ID만, 팀 설정 고정) brief(+task_kind, difficulty), 선택 executor 또는 auto → PLAN, 기준 스냅샷, 고정된 설정, 배치 결과(`routing`) |
 | begin (PLAN) | 기본 일꾼에게 lease와 dispatch |
 | begin (REDO) | 같은 일꾼·같은 세션. `lead_feedback` 필수 |
 | begin (ALTERNATIVE_REQUIRED) | `executor` 생략 시 배치 순서상 다음 일꾼, 지정 시 그 일꾼. `lead_feedback` 필수. 기존 세션이 있으면 재개 |

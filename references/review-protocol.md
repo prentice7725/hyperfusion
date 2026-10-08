@@ -30,16 +30,16 @@
 리드는 Opus 그대로 두고, 라운드 리뷰만 다른 모델에게 맡긴다. Opus가 diff를 정독하는 비용이 리드 토큰에서 가장 크기 때문이다.
 
 ```json
-{"review": {"by": "delegate", "reviewers": ["codex", "sonnet", "antigravity", "grok"], "auto_apply": true}}
+{"review": {"by": "delegate", "reviewers": ["sol", "sonnet", "antigravity", "grok", "luna"], "auto_apply": true}}
 ```
 
-1. `finish` 후 REVIEW에서 `fusion-state.mjs delegate-review REPO [INPUT.json]`을 실행한다. 입력은 생략할 수 있다. `{"executors":["codex"]}`로 리뷰어를 지정할 수 있다.
+1. `finish` 후 REVIEW에서 `fusion-state.mjs delegate-review REPO [INPUT.json]`을 실행한다. 입력은 생략할 수 있다. `{"executors":["sol"]}`로 리뷰어를 지정할 수 있다.
 2. 반환된 명령(브리지 `--consult <id>`)을 한 번 실행하고, `consult-finish REPO {"quiescent":true}`를 호출한다.
 3. `auto_apply: true`(기본)면 리뷰어의 판정(pass/redo/alternative/decision), 반려 사유, 파일·줄 지적이 그대로 적용된다. `false`면 `pending_review`로 남는다. 리드가 `review {"adopt":true}`로 채택하거나 자기 판정을 내린다.
 
 규칙:
 - **자기 작업은 자기가 리뷰하지 않는다.** 리뷰어는 그 라운드를 구현한 일꾼과 달라야 한다. 리드가 takeover로 직접 쓴 코드도 다른 모델이 리뷰한다.
-- **리뷰어 우선순위:** 기본 순서는 Codex(GPT, 리드와 다른 계열이라 교차 검증에 가장 유리) → Sonnet → Antigravity → Grok이다. 설치 안 된 리뷰어는 건너뛴다. Codex는 리뷰·상담만 하고 구현 lease는 받지 않는다.
+- **리뷰어 우선순위:** 기본 순서는 Sol(GPT-6.1 Sol via Codex, 리드와 다른 계열이라 교차 검증에 가장 유리) → Sonnet → Antigravity → Grok → Luna이다. 설치 안 된 리뷰어는 건너뛴다. Sol은 리뷰·상담만 하고 구현 lease는 받지 않는다. 프로젝트가 있으면 승인된 팀의 리뷰어 순서를 쓴다.
 - **리뷰는 읽기 전용이다.** 상담과 같은 장치로 돌고, 전후 스냅샷이 다르면 판정을 버리고 RECOVERY_REQUIRED로 간다.
 - **리드 전용 판정:** 리뷰어는 `takeover`를 낼 수 없다. `decision`을 내면 DECISION_REQUIRED가 되어 설계 판단은 리드가 한다.
 - **미완료 보고:** 일꾼이 미완료(`blocked` 등)라고 보고한 라운드는 리뷰어가 pass를 줘도 redo(`worker reported …`)로 바뀐다.

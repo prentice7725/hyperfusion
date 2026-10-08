@@ -64,7 +64,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes}) {
 export async function execute(root,{timeoutMs,maxBytes=8*1024*1024}={}) {
  root=repo(root);
  const state=read(path.join(root,'.fusion/state.json'));
- if(state.phase!=='EXECUTING'||!['grok','antigravity','sonnet'].includes(state.owner))throw Error('No active executor round');
+ if(state.phase!=='EXECUTING'||!['grok','antigravity','sonnet','luna'].includes(state.owner))throw Error('No active executor round');
  timeoutMs=timeoutFor(state,state.owner,timeoutMs);
  const dir=path.join(root,'.fusion/tasks',state.task_id),n=state.iteration;
  const request=read(path.join(dir,`dispatch-${n}.json`));

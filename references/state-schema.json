@@ -47,14 +47,16 @@
       "enum": [
         "grok",
         "antigravity",
-        "sonnet"
+        "sonnet",
+        "luna"
       ]
     },
     "active_executor": {
       "enum": [
         "grok",
         "antigravity",
-        "sonnet"
+        "sonnet",
+        "luna"
       ]
     },
     "owner": {
@@ -62,6 +64,7 @@
         "grok",
         "antigravity",
         "sonnet",
+        "luna",
         "lead",
         null
       ]
@@ -72,7 +75,8 @@
         "grok",
         "antigravity",
         "lead",
-        "sonnet"
+        "sonnet",
+        "luna"
       ],
       "properties": {
         "grok": {
@@ -91,6 +95,11 @@
           "maximum": 1
         },
         "sonnet": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "luna": {
           "type": "integer",
           "minimum": 0,
           "maximum": 3
@@ -114,6 +123,12 @@
           ]
         },
         "sonnet": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "luna": {
           "type": [
             "string",
             "null"
@@ -157,7 +172,7 @@
     "iteration": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 10
+      "maximum": 13
     },
     "base_commit": {
       "type": "string"
@@ -183,6 +198,7 @@
             "grok",
             "antigravity",
             "sonnet",
+            "luna",
             "lead"
           ]
         }
@@ -212,10 +228,11 @@
           "reviewed_by": {
             "enum": [
               "lead",
-              "codex",
+              "sol",
               "grok",
               "antigravity",
-              "sonnet"
+              "sonnet",
+              "luna"
             ]
           }
         }
@@ -267,7 +284,8 @@
           "enum": [
             "grok",
             "antigravity",
-            "sonnet"
+            "sonnet",
+            "luna"
           ]
         },
         "candidates": {
@@ -276,7 +294,8 @@
             "enum": [
               "grok",
               "antigravity",
-              "sonnet"
+              "sonnet",
+              "luna"
             ]
           }
         },
@@ -374,6 +393,25 @@
       "additionalProperties": {
         "type": "array",
         "items": {
+          "type": "string"
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "required": [
+        "name",
+        "milestone",
+        "task"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "milestone": {
+          "type": "string"
+        },
+        "task": {
           "type": "string"
         }
       }

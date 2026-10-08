@@ -2,9 +2,13 @@
 name: hyperfusion
 description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검수만 하고, 구현과 테스트는 작업 종류에 맞춰 고른 일꾼(Grok Build CLI, Antigravity CLI, Claude Code Sonnet)에게 시키는 오케스트레이션 스킬. 단일 writer, 감사 가능한 라운드 기록, 반려 시 구체적 명령서 필수, 같은 실수 반복 시 일꾼 교체. HyperFusion, Grok, Antigravity, agy, Sonnet에게 코딩이나 이미지 애셋 작업을 맡기라는 요청에 사용한다.
 ---
-# HyperFusion v0.8 — Opus 리드, Grok·Antigravity·Sonnet 일꾼
+# HyperFusion v0.9 — Opus 리드, Grok·Antigravity·Sonnet 일꾼
 
-**리드: Claude Opus 5.5 (`claude-opus-5-5`)**. 리드는 분해, 계획, 범위 확정, 반려, 최종 검증만 한다. **코드는 일꾼이 쓴다.** 일꾼은 Grok(`grok`), Antigravity(`agy`), Sonnet(`claude --model claude-sonnet-5-5` 하위 프로세스). 스킬은 호스트 모델을 바꿀 수 없다. 호스트가 Opus 5.5가 아니면 그렇다고 밝히고 진행하며 `lead_model`은 확인 전까지 null로 둔다.
+**리드: Claude Opus 5.5 (`claude-opus-5-5`)**. 리드는 분해, 계획, 범위 확정, 반려, 최종 검증만 한다. **코드는 일꾼이 쓴다.** 일꾼은 Grok(`grok`), Antigravity(`agy`), Sonnet(`claude --model claude-sonnet-5-5` 하위 프로세스), Luna(`codex exec`, 구현). Sol(`codex exec`, GPT-6.1 Sol)은 리뷰·상담만 한다. 스킬은 호스트 모델을 바꿀 수 없다. 호스트가 Opus 5.5가 아니면 그렇다고 밝히고 진행하며 `lead_model`은 확인 전까지 null로 둔다.
+
+## 프로젝트 시작: 팀 구성 보고 (먼저)
+
+새 프로젝트나 큰 기획을 받으면 작업부터 시작하지 않는다([project.md](references/project.md)). 기획 문서를 읽고, `project.mjs roster`로 팀원 상태를 보고 팀 구성안을 쓴다. 팀원은 Sonnet, Grok, Antigravity, Luna(Codex, 구현), Sol(Codex, 리뷰 전담)이다. 누가 무엇을 맡고, 누구를 왜 빼는지, 마일스톤과 체크포인트 기준까지 정한다. `propose`가 만든 보고서를 사용자에게 보여 주고 "이대로 갈지, 바꿀지"를 묻는다. 사용자가 승인하면 그 말을 그대로 `approve`에 남긴다. 고치라고 하면 `amend` 후 다시 보고한다. 승인 전에는 컨트롤러가 작업 시작을 거절한다. 마일스톤이 끝나면 `checkpoint` 보고를 하고, 사용자의 확인(`ack`)을 받아야 다음 마일스톤이 열린다.
 
 ## 배치 원칙 (능동 선택)
 
@@ -40,6 +44,7 @@ description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검�
 
 ## 절차
 
+0. 프로젝트 단위 작업이면 위의 팀 구성 보고와 승인을 먼저 끝낸다. 각 작업은 현재 마일스톤의 계획된 작업 ID로 시작한다.
 1. 기억 계층이 켜져 있으면 `memory.mjs context`, 관련 주제로 `recall`을 먼저 본다. 확인된 것만 brief의 `prior_experience`에 넣는다. 그다음 저장소 지침, 관련 코드, 기존 dirty 변경을 확인한다. 계획을 결정하는 탐색만 리드가 하고, 구현 탐색과 테스트 반복은 일꾼에게 넘긴다. 안정적인 기준 ID(AC1, AC2…)로 수용 기준을 쓰고 `task_kind`/`difficulty`를 정한다. 필요하면 `router.mjs REPO BRIEF.json`으로 배치를 미리 본다.
 2. `node $HF_SKILL/scripts/setup-doctor.mjs $HF_REPO [--executor NAME]`. 선택된 일꾼과 대기 일꾼(bench) 모두의 CLI 상태가 나온다. `git rev-parse --git-path info/exclude`가 가리키는 파일에 `/.fusion/`이 없으면 추가한다.
 3. `fusion-state.mjs init REPO BRIEF.json [--executor NAME]` 후 `begin`. 반환된 `command`/`args`(executor-bridge)를 호스트 Bash 도구로 **한 번** 실행한다. 저장된 CLI 인자를 직접 실행하지 않는다.
