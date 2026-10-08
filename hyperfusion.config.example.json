@@ -32,7 +32,7 @@
         "kind": "image-asset",
         "executors": [
           "grok",
-          "antigravity"
+          "luna"
         ]
       },
       {
@@ -97,7 +97,9 @@
           "antigravity"
         ]
       }
-    ]
+    ],
+    "half_life_days": 90,
+    "explore_every": 10
   },
   "memory": {
     "workspace": "hyperfusion",
@@ -113,5 +115,6 @@
       "luna"
     ],
     "auto_apply": true
-  }
+  },
+  "limits": {}
 }

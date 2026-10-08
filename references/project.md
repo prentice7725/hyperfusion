@@ -14,10 +14,10 @@
 | sonnet | claude-sonnet-5-5 | 핵심 구현: 중·고난도 코드, 테스트 설계, 리팩터 | `code:medium\|high`, `tests`, `refactor` |
 | grok | Grok CLI 기본 | 이미지 애셋 생성, 빠른 일반 구현 | `image-asset` |
 | antigravity | agy 기본 | UI·프론트엔드, 문서 | `ui`, `docs` |
-| luna | gpt-6-luna (Codex) | 쉬운 구현·소규모 수정, 기계적 대량 편집 | `code:low` |
+| luna | gpt-6-luna (Codex) | 쉬운 구현·소규모 수정, 기계적 대량 편집, 이미지 애셋 보조 | `code:low` |
 | sol | gpt-6.1-sol (Codex) | 리뷰 전담(판정 책임), 위원회 상담. 코드는 쓰지 않음 | 리뷰 |
 
-기본 역할은 출발점이다. 프로젝트마다 리드가 바꾼다. Sol과 Luna의 모델 ID는 `executors.sol.model`, `executors.luna.model`로 바꾼다(설치 환경에서 실제 ID를 확인할 것).
+`image-asset`은 이미지 생성 기능이 있는 grok·luna만 담당할 수 있다. 담당자가 없어도 팀에 둘 중 하나가 있으면 그쪽으로 배치하고, 둘 다 없으면 계획 경고가 뜬다. 기본 역할은 출발점이다. 프로젝트마다 리드가 바꾼다. Sol과 Luna의 모델 ID는 `executors.sol.model`, `executors.luna.model`로 바꾼다(설치 환경에서 실제 ID를 확인할 것).
 
 ## 1. 구성안 작성 (`propose`)
 

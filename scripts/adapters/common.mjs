@@ -2,6 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {resolveExecutable} from '../platform.mjs';
 import {controlRoot} from '../control-dir.mjs';
 import {checkBashRules} from '../bash-policy.mjs';
+import {PROTOCOL,VERSION} from '../versions.mjs';
 
 // 외부 일꾼(Grok, Antigravity)이 공통으로 따르는 결과 계약과 지시문.
 export function resultSchema(task_id,round) {
@@ -63,11 +64,11 @@ const READ_ONLY=['This is a READ-ONLY consultation. Do not create, edit, move or
 export function prompt(brief,lease) {
  if(brief.consult){
   const c=brief.consult;
-  return JSON.stringify({protocol:'hyperfusion-opus-lead-v0.5/consult',lead:'Claude Opus 5.5',worker:lease.owner,brief,
+  return JSON.stringify({protocol:PROTOCOL+'/consult',package_version:VERSION,lead:'Claude Opus 5.5',worker:lease.owner,brief,
    result_template:{task_id:brief.task_id,consult_id:c.id,member:c.member,summary:'Describe what you checked and concluded',findings:[],root_cause:'',plan:[],recommended_verdict:c.mode==='review'?'redo':'none',confidence:'low',...(c.mode==='review'?{blocking_criteria:[]}:{})},
    result_rules:CONSULT_RULES,instructions:[...CONSULT_ORDERS[c.mode],...READ_ONLY,PRIOR]});
  }
- return JSON.stringify({protocol:'hyperfusion-opus-lead-v0.5',lead:'Claude Opus 5.5',worker:lease.owner,brief,
+ return JSON.stringify({protocol:PROTOCOL,package_version:VERSION,lead:'Claude Opus 5.5',worker:lease.owner,brief,
  result_template:{task_id:brief.task_id,round:brief.round,status:'complete',summary:'Describe actual outcome',files_read:[],files_changed:[],commands_run:[],tests:[],unresolved:[],risks:[],needs_lead_decision:false,recommended_next_action:'review'},
  result_rules:IMPLEMENT_RULES,instructions:IMPLEMENT_ORDERS});
 }
@@ -92,11 +93,18 @@ export function probe(name,binary,requiredFlags,optionalFlags=[],{help:helpArgs=
  };
  const version=run('--version').trim().split(/\r?\n/)[0];
  const help=run(...helpArgs);
- const missing=requiredFlags.filter(f=>!help.includes(f));
+ const missing=requiredFlags.filter(f=>!hasOption(help,f));
  // 어떤 파일이 잡혔고 무엇을 출력했는지 남겨야 엉뚱한 실행 파일(IDE 실행기 등)을 알아챌 수 있다.
- if(missing.length)throw Error(`ADAPTER_UNAVAILABLE: missing ${name} flags ${missing.join(', ')} (resolved ${shown}, version "${version}", help starts "${help.trim().split(/\r?\n/).slice(0,2).join(' | ').slice(0,160)}")`);
- const supports=Object.fromEntries(optionalFlags.map(f=>[f,help.includes(f)]));
- return {executable,prefix_args,version,platform:process.platform,supports,authentication:'not verified by local probe'};
+ if(missing.length){const e=Error(`ADAPTER_UNAVAILABLE: missing ${name} flags ${missing.join(', ')} (resolved ${shown}, version "${version}", help starts "${help.trim().split(/\r?\n/).slice(0,2).join(' | ').slice(0,160)}")`);e.probe={executable,prefix_args,version,help,missing};throw e;}
+ const supports=Object.fromEntries(optionalFlags.map(f=>[f,hasOption(help,f)]));
+ const result={executable,prefix_args,version,platform:process.platform,supports,authentication:'not verified by local probe'};
+ Object.defineProperty(result,'help',{value:help});
+ return result;
+}
+
+export function hasOption(help,option) {
+ const escaped=option.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+ return new RegExp(`(^|[^\\w-])${escaped}(?![\\w-])`,'m').test(help);
 }
 
 // 스키마 강제가 없는 CLI는 최종 텍스트에서 결과 JSON을 꺼낸다. 마지막 ```json 블록 또는 본문 전체만 인정한다.

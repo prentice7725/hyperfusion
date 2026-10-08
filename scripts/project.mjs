@@ -1,9 +1,10 @@
+import {readInput,printError} from './cli.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {isMain} from './platform.mjs';
 import {read,atomic,repo,hash} from './artifact.mjs';
 import {safePath} from './contracts.mjs';
-import {config,EXECUTORS,REVIEWERS,TASK_KINDS,DIFFICULTIES} from './executor-config.mjs';
+import {config,EXECUTORS,REVIEWERS,TASK_KINDS,DIFFICULTIES,IMAGE_EXECUTORS} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {matchRule} from './router.mjs';
 import {controlPath,ensureControl,acquireLock} from './control-dir.mjs';
@@ -16,7 +17,7 @@ export const CATALOG={
  sonnet:{model:'claude-sonnet-5-5',role:'핵심 구현: 중·고난도 코드, 테스트 설계, 리팩터',owns:['code:medium|high','tests','refactor']},
  grok:{model:null,role:'이미지 애셋 생성, 빠른 일반 구현',owns:['image-asset']},
  antigravity:{model:null,role:'UI·프론트엔드, 문서',owns:['ui','docs']},
- luna:{model:'gpt-6-luna',role:'쉬운 구현·소규모 수정, 기계적 대량 편집',owns:['code:low']},
+ luna:{model:'gpt-6-luna',role:'쉬운 구현·소규모 수정, 기계적 대량 편집, 이미지 애셋 보조',owns:['code:low']},
  sol:{model:'gpt-6.1-sol',role:'리뷰 전담(판정 책임), 위원회 상담',owns:[]}
 };
 export const MEMBERS=Object.keys(CATALOG);
@@ -57,6 +58,7 @@ export function validatePlan(root,plan) {
   if(!str(t.role)||!str(t.why))throw Error(`Team member ${t.member} needs role and why`);
   if(!Array.isArray(t.owns))throw Error(`Team member ${t.member} needs owns (task kinds, may be empty)`);
   t.owns.forEach(parseOwn);
+  if(!IMAGE_EXECUTORS.includes(t.member)&&t.owns.some(o=>parseOwn(o).kind==='image-asset'))throw Error(`${t.member} cannot generate images; image-asset can be owned only by ${IMAGE_EXECUTORS.join(', ')}`);
   if(t.member==='sol'&&t.owns.length)throw Error('sol reviews and advises only; it cannot own task kinds');
   if(t.member!=='sol'&&!t.owns.length)warnings.push(`${t.member}: 담당 작업 종류가 없어 예비 인력으로만 투입됨`);
  }
@@ -94,7 +96,8 @@ function checkTask(t,taskIds,rules,warnings) {
  if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(t?.id??'')||taskIds.has(t.id))throw Error('Task ids must be unique valid task_ids: '+t?.id);taskIds.add(t.id);
  if(!str(t.title)||!TASK_KINDS.includes(t.kind)||(t.difficulty!==undefined&&!DIFFICULTIES.includes(t.difficulty)))throw Error(`Task ${t.id} needs title and a valid kind/difficulty`);
  // 종류가 있는 규칙에 맞지 않고 마지막 기본 규칙으로 떨어지면 담당자가 없는 작업이다.
- if(matchRule(rules,{task_kind:t.kind,difficulty:t.difficulty}).kind===undefined)warnings.push(`${t.id}: ${t.kind}${t.difficulty?'/'+t.difficulty:''} 담당자가 없어 팀 기본 순서로 배치됨`);
+ if(t.kind==='image-asset'&&!matchRule(rules,{task_kind:t.kind}).executors.some(e=>IMAGE_EXECUTORS.includes(e)))warnings.push(`${t.id}: 이미지 생성 가능한 일꾼(${IMAGE_EXECUTORS.join(', ')})이 팀에 없음`);
+ else if(matchRule(rules,{task_kind:t.kind,difficulty:t.difficulty}).kind===undefined)warnings.push(`${t.id}: ${t.kind}${t.difficulty?'/'+t.difficulty:''} 담당자가 없어 팀 기본 순서로 배치됨`);
 }
 
 // 팀의 담당(owns)을 배치 규칙으로 바꾼다. 난이도가 정해진 규칙이 같은 종류의 일반 규칙보다 먼저 맞는다.
@@ -108,7 +111,10 @@ export function teamRules(plan) {
   groups.get(key).members.push(t.member);
  }
  const rules=[...groups.values()].sort((a,b)=>(b.difficulty?1:0)-(a.difficulty?1:0))
-  .map(g=>({kind:g.kind,...(g.difficulty?{difficulty:g.difficulty}:{}),executors:[...g.members,...implementers.filter(m=>!g.members.includes(m))],why:'승인된 팀 구성'}));
+  .map(g=>({kind:g.kind,...(g.difficulty?{difficulty:g.difficulty}:{}),executors:[...g.members,...implementers.filter(m=>!g.members.includes(m)&&(g.kind!=='image-asset'||IMAGE_EXECUTORS.includes(m)))],why:'승인된 팀 구성'}));
+ // 이미지 담당이 없어도 팀에 이미지 생성 가능한 일꾼이 있으면 그쪽으로 보낸다.
+ const painters=implementers.filter(m=>IMAGE_EXECUTORS.includes(m));
+ if(painters.length&&!groups.has('image-asset:*'))rules.push({kind:'image-asset',executors:painters,why:'이미지 생성 가능한 일꾼'});
  rules.push({executors:implementers,why:'팀 기본 순서'});
  return rules;
 }
@@ -298,7 +304,7 @@ export function status(root) {
 if(isMain(import.meta.url)) {
  try{
   const [cmd,root,arg]=process.argv.slice(2);
-  const input=()=>arg?read(arg):{};
+  const input=()=>readInput(arg);
   const out={roster:()=>roster(root),propose:()=>propose(root,input()),report:()=>({report:teamReport(repo(root))}),approve:()=>approve(root,input()),
    amend:()=>amend(root,input()),checkpoint:()=>checkpoint(root),ack:()=>ack(root,input()),status:()=>status(root)}[cmd];
   if(!out)throw Error('Usage: project.mjs roster|propose PLAN.json|report|approve INPUT.json|amend CHANGES.json|checkpoint|ack INPUT.json|status  (each takes REPO first)');
@@ -306,5 +312,5 @@ if(isMain(import.meta.url)) {
   // 보고서는 사람이 읽을 수 있게 그대로 출력하고, 나머지는 JSON으로.
   if(r?.report&&Object.keys(r).length<=6){const {report,...rest}=r;console.log(JSON.stringify(rest,null,2));console.log('\n'+report);}
   else console.log(JSON.stringify(r,null,2));
- }catch(e){console.error(e.message);process.exitCode=1;}
+ }catch(e){printError(e);}
 }

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isMain,resolveExecutable} from './platform.mjs';
-import {config,selectExecutor,CAP,CONSULT_CAP,REVIEWERS,REVIEW_RUNS_PER_ROUND} from './executor-config.mjs';
+import {config,selectExecutor,CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
 import {atomic,immutable,read,repo,snapshot,changes,git,SAFE_DIFF} from './artifact.mjs';
@@ -13,6 +13,11 @@ import {loadProject,saveProject,teamConfig,activeMilestone,settleTask} from './p
 import {measure} from './metrics.mjs';
 import {workspaceOf,propose,deriveFromState} from './memory-policy.mjs';
 import * as contract from './contracts.mjs';
+import {readInput,printError} from './cli.mjs';
+import {SCHEMA_VERSION,ARCHITECTURE,VERSION} from './versions.mjs';
+import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
+import {report} from './report.mjs';
+import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
 import {ensureControl,isLegacy,migrate,controlRoot,acquireLock} from './control-dir.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
@@ -47,9 +52,6 @@ function openControl(root) {
     return fs.existsSync(file)?read(file):null;
   };
   c.writerHeld=()=>fs.existsSync(path.join(dir,'locks/writer.json'));
-  c.requirePhase=(...values)=>{
-    if(!values.includes(c.s.phase))throw Error(`Invalid phase ${c.s.phase} for ${c.action}`);
-  };
 
   // 일꾼 예산과 교체 순서
   c.pool=()=>c.s.configuration.external.available;
@@ -155,7 +157,8 @@ const NEEDS_LEAD=['BLOCKED','TAKEOVER_REQUIRED','DECISION_REQUIRED'];
 
 function afterTransition(c,before) {
   const s=c.s;
-  if(!s||s.schema_version!==4||s.phase===before)return;
+  if(!s||s.schema_version!==SCHEMA_VERSION||s.phase===before)return;
+  if(['CLOSE','BLOCKED'].includes(s.phase)){s.ended_at=new Date().toISOString();c.save();}
   if(s.phase==='CLOSE')finalizeTask(c,'closed');
   if(s.phase==='BLOCKED')finalizeTask(c,'blocked');
   if(NEEDS_LEAD.includes(s.phase)){
@@ -199,8 +202,9 @@ function init(c,input) {
     throw Error(`LEGACY_CONTROL_DIR: records are inside the workspace (${controlRoot(c.root)}), where workers can edit them. Run: node fusion-state.mjs migrate REPO`);
   }
   // 끝난 작업(완료, 막힘, 보관) 뒤에는 새 작업을 시작할 수 있다. 막힌 작업의 기록은 그대로 남는다.
-  if(c.s&&!['CLOSE','ARCHIVED','BLOCKED'].includes(c.s.phase))throw Error('Existing unfinished task; inspect/recover');
-  contract.brief(input);
+  if(c.s&&!TERMINAL_PHASES.includes(c.s.phase))throw Error('Existing unfinished task; inspect/recover');
+  input=contract.brief(input);
+  const limits=validateLimits({...configuration.limits,...validateLimits(input.limits)});
   if(c.writerHeld())throw Error('Existing writer; recover first');
   if(fs.existsSync(path.join(c.dir,'tasks',input.task_id)))throw Error('Task ID already used');
 
@@ -220,10 +224,10 @@ function init(c,input) {
   const executor=routing.executor;
   const base=snapshot(c.root);
   c.s={
-    schema_version:4,architecture:'opus-lead-v0.3',configuration,routing,
+    schema_version:SCHEMA_VERSION,architecture:ARCHITECTURE,package_version:VERSION,configuration,routing,limits,
     initial_executor:executor,active_executor:executor,owner:null,
-    attempts:{grok:0,antigravity:0,sonnet:0,luna:0,lead:0},
-    sessions:{grok:null,antigravity:null,sonnet:null,luna:null},
+    attempts:Object.fromEntries([...EXECUTORS,'lead'].map(e=>[e,0])),
+    sessions:Object.fromEntries(EXECUTORS.map(e=>[e,null])),
     task_id:input.task_id,phase:'PLAN',
     lead:configuration.lead,lead_target_model:configuration.lead_model,lead_model:null,
     iteration:0,base_commit:base.head,baseline_dirty:!!base.status,
@@ -263,8 +267,10 @@ function archive(c,input) {
   return s;
 }
 
-function status(c) {
+function status(c,input={}) {
   const s=c.s;
+  const remaining=Object.fromEntries(Object.keys(CAP).map(k=>[k,CAP[k]-s.attempts[k]]));
+  if(input.summary===true)return {task_id:s.task_id,phase:s.phase,owner:s.owner,remaining,next_action:nextAction(s.phase,!!s.open_consult)};
   return {
     ...s,
     lease_present:c.writerHeld(),
@@ -272,7 +278,7 @@ function status(c) {
     remaining:Object.fromEntries(Object.keys(CAP).map(k=>[k,CAP[k]-s.attempts[k]])),
     consult_remaining:CONSULT_CAP-(s.consult_runs??0),
     // 설정에는 있지만 이 PC에 설치되지 않았거나 플래그가 맞지 않는 일꾼. 배치와 takeover 판단에서 빠진다.
-    unavailable:c.unavailable()
+    unavailable:c.unavailable(),budget:budgetStatus(c.root,s)
   };
 }
 
@@ -282,10 +288,9 @@ function consult(c,input) {
   const s=c.s;
   const mode=input.mode;
   if(!['advisor','committee','review'].includes(mode))throw Error('Consult mode must be advisor, committee or review');
-  if(mode==='review')c.requirePhase('REVIEW');
-  else c.requirePhase('PLAN','REVIEW','REDO','ALTERNATIVE_REQUIRED','DECISION_REQUIRED');
   if(c.writerHeld())throw Error('Writer still present; recover');
 
+  assertBudget(c.root,s);
   if(mode==='review'){
     input={question:`Review round ${s.iteration} by ${s.owner} against every success criterion and give the verdict.`,...input};
     if((s.review_runs?.[s.iteration]??0)>=REVIEW_RUNS_PER_ROUND){
@@ -467,9 +472,10 @@ function applyDelegatedReview(c,open,member,result) {
 
 function begin(c,input) {
   const s=c.s;
-  c.requirePhase('PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED');
-  contract.brief(input);
+  input=contract.brief(input);
   if(input.task_id!==s.task_id)throw Error('Task ID mismatch');
+  if(c.writerHeld())throw Error('Writer still present; recover');
+  try{assertBudget(c.root,s);}catch(e){if(e.code==='BUDGET_EXCEEDED'){s.phase='BLOCKED';s.budget_error=e.message;c.save();}throw e;}
 
   let owner;
   if(s.phase==='TAKEOVER_REQUIRED'){
@@ -561,11 +567,14 @@ function begin(c,input) {
 
 function finish(c,input) {
   const s=c.s;
-  c.requirePhase('EXECUTING');
   assertLease(c.root,input.token);
   if(input.quiescent!==true)throw Error('Confirm worker and children stopped');
 
   const n=s.iteration;
+  if(input.result===undefined){
+    if(s.owner==='lead')throw Error('Lead takeover finish requires an explicit result');
+    input={...input,result:read(path.join(c.taskdir(),`result-${n}.json`))};
+  }
   const base=read(path.join(c.taskdir(),`base-${n}.json`));
   const post=snapshot(c.root);
   c.art(`raw-result-${n}.json`,input.result??null);
@@ -682,7 +691,6 @@ function applyReview(c,input) {
 }
 
 function review(c,input) {
-  c.requirePhase('REVIEW');
   if(c.writerHeld())throw Error('Writer still present; recover');
   // adopt: 보류된 위임 판정을 그대로 채택. 아니면 리드 자신의 판정(위임 판정이 있었다면 덮어쓴 것으로 기록).
   if(input.adopt===true){
@@ -697,7 +705,6 @@ function review(c,input) {
 
 function decide(c,input) {
   const s=c.s;
-  c.requirePhase('DECISION_REQUIRED');
   if(typeof input.decision!=='string'||!input.decision.trim())throw Error('Record architecture decision');
   c.art(`decision-${s.iteration}.json`,input);
   s.phase=s.owner!=='lead'&&c.canWork(s.owner)?'REDO':c.exhausted();
@@ -707,7 +714,6 @@ function decide(c,input) {
 
 function verify(c,input) {
   const s=c.s;
-  c.requirePhase('VERIFY');
   const passing=Array.isArray(input.tests)&&input.tests.length
     &&input.tests.every(t=>typeof t.command==='string'&&t.command.trim()&&t.status==='pass')
     &&input.acceptance_satisfied===true;
@@ -743,7 +749,6 @@ function recover(c,input) {
   }
   // 범위 밖에 남은 파일을 리드가 알고 받아들이는 경우. 상태를 바꾸기 전에 입력부터 검사한다.
   const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope);
-  c.requirePhase('PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED','EXECUTING','RECOVERY_REQUIRED','REVIEW');
   if(['PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED'].includes(s.phase)){
     // 디스패치 전에 컨트롤러가 죽어 남은 고아 lease. 소모된 시도는 되돌리지 않는다.
     const orphan=assertLease(c.root,input.token);
@@ -804,18 +809,20 @@ function dispatch(c,action,input) {
   if(action==='archive')return archive(c,input);
 
   // 다른 스키마(main 브랜치의 Codex 리드 작업 포함)는 재해석하지 않는다.
-  if(c.s.schema_version!==4){
+  if(c.s.schema_version!==SCHEMA_VERSION){
     if(action==='status'){
       return {...c.s,legacy:true,next_action:'Confirm all processes stopped and archive with evidence; do not reinterpret an active lease'};
     }
     throw Error('LEGACY_STATE: inspect status; confirm stopped writers then archive with a reason before creating an Opus-led task');
   }
-  if(action==='status')return status(c);
+  if(action==='status')return status(c,input);
+  if(action==='report')return report(c.root,input.task_id??c.s.task_id);
 
   // 상담 중에는 다음 수를 두지 않는다. 결과를 보고 판단한다.
   if(c.s.open_consult&&action!=='consult-finish'){
     throw Error('Consult '+c.s.open_consult.id+' in progress; run its bridge, then consult-finish');
   }
+  assertAction(c.s.phase,action,input);
   // 위임 리뷰: 이번 라운드를 구현하지 않은 다른 모델이 읽기 전용으로 판정한다. 상담 장치를 그대로 쓴다.
   if(action==='delegate-review'){
     action='consult';
@@ -829,21 +836,23 @@ function dispatch(c,action,input) {
 
 if(isMain(import.meta.url)) {
   try {
-    const [action,root,file,...flags]=process.argv.slice(2);
+    const [action,root,...rest]=process.argv.slice(2);
+    const file=rest[0]&&!rest[0].startsWith('--')?rest.shift():undefined;
+    const flags=rest;
     if(!action||!root)throw Error('Usage: node fusion-state.mjs ACTION REPO_ROOT [INPUT.json] [--executor NAME]');
     // migrate는 상태가 없어도 되고 컨트롤러 잠금도 쓰지 않는다(옮기는 대상이 잠금 폴더 자체이기 때문).
     if(action==='migrate'){
       console.log(JSON.stringify(migrate(repo(root)),null,2));
       process.exit(0);
     }
-    const input=file?read(file):{};
+    const input=readInput(file);
+    if(action==='status'&&flags[0]==='--summary'&&flags.length===1){input.summary=true;flags.length=0;}
     if(flags.length){
       if(action!=='init'||flags.length!==2||flags[0]!=='--executor')throw Error('Only init accepts --executor NAME');
       input.executor=flags[1];
     }
     console.log(JSON.stringify(run(root,action,input),null,2));
   } catch(e){
-    console.error(e.message);
-    process.exitCode=1;
+    printError(e);
   }
 }

@@ -38,6 +38,7 @@ test('a plan must decide on every member, give reasons, and keep Sol a reviewer'
  assert.throws(()=>project.propose(f.root,plan({excluded:[]})),/Decide on every member.*antigravity/);
  assert.throws(()=>project.propose(f.root,plan({sources:['docs/missing.md']})),/sources/);
  const bad=plan();bad.team[3]={...bad.team[3],owns:['code']};assert.throws(()=>project.propose(f.root,bad),/sol reviews/);
+ const painter=plan();painter.team[0]={...painter.team[0],owns:[...painter.team[0].owns,'image-asset']};assert.throws(()=>project.propose(f.root,painter),/cannot generate images/);
  const noWhy=plan();delete noWhy.team[0].why;assert.throws(()=>project.propose(f.root,noWhy),/role and why/);
  const both=plan({excluded:[{member:'sonnet',why:'x'},{member:'antigravity',why:'x'}]});assert.throws(()=>project.propose(f.root,both),/both on the team/);
 });
@@ -116,7 +117,7 @@ test('changing the team needs re-approval; adding a task to the running mileston
  assert.throws(()=>task(f,'T1'),/PROJECT_NOT_APPROVED/);
  project.approve(f.root,{user_message:'좋아'});
  assert.deepEqual(task(f,'T1').configuration.external.available,['sonnet','luna']);
- assert.match(project.teamReport(f.root),/T3 표지 \| image-asset \| - \| sonnet/);
+ assert.match(project.teamReport(f.root),/T3 표지 \| image-asset \| - \| luna/);
 });
 test('a checkpoint ack can carry the user\'s team change',t=>{
  const f=approved(t);project.amend(f.root,{drop_tasks:[{id:'T2',why:'later'}]});

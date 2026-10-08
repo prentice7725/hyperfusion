@@ -1,3 +1,4 @@
+import {readInput,printError} from './cli.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {isMain} from './platform.mjs';
@@ -30,7 +31,8 @@ export function measure(root,observations=null) {
   worker_usage:usage,worker_rounds:Object.fromEntries(EXECUTORS.map(e=>[e,byExecutor(e).length])),
   worker_cost_estimate_usd:usage.length&&usage.every(u=>known(u.total_cost_usd))?usage.reduce((a,u)=>a+u.total_cost_usd,0):null,
   review_rounds:s.reviews.length,delegation_count:s.iteration,escalation_count:s.escalations.length,lead_takeovers:s.attempts?.lead??0,
-  wall_ms:s.closed_at?Date.parse(s.closed_at)-Date.parse(s.started_at):null,
+  started_at:s.started_at,ended_at:s.ended_at??s.closed_at??null,
+  wall_ms:s.ended_at||s.closed_at?Date.parse(s.ended_at??s.closed_at)-Date.parse(s.started_at):null,
   measurement_note:'Unknown usage stays null. Antigravity reports no cost, so mixed tasks have null worker cost. Failed tasks count in the numerator. Run this at CLOSE and BLOCKED so the router learns.'};
  atomic(controlPath(root,'metrics',s.task_id+'.json'),v);return v;
 }
@@ -42,9 +44,15 @@ export function aggregate(records) {
   lead_takeover_rate:records.length?records.filter(r=>r.lead_takeovers>0).length/records.length:null,
   usage_coverage:records.length?records.filter(r=>r.lead_usage!==null).length/records.length:0};
 }
+export function aggregateRepo(root) {
+ const dir=controlPath(root,'metrics');
+ return aggregate(fs.existsSync(dir)?fs.readdirSync(dir).filter(f=>f.endsWith('.json')).map(f=>read(path.join(dir,f))):[]);
+}
 if(isMain(import.meta.url)) {
  try {
   const [root,observations]=process.argv.slice(2);if(!root)throw Error('Usage: metrics.mjs REPO_ROOT [TASK_USAGE.json] | --aggregate METRICS.json ...');
-  console.log(JSON.stringify(root==='--aggregate'?aggregate(process.argv.slice(3).map(read)):measure(root,observations?read(observations):null),null,2));
- }catch(e){console.error(e.message);process.exitCode=1;}
+  const inputs=process.argv.slice(3);
+  const aggregated=root==='--aggregate'&&inputs.length===1&&fs.statSync(inputs[0]).isDirectory()?aggregateRepo(inputs[0]):root==='--aggregate'?aggregate(inputs.map(read)):measure(root,observations?readInput(observations):null);
+  console.log(JSON.stringify(aggregated,null,2));
+ }catch(e){printError(e);}
 }

@@ -16,11 +16,11 @@
 | **Opus（リード）** | claude-opus-5-5 | チーム編成、計画、差し戻し、最終検収。ワーカーが残っている限りコードは書かない |
 | Sonnet | claude-sonnet-5-5 | 中・高難度のコード、テスト、リファクタ |
 | Grok | Grok CLI | 画像アセット、易しい実装 |
-| Antigravity | agy | UI・フロントエンド、ドキュメント |
-| Luna | gpt-6-luna（Codex） | 小規模な修正、機械的な大量編集 |
+| Antigravity | agy | UI・フロントエンド、ドキュメント（画像生成機能なし） |
+| Luna | gpt-6-luna（Codex） | 小規模な修正、機械的な大量編集、画像アセットの補助 |
 | Sol | gpt-6.1-sol（Codex） | レビュー・委員会相談専任。コードは書かない |
 
-基本の配置は出発点です。プロジェクトごとにリードが変更し、同じ種類の作業で合格率が低いワーカーは自動で後ろに回されます。未インストールのワーカーは飛ばされます。実行前のCLI確認が一時的に失敗しても試行予算を消費せず再試行できます。担当ワーカーの実行ファイルがなくなった場合は別のワーカーに交代できます。
+基本の配置は出発点です。プロジェクトごとにリードが変更し、種類・難易度別の実績に時間減衰と再探索を適用して配置を調整します。未インストールのワーカーは飛ばされます。実行前のCLI確認が一時的に失敗しても試行予算を消費せず再試行できます。担当ワーカーの実行ファイルがなくなった場合は別のワーカーに交代できます。
 
 ## 特徴
 
@@ -32,6 +32,8 @@
 - **相談。** ワーカー1人（advisor）が先にdiffを検査するか、2人（committee）が繰り返す失敗の原因を分析します。読み取り専用で、相談前後のスナップショットで保証します。→ [consult](references/consult.md)
 - **内蔵の記憶層。** 試行錯誤（エラー、手順、経験）を外部サーバーなしでローカルに蓄積し、次のセッションや他のワーカーに引き継ぎます。書き込みも読み取りもリードの承認を通り、秘密値は保存しません。→ [memory](references/memory.md)
 - **単一writerと監査記録。** 同時に書くのは一人だけで、ラウンドごとにスナップショットと成果物が残ります。中断しても復旧手順で再開できます。自動のcommit・push・デプロイはありません。
+- **リードの入力削減。** 結果ファイルの自動読み込み、briefの既定値、stdin入力、要約statusを利用できます。ラウンドのタイムラインとリポジトリ全体の指標も一つのコマンドで確認できます。→ [運用コマンド（韓国語）](references/operations.md)
+- **独立worktreeと作業上限。** 作業ごとに状態とwriter leaseを分離して並列実行し、報告された費用と経過時間に上限を設けます。結果は個別に検収してから統合します。→ [並列実行・上限（韓国語）](references/operations.md)
 - **通知。** `HF_NOTIFY_URL`（例：ntfy）で、ワーカーの完了やリードの判断が必要な時にスマホへプッシュ通知を受け取れます。本文は状態だけです。
 - **Linux・macOS・Windows対応。**
 
@@ -77,9 +79,11 @@ Claude CodeでOpus 5.5を選び：
 npm test
 ```
 
-202件のテストが、状態機械、ワーカーアダプタ、配置、レビュー委任、記憶層、プロジェクトの流れ、セキュリティ回帰を確認します。Windowsで202件すべてが通過しました。GitHub ActionsはUbuntu・Windows × Node 20・24で実行する構成です。再監査後の修正と残る制約は[修正結果の報告書（韓国語）](references/reaudit-v0.10.0.md)にまとめています。
+222件のテストが、状態機械、ワーカーアダプタ、配置、レビュー委任、記憶層、プロジェクトの流れ、セキュリティと運用機能を確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 20・24で実行する構成です。再監査後の修正と残る制約は[修正結果の報告書（韓国語）](references/reaudit-v0.10.0.md)にまとめています。
 
 **テストの`grok`/`agy`/`claude`/`codex`は代役のCLIです。** 実際のモデル呼び出し、認証、画像生成は、このリポジトリのテストでは検証されていません。インストール済みCLIに必要なフラグがない場合は、実行前に`ADAPTER_UNAVAILABLE`で拒否します。CLIフラグは[Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)、[Antigravity CLI](https://antigravity.google/docs/cli/headless)、[Claude Code](https://code.claude.com/docs/en/headless)のドキュメントを基準にしています。
+
+バージョン履歴は[CHANGELOG（韓国語）](CHANGELOG.md)、ライセンスは[MIT](LICENSE)。
 
 ## 参考にしたもの
 

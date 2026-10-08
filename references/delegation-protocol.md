@@ -2,6 +2,8 @@
 
 리드가 모든 설계 결정을 소유한다. 정확한 상대 경로(glob 금지), 최소한의 관련 맥락, 라운드 간 바뀌지 않는 기준 ID를 쓴다.
 
+`scope.allowed_expansion`, `forbidden_actions`, `evidence_required`는 생략하면 아래 예시의 고정값을 컨트롤러가 채운다. 직접 지정한 값이 필수 통제를 빼먹으면 거절한다. 간단한 brief는 task_id, objective, scope.paths, constraints, success_criteria, allowed_actions만 작성하면 된다.
+
 ```json
 {
   "task_id": "HF-20261003-001",

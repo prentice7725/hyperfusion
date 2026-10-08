@@ -9,17 +9,18 @@ export const binary=()=>process.env.HF_AGY_BIN||'agy';
 // 샌드박스를 끌 수 있는 것은 운영자가 허용한 구현 라운드뿐이다. 상담과 리뷰는 설정과 상관없이 항상 --sandbox를 넘긴다
 // (CLI가 그 플래그를 모르면 상담이 실패한다. 읽기 전용이어야 할 일꾼을 풀어 두는 것보다 낫다).
 const unsandboxed=(options,brief)=>options.sandbox===false&&!brief?.consult;
-export const probe=(options={})=>probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox'])],['--print-timeout']);
+export const probe=(options={})=>probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(options.model?['--model']:[])],['--print-timeout','--model']);
 // agy가 스스로 먼저 끝내도록 브리지 timeout보다 30초 짧게 잡는다. 그래야 강제 종료 대신 정상 envelope가 남는다.
 export const printTimeout=options=>Math.max(30,Math.floor(((options.timeout_ms??1200000)-30000)/1000))+'s';
 export const newSession=()=>null;
 
 export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
+ if(options.model&&!cli.supports?.['--model'])throw Error('MODEL_UNSUPPORTED: Antigravity requires --model support for a model override');
  if(resume&&!session)throw Error('Antigravity resume requires a saved conversation_id');
  // agy에는 명령 단위 허용 규칙이 없다. 터미널 제한은 --sandbox로만 건다.
  const ignored=bashRules(brief);
  const text=prompt(brief,lease);
- const args=['--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),
+ const args=['--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),...(options.model?['--model',options.model]:[]),
   // 상담은 plan 모드(읽기·계획만), 구현은 accept-edits.
   ...(brief.consult?['--mode','plan']:brief.allowed_actions.includes('edit')?['--mode','accept-edits']:[]),'--add-dir',brief.repo_root,
   ...(unsandboxed(options,brief)?[]:['--sandbox']),...(cli.supports?.['--print-timeout']?['--print-timeout',printTimeout(options)]:[]),

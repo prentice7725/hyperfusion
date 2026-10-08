@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {read} from './artifact.mjs';
 import {workspaceOf} from './memory-policy.mjs';
+import {validateLimits} from './budgets.mjs';
 
 // 리드는 Claude Opus 5.5 하나로 고정. 구현 일꾼은 Grok, Antigravity, Sonnet, Luna(Codex).
 export const EXECUTORS=['grok','antigravity','sonnet','luna'];
@@ -14,11 +15,13 @@ export const CAP={grok:3,antigravity:3,sonnet:3,luna:3,lead:1};
 export const CONSULT_CAP=4;
 export const TASK_KINDS=['code','ui','image-asset','tests','refactor','docs'];
 export const DIFFICULTIES=['low','medium','high'];
+// 이미지 생성 기능이 있는 일꾼. Antigravity CLI와 Claude Code(Sonnet)에는 이미지 생성 기능이 없다.
+export const IMAGE_EXECUTORS=['grok','luna'];
 
 // 기본 배치표. 첫 번째로 맞는 규칙의 순서가 투입·교체 순서다.
 // 실측이 아니라 출발점이다. 실적이 쌓이면 router가 성적 나쁜 일꾼을 뒤로 민다.
 export const DEFAULT_RULES=[
- {kind:'image-asset',executors:['grok','antigravity'],why:'Grok Build는 CLI 안에서 이미지 생성을 지원한다고 알려져 있음(설치 버전에서 확인 필요)'},
+ {kind:'image-asset',executors:['grok','luna'],why:'이미지 생성은 Grok과 Luna만 가능'},
  {kind:'code',difficulty:['medium','high'],executors:['sonnet','grok','antigravity'],why:'까다로운 구현은 Sonnet'},
  {kind:'code',difficulty:['low'],executors:['grok','antigravity','sonnet'],why:'쉬운 구현은 Grok부터'},
  {kind:'tests',executors:['sonnet','grok','antigravity'],why:'테스트 설계·디버깅은 Sonnet'},
@@ -30,12 +33,12 @@ export const DEFAULT_RULES=[
 export const DEFAULT_CONFIG={lead:'opus',lead_model:'claude-opus-5-5',lead_takeover:true,
  external:{default:'auto',available:['grok','antigravity','sonnet','luna']},
  executors:{antigravity:{sandbox:true}},
- routing:{rules:DEFAULT_RULES,learn:true,min_samples:3,demote_below:0.4},
+ routing:{rules:DEFAULT_RULES,learn:true,min_samples:3,demote_below:0.4,half_life_days:90,explore_every:10},
  // 리뷰 주체. lead는 Opus가 직접, delegate는 다른 모델(기본 Codex 우선)이 읽기 전용으로 판정하고 그 판정을 적용한다.
  review:{by:'lead',reviewers:['sol','sonnet','antigravity','grok','luna'],auto_apply:true}};
 
 const validRule=r=>r&&Array.isArray(r.executors)&&r.executors.length&&r.executors.every(x=>EXECUTORS.includes(x))&&new Set(r.executors).size===r.executors.length
- &&(r.kind===undefined||TASK_KINDS.includes(r.kind))&&(r.difficulty===undefined||(Array.isArray(r.difficulty)&&r.difficulty.every(d=>DIFFICULTIES.includes(d))));
+ &&(r.kind===undefined||TASK_KINDS.includes(r.kind))&&(r.kind!=='image-asset'||r.executors.every(x=>IMAGE_EXECUTORS.includes(x)))&&(r.difficulty===undefined||(Array.isArray(r.difficulty)&&r.difficulty.every(d=>DIFFICULTIES.includes(d))));
 
 export function config(root) {
  const file=path.join(root,'hyperfusion.config.json');
@@ -46,14 +49,16 @@ export function config(root) {
  v.routing={...structuredClone(DEFAULT_CONFIG.routing),...(v.routing??{})};
  v.review={...structuredClone(DEFAULT_CONFIG.review),...(v.review??{})};
  const ext=v.external;
- const ok=v.lead==='opus'&&v.lead_model==='claude-opus-5-5'&&typeof v.lead_takeover==='boolean'&&ext&&Array.isArray(ext.available)&&ext.available.length&&ext.available.every(x=>EXECUTORS.includes(x))
+ const ok=v.lead==='opus'&&typeof v.lead_model==='string'&&/^claude-opus-[\w.-]{1,60}$/.test(v.lead_model)&&typeof v.lead_takeover==='boolean'&&ext&&Array.isArray(ext.available)&&ext.available.length&&ext.available.every(x=>EXECUTORS.includes(x))
   &&(ext.default==='auto'||ext.available.includes(ext.default))&&typeof (v.executors.antigravity.sandbox??true)==='boolean'
   &&Array.isArray(v.routing.rules)&&v.routing.rules.length&&v.routing.rules.every(validRule)&&typeof v.routing.learn==='boolean'
   &&Object.entries(v.executors).every(([k,o])=>REVIEWERS.includes(k)&&o&&typeof o==='object'&&(o.timeout_ms===undefined||(Number.isSafeInteger(o.timeout_ms)&&o.timeout_ms>0))
    &&(o.model===undefined||(typeof o.model==='string'&&/^[\w.:/-]{1,80}$/.test(o.model)))&&(o.reasoning_effort===undefined||['minimal','low','medium','high','xhigh'].includes(o.reasoning_effort)))
   &&['lead','delegate'].includes(v.review.by)&&Array.isArray(v.review.reviewers)&&v.review.reviewers.length>0&&v.review.reviewers.every(x=>REVIEWERS.includes(x))&&new Set(v.review.reviewers).size===v.review.reviewers.length&&typeof v.review.auto_apply==='boolean'
-  &&Number.isInteger(v.routing.min_samples)&&v.routing.min_samples>0&&typeof v.routing.demote_below==='number'&&v.routing.demote_below>=0&&v.routing.demote_below<=1;
+  &&Number.isInteger(v.routing.min_samples)&&v.routing.min_samples>0&&typeof v.routing.demote_below==='number'&&v.routing.demote_below>=0&&v.routing.demote_below<=1
+  &&Number.isFinite(v.routing.half_life_days)&&v.routing.half_life_days>0&&Number.isInteger(v.routing.explore_every)&&v.routing.explore_every>=0;
  if(!ok)throw Error('Invalid HyperFusion configuration');
+ v.limits=validateLimits(v.limits);
  // 저장소 안의 설정 파일은 일꾼이나 복제한 저장소가 쓴 것일 수 있다. 샌드박스 해제 같은 보안 완화는 설정 파일로 켤 수 없고,
  // 운영자가 환경변수로 직접 허용해야 한다.
  if(v.executors.antigravity.sandbox===false&&process.env.HF_ALLOW_UNSANDBOXED!=='1')throw Error('executors.antigravity.sandbox=false relaxes security and cannot be enabled from a repository config; the operator must set HF_ALLOW_UNSANDBOXED=1');

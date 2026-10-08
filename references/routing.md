@@ -17,7 +17,7 @@
 
 | task_kind | difficulty | 투입 순서 | 이유 |
 |---|---|---|---|
-| image-asset | * | Grok → Antigravity | Grok Build는 CLI 안에서 이미지 생성 지원이 알려져 있음(설치 버전에서 확인 필요) |
+| image-asset | * | Grok → Luna | 이미지 생성은 Grok과 Luna만 가능 |
 | code | medium, high | Sonnet → Grok → Antigravity | 까다로운 구현은 Sonnet |
 | code | low | Grok → Antigravity → Sonnet | 쉬운 구현은 Grok부터 |
 | tests | * | Sonnet → Grok → Antigravity | 테스트 설계·디버깅 |
@@ -26,13 +26,15 @@
 | docs | * | Antigravity → Grok → Sonnet | 가벼운 일꾼부터 |
 | (없음) | * | Sonnet → Grok → Antigravity | 기본 |
 
-첫 번째로 맞는 규칙만 쓴다. 배치표에 없지만 고용된 일꾼은 맨 뒤 예비 인력이 된다. 이 표는 출발점일 뿐 측정된 사실이 아니다. `hyperfusion.config.json`의 `routing.rules`로 통째로 바꿀 수 있다.
+첫 번째로 맞는 규칙만 쓴다. 배치표에 없지만 고용된 일꾼은 맨 뒤 예비 인력이 된다. 단, Antigravity CLI와 Sonnet(Claude Code)에는 이미지 생성 기능이 없어서 `image-asset` 작업에는 예비 인력으로도 넣지 않고, `image-asset` 규칙에 이 둘을 적으면 설정 검증에서 거절된다. 이 표는 출발점일 뿐 측정된 사실이 아니다. `hyperfusion.config.json`의 `routing.rules`로 통째로 바꿀 수 있다.
 
 ## 실적 반영
 
-제어 폴더의 `metrics/*.json`(매 작업 종료 시 `metrics.mjs`로 기록)에서 같은 `task_kind`에 대해 일꾼별로 "참여한 작업 중 pass 판정을 받은 비율"을 센다. 표본이 `min_samples`(기본 3) 이상이고 비율이 `demote_below`(기본 0.4) 미만이면 그 일꾼을 순서 맨 뒤로 민다. 제외하지는 않는다. `routing.learn:false`로 끈다.
+제어 폴더의 `metrics/*.json`에서 같은 `(task_kind, difficulty)`의 실적을 집계한다. 난이도가 없는 이전 지표는 난이도가 없는 작업에만 반영한다. 기록 시각부터 `half_life_days`(기본 90일)의 반감기로 가중치를 줄인다. 시각이 없는 이전 기록은 현재 표본으로 취급한다. 첫 일꾼의 표본 가중치는 1, 실패한 작업을 이어받은 일꾼은 0.5다. 통과 점수는 자기 라운드 수의 역수로 계산한다. 가중 표본이 `min_samples`(기본 3) 이상이고 점수가 `demote_below`(기본 0.4) 미만이면 뒤로 민다.
 
-그래서 **CLOSE든 BLOCKED든 작업이 끝나면 항상 `metrics.mjs`를 돌린다.** 안 돌리면 router가 배우지 못한다.
+`explore_every`(기본 10)번째 같은 종류·난이도 작업에서는 강등된 일꾼도 번갈아 첫 후보로 배치한다. 0이면 탐색을 끄고, `routing.learn:false`면 학습 전체를 끈다. 명시적인 executor 지정은 계속 우선한다.
+
+CLOSE/BLOCKED 전이에서 컨트롤러가 지표를 자동 기록한다. 리드 사용량을 추가할 때만 `metrics.mjs`를 다시 호출한다.
 
 ## 설치 상태
 

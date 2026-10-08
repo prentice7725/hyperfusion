@@ -6,4 +6,4 @@
 
 status: complete, blocked, needs_decision, failed. complete에는 실패 테스트, 미해결 항목, 리드 결정 요청이 있을 수 없다. needs_decision은 needs_lead_decision=true가 필요하다.
 
-리드는 일꾼과 자식 프로세스가 모두 끝난 뒤 `{token, quiescent:true, result}`로 finish 한다. 컨트롤러는 task_id/round, 선언된 변경 파일과 실제 스냅샷 차이, 범위, HEAD, index를 대조한다. 거짓 신고는 RECOVERY_REQUIRED이며 lease는 복구 때까지 유지된다. 테스트 통과는 컨트롤러가 증명하지 않으므로 리드의 독립 검증이 필수다.
+리드는 일꾼과 자식 프로세스가 모두 끝난 뒤 `{token, quiescent:true}`로 finish 한다. 컨트롤러가 현재 작업·라운드의 `result-N.json`을 직접 읽으며, result를 직접 전달하는 기존 입력도 지원한다. 리드 takeover는 브리지가 없으므로 result를 직접 전달해야 한다. 컨트롤러는 task_id/round, 선언된 변경 파일과 실제 스냅샷 차이, 범위, HEAD, index를 대조한다. 거짓 신고는 RECOVERY_REQUIRED이며 lease는 복구 때까지 유지된다. 테스트 통과는 컨트롤러가 증명하지 않으므로 리드의 독립 검증이 필수다.

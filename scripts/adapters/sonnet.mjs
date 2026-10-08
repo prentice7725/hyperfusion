@@ -12,19 +12,20 @@ export const binary=()=>process.env.HF_CLAUDE_BIN||'claude';
 export const probe=()=>probeCli('Claude Code (Sonnet)',binary(),requiredFlags);
 export const newSession=()=>crypto.randomUUID();
 
-export function dispatch(brief,lease,{session,resume,probe:cli}) {
+export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
+ const model=options.model??MODEL;
  if(!session)throw Error('Sonnet requires a preallocated session UUID');
  const edit=brief.allowed_actions.includes('edit')&&!brief.consult;
  const allowed=['Read','Glob','Grep',...(edit?['Edit','Write']:[]),...bashRules(brief)];
  // 상담은 Bash 자체를 주지 않는다. 읽기 도구만 있으면 트리를 바꿀 수단이 없다.
  const tools=brief.consult?'Read,Glob,Grep':edit?'Read,Glob,Grep,Edit,Write,Bash':'Read,Glob,Grep,Bash';
  // safe-mode로 사용자 플러그인·훅·메모리를 끄고, dontAsk로 허용 목록 밖은 묻지 않고 거절한다.
- const args=['-p','--model',MODEL,'--safe-mode','--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),
+ const args=['-p','--model',model,'--safe-mode','--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),
   '--permission-mode','dontAsk','--tools',tools,
   '--allowedTools',allowed.join(','),'--disallowedTools',['Agent','Task','Skill','mcp__*',...editDeny(brief),...denyRules('claude')].join(','),
   '--max-turns','40',resume?'--resume':'--session-id',session];
  const text=prompt(brief,lease);
- return {cli:{...cli,args,session_id:session,resume,model:MODEL},prompt:text,stdin:text};
+ return {cli:{...cli,args,session_id:session,resume,model},prompt:text,stdin:text};
 }
 
 export function parse(stdout,request) {
