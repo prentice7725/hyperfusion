@@ -1,8 +1,8 @@
 ---
 name: hyperfusion
-description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검수만 하고, 구현과 테스트는 작업 종류에 맞춰 고른 일꾼(Grok Build CLI, Antigravity CLI, Claude Code Sonnet)에게 시키는 오케스트레이션 스킬. 단일 writer, 감사 가능한 라운드 기록, 반려 시 구체적 명령서 필수, 같은 실수 반복 시 일꾼 교체. HyperFusion, Grok, Antigravity, agy, Sonnet에게 코딩이나 이미지 애셋 작업을 맡기라는 요청에 사용한다.
+description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검수만 하고, 구현과 테스트는 작업 종류에 맞춰 고른 일꾼(Grok Build CLI, Antigravity CLI, Claude Code Sonnet, Codex Luna)에게 시키고 리뷰는 Sol(Codex)에게 맡길 수 있는 오케스트레이션 스킬. 단일 writer, 감사 가능한 라운드 기록, 반려 시 구체적 명령서 필수, 같은 실수 반복 시 일꾼 교체. HyperFusion, Grok, Antigravity, agy, Sonnet에게 코딩이나 이미지 애셋 작업을 맡기라는 요청에 사용한다.
 ---
-# HyperFusion v0.9 — Opus 리드, Grok·Antigravity·Sonnet 일꾼
+# HyperFusion v0.9.1 — Opus 리드, Sonnet·Grok·Antigravity·Luna 일꾼, Sol 리뷰어
 
 **리드: Claude Opus 5.5 (`claude-opus-5-5`)**. 리드는 분해, 계획, 범위 확정, 반려, 최종 검증만 한다. **코드는 일꾼이 쓴다.** 일꾼은 Grok(`grok`), Antigravity(`agy`), Sonnet(`claude --model claude-sonnet-5-5` 하위 프로세스), Luna(`codex exec`, 구현). Sol(`codex exec`, GPT-6.1 Sol)은 리뷰·상담만 한다. 스킬은 호스트 모델을 바꿀 수 없다. 호스트가 Opus 5.5가 아니면 그렇다고 밝히고 진행하며 `lead_model`은 확인 전까지 null로 둔다.
 
@@ -37,8 +37,8 @@ description: Claude Opus 5.5가 리드로서 계획·배치·반려·최종 검�
 ## 호출
 
 - `/hyperfusion <작업>` — 기본값 auto. router가 작업에 맞는 일꾼을 고른다.
-- `/hyperfusion --executor grok|antigravity|sonnet <작업>` — 리드가 직접 지정. router 추천은 근거에 함께 남는다.
-- `claude`, `opus`, `luna`는 일꾼 이름이 아니다. Claude 일꾼은 `sonnet`으로 부른다.
+- `/hyperfusion --executor grok|antigravity|sonnet|luna <작업>` — 리드가 직접 지정. router 추천은 근거에 함께 남는다.
+- `claude`, `opus`는 일꾼 이름이 아니다. Claude 일꾼은 `sonnet`으로 부른다. `sol`은 리뷰·상담 전용이라 `--executor`로 지정할 수 없다(구현 lease를 받지 않는다).
 
 먼저 [configuration.md](references/configuration.md), [delegation-protocol.md](references/delegation-protocol.md), [runtime.md](references/runtime.md), [executor-runtime.md](references/executor-runtime.md), [routing.md](references/routing.md)를 읽는다. `HF_SKILL`은 이 디렉터리, `HF_REPO`는 대상 저장소 루트. Node 20+, 초기 커밋이 있는 일반 Git 저장소가 필요하다. Linux·macOS·Windows에서 동작한다(Windows 주의점은 [executor-runtime.md](references/executor-runtime.md)).
 

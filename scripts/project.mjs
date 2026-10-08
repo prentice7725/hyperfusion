@@ -5,6 +5,7 @@ import {read,atomic,repo,hash} from './artifact.mjs';
 import {safePath} from './contracts.mjs';
 import {config,EXECUTORS,REVIEWERS,TASK_KINDS,DIFFICULTIES} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
+import {matchRule} from './router.mjs';
 
 // 프로젝트 층: 리드가 기획 문서를 읽고 팀을 꾸려 보고하고, 사용자가 승인한 팀으로 마일스톤을 진행한다.
 // 승인 전에는 작업을 시작할 수 없고, 마일스톤이 끝나면 체크포인트 보고와 사용자 확인 전에는 다음으로 못 넘어간다.
@@ -77,24 +78,27 @@ export function validatePlan(root,plan) {
  }
  if(!Array.isArray(plan.milestones)||!plan.milestones.length)throw Error('Plan needs milestones');
  const ids=new Set(),taskIds=new Set();
- const owned=plan.team.flatMap(t=>t.owns.map(parseOwn));
+ // 실제 배치와 같은 규칙으로 판단해야 보고서와 라우터가 어긋나지 않는다.
+ const rules=teamRules(plan);
  for(const m of plan.milestones){
   if(!/^[A-Za-z0-9_-]{1,20}$/.test(m?.id??'')||ids.has(m.id))throw Error('Milestone ids must be unique and short (e.g. M1)');ids.add(m.id);
   if(!str(m.title)||!str(m.goal)||!strs(m.checkpoint)||!m.checkpoint.length)throw Error(`Milestone ${m.id} needs title, goal and checkpoint criteria`);
   if(!Array.isArray(m.tasks)||!m.tasks.length)throw Error(`Milestone ${m.id} needs tasks`);
-  for(const t of m.tasks)checkTask(t,taskIds,owned,warnings);
+  for(const t of m.tasks)checkTask(t,taskIds,rules,warnings);
  }
  for(const k of ['risks','questions'])if(plan[k]!==undefined&&!strs(plan[k]))throw Error(`${k} must be a list of strings`);
  return warnings;
 }
-function checkTask(t,taskIds,owned,warnings) {
+function checkTask(t,taskIds,rules,warnings) {
  if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(t?.id??'')||taskIds.has(t.id))throw Error('Task ids must be unique valid task_ids: '+t?.id);taskIds.add(t.id);
  if(!str(t.title)||!TASK_KINDS.includes(t.kind)||(t.difficulty!==undefined&&!DIFFICULTIES.includes(t.difficulty)))throw Error(`Task ${t.id} needs title and a valid kind/difficulty`);
- if(!owned.some(o=>o.kind===t.kind&&(!o.difficulty||!t.difficulty||o.difficulty.includes(t.difficulty))))warnings.push(`${t.id}: ${t.kind}${t.difficulty?'/'+t.difficulty:''} 담당자가 없어 팀 전체 순서로 배치됨`);
+ // 종류가 있는 규칙에 맞지 않고 마지막 기본 규칙으로 떨어지면 담당자가 없는 작업이다.
+ if(matchRule(rules,{task_kind:t.kind,difficulty:t.difficulty}).kind===undefined)warnings.push(`${t.id}: ${t.kind}${t.difficulty?'/'+t.difficulty:''} 담당자가 없어 팀 기본 순서로 배치됨`);
 }
 
-// 승인된 팀을 작업 설정으로 옮긴다. 빠진 팀원은 이 프로젝트에서 불리지 않는다.
-export function teamConfig(plan,base) {
+// 팀의 담당(owns)을 배치 규칙으로 바꾼다. 난이도가 정해진 규칙이 같은 종류의 일반 규칙보다 먼저 맞는다.
+// 보고서의 "1순위", 경고, 실제 배치가 모두 이 규칙과 router.matchRule 하나만 쓴다.
+export function teamRules(plan) {
  const implementers=plan.team.map(t=>t.member).filter(m=>EXECUTORS.includes(m));
  const groups=new Map();
  for(const t of plan.team)for(const spec of t.owns){
@@ -102,11 +106,16 @@ export function teamConfig(plan,base) {
   if(!groups.has(key))groups.set(key,{kind:o.kind,...(o.difficulty?{difficulty:o.difficulty}:{}),members:[]});
   groups.get(key).members.push(t.member);
  }
- // 난이도가 정해진 규칙이 같은 종류의 일반 규칙보다 먼저 맞도록 정렬한다.
  const rules=[...groups.values()].sort((a,b)=>(b.difficulty?1:0)-(a.difficulty?1:0))
   .map(g=>({kind:g.kind,...(g.difficulty?{difficulty:g.difficulty}:{}),executors:[...g.members,...implementers.filter(m=>!g.members.includes(m))],why:'승인된 팀 구성'}));
  rules.push({executors:implementers,why:'팀 기본 순서'});
- return {...base,external:{default:'auto',available:implementers},routing:{...base.routing,rules},
+ return rules;
+}
+
+// 승인된 팀을 작업 설정으로 옮긴다. 빠진 팀원은 이 프로젝트에서 불리지 않는다.
+export function teamConfig(plan,base) {
+ const implementers=plan.team.map(t=>t.member).filter(m=>EXECUTORS.includes(m));
+ return {...base,external:{default:'auto',available:implementers},routing:{...base.routing,rules:teamRules(plan)},
   review:{...base.review,by:plan.review.by,...(plan.review.by==='delegate'?{reviewers:plan.review.reviewers}:{})},
   project:{name:plan.name,revision:plan.revision}};
 }
@@ -119,7 +128,10 @@ const now=()=>new Date().toISOString();
 export function settleTask(root,taskId,status) {
  const p=loadProject(root);if(!p)return null;
  const m=p.milestones.find(x=>x.tasks.some(t=>t.id===taskId));if(!m)return null;
- const t=m.tasks.find(x=>x.id===taskId);t.status=status;t.settled_at=now();
+ const t=m.tasks.find(x=>x.id===taskId);
+ // 완료·막힘으로 이미 정산된 작업을 나중의 보관(archive)이 덮어쓰면 체크포인트에서 결과가 사라진다.
+ if(status==='archived'&&['closed','blocked'].includes(t.status))return m.status;
+ t.status=status;t.settled_at=now();
  if(m.status==='active'&&m.tasks.every(x=>SETTLED.includes(x.status)))m.status='checkpoint_due';
  saveProject(root,p);
  return m.status;
@@ -149,9 +161,9 @@ export function teamReport(root,p=loadProject(root)) {
  L.push('## 마일스톤','');
  for(const m of p.milestones){
   L.push(`### ${m.id}. ${m.title}${m.status&&m.status!=='pending'?` _(${m.status})_`:''}`,'',`목표: ${m.goal}`,'','| 작업 | 종류 | 난이도 | 1순위 |','|---|---|---|---|');
-  const rules=teamConfig(p,c).routing.rules;
+  const rules=teamRules(p);
   for(const t of m.tasks){
-   const r=rules.find(r=>(r.kind===undefined||r.kind===t.kind)&&(r.difficulty===undefined||!t.difficulty||r.difficulty.includes(t.difficulty)));
+   const r=matchRule(rules,{task_kind:t.kind,difficulty:t.difficulty});
    L.push(`| ${t.id} ${cell(t.title)}${t.added_by?' _(추가)_':''} | ${t.kind} | ${t.difficulty??'-'} | ${r.executors[0]} |`);
   }
   L.push('','체크포인트 기준:',...m.checkpoint.map(x=>`- [ ] ${x}`),'');
