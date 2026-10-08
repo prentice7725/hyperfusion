@@ -3,11 +3,12 @@ import path from 'node:path';
 import {isMain} from './platform.mjs';
 import {read,atomic} from './artifact.mjs';
 import {EXECUTORS} from './executor-config.mjs';
+import {controlPath} from './control-dir.mjs';
 
 // 목표 지표: 성공 작업당 Opus(리드) 토큰. 일꾼 비용·시간은 별도 가드레일로만 본다.
 export function measure(root,observations=null) {
- const s=read(path.join(root,'.fusion/state.json'));
- const usage=[];for(let n=1;n<=s.iteration;n++){const f=path.join(root,'.fusion/tasks',s.task_id,`usage-${n}.json`);if(fs.existsSync(f))usage.push(read(f));}
+ const s=read(controlPath(root,'state.json'));
+ const usage=[];for(let n=1;n<=s.iteration;n++){const f=controlPath(root,'tasks',s.task_id,`usage-${n}.json`);if(fs.existsSync(f))usage.push(read(f));}
  const known=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
  // 호스트가 집계한 작업 전체 리드 사용량만 받는다. 가격을 추정하지 않는다.
  let lead=null;
@@ -31,7 +32,7 @@ export function measure(root,observations=null) {
   review_rounds:s.reviews.length,delegation_count:s.iteration,escalation_count:s.escalations.length,lead_takeovers:s.attempts?.lead??0,
   wall_ms:s.closed_at?Date.parse(s.closed_at)-Date.parse(s.started_at):null,
   measurement_note:'Unknown usage stays null. Antigravity reports no cost, so mixed tasks have null worker cost. Failed tasks count in the numerator. Run this at CLOSE and BLOCKED so the router learns.'};
- atomic(path.join(root,'.fusion/metrics',s.task_id+'.json'),v);return v;
+ atomic(controlPath(root,'metrics',s.task_id+'.json'),v);return v;
 }
 export function aggregate(records) {
  const successes=records.filter(r=>r.success).length;

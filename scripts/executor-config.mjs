@@ -54,6 +54,9 @@ export function config(root) {
   &&['lead','delegate'].includes(v.review.by)&&Array.isArray(v.review.reviewers)&&v.review.reviewers.length>0&&v.review.reviewers.every(x=>REVIEWERS.includes(x))&&new Set(v.review.reviewers).size===v.review.reviewers.length&&typeof v.review.auto_apply==='boolean'
   &&Number.isInteger(v.routing.min_samples)&&v.routing.min_samples>0&&typeof v.routing.demote_below==='number'&&v.routing.demote_below>=0&&v.routing.demote_below<=1;
  if(!ok)throw Error('Invalid HyperFusion configuration');
+ // 저장소 안의 설정 파일은 일꾼이나 복제한 저장소가 쓴 것일 수 있다. 샌드박스 해제 같은 보안 완화는 설정 파일로 켤 수 없고,
+ // 운영자가 환경변수로 직접 허용해야 한다.
+ if(v.executors.antigravity.sandbox===false&&process.env.HF_ALLOW_UNSANDBOXED!=='1')throw Error('executors.antigravity.sandbox=false relaxes security and cannot be enabled from a repository config; the operator must set HF_ALLOW_UNSANDBOXED=1');
  // 기억 계층(AnchorMind)은 선택 사항이다. 켜려면 프로젝트별 workspace가 반드시 있어야 한다.
  if(v.memory!==undefined){
   if(!v.memory||typeof v.memory!=='object'||(v.memory.enabled!==undefined&&typeof v.memory.enabled!=='boolean')||(v.memory.recall_limit!==undefined&&!(Number.isInteger(v.memory.recall_limit)&&v.memory.recall_limit>0&&v.memory.recall_limit<=12)))throw Error('Invalid memory configuration');

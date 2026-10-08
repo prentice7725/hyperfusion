@@ -18,7 +18,7 @@ const delegated=(t,{review={},pool,executor='grok'}={})=>{
  run(f.root,'init',{...f.brief,executor});return f;
 };
 const delegate=async(f,input={})=>{const c=run(f.root,'delegate-review',input);await consult(f.root,c.consult_id);return {c,out:run(f.root,'consult-finish',{quiescent:true})};};
-const argsOf=(f,name)=>read(path.join(f.root,`.fusion/fake-${name}-args.json`));
+const argsOf=(f,name)=>read(path.join(f.temp,`fake-${name}-args.json`));
 
 test('a different model reviews the round and its verdict is applied; Sol goes first',async t=>{
  const f=delegated(t);f.begin();f.finish();

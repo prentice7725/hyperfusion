@@ -6,6 +6,7 @@ import {safePath} from './contracts.mjs';
 import {config,EXECUTORS,REVIEWERS,TASK_KINDS,DIFFICULTIES} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {matchRule} from './router.mjs';
+import {controlPath,ensureControl,acquireLock} from './control-dir.mjs';
 
 // 프로젝트 층: 리드가 기획 문서를 읽고 팀을 꾸려 보고하고, 사용자가 승인한 팀으로 마일스톤을 진행한다.
 // 승인 전에는 작업을 시작할 수 없고, 마일스톤이 끝나면 체크포인트 보고와 사용자 확인 전에는 다음으로 못 넘어간다.
@@ -22,8 +23,8 @@ export const MEMBERS=Object.keys(CATALOG);
 
 const str=v=>typeof v==='string'&&v.trim().length>0;
 const strs=v=>Array.isArray(v)&&v.every(str);
-const file=root=>path.join(root,'.fusion/project.json');
-const lockOf=root=>path.join(root,'.fusion/locks/control.lock');
+const file=root=>controlPath(root,'project.json');
+const lockOf=root=>controlPath(root,'locks/control.lock');
 export const loadProject=root=>fs.existsSync(file(root))?read(file(root)):null;
 export const saveProject=(root,p)=>atomic(file(root),p);
 
@@ -37,9 +38,9 @@ export function parseOwn(spec) {
 }
 
 const withLock=(root,fn)=>{
- fs.mkdirSync(path.join(root,'.fusion/locks'),{recursive:true});
- fs.closeSync(fs.openSync(lockOf(root),'wx',0o600));
- try{return fn();}finally{fs.unlinkSync(lockOf(root));}
+ ensureControl(root);
+ const release=acquireLock(lockOf(root));
+ try{return fn();}finally{release();}
 };
 
 // 구성안 검사. 문제는 오류로, 애매한 점은 경고로 돌려준다(경고는 보고서에 그대로 실린다).
@@ -243,7 +244,7 @@ export function checkpoint(root) {
   const p=loadProject(root);if(!p)throw Error('No project plan');
   const m=p.milestones.find(x=>['checkpoint_due','reported'].includes(x.status));
   if(!m){const a=activeMilestone(p);throw Error(a?`Milestone ${a.id} still has open tasks: `+a.tasks.filter(t=>!SETTLED.includes(t.status)).map(t=>t.id).join(', '):'No milestone is due for a checkpoint');}
-  const metric=id=>{const f=path.join(root,'.fusion/metrics',id+'.json');return fs.existsSync(f)?read(f):null;};
+  const metric=id=>{const f=controlPath(root,'metrics',id+'.json');return fs.existsSync(f)?read(f):null;};
   const L=[`# ${p.name} — 체크포인트 ${m.id}: ${m.title}`,'',`목표: ${m.goal}`,'','## 작업 결과','','| 작업 | 결과 | 투입 | 라운드 | 리뷰 | takeover |','|---|---|---|---|---|---|'];
   const perf={};
   for(const t of m.tasks){

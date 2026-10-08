@@ -80,7 +80,7 @@ test('finishing a milestone forces a checkpoint report and the user\'s ack befor
  const f=approved(t);
  task(f,'T1');close(f);
  assert.equal(project.status(f.root).active_milestone,'M1');
- assert.ok(fs.existsSync(path.join(f.root,'.fusion/metrics/T1.json')),'metrics written automatically at CLOSE');
+ assert.ok(fs.existsSync(path.join(f.control,'metrics/T1.json')),'metrics written automatically at CLOSE');
  task(f,'T2');f.begin();f.finish();f.review('redo',['AC1']);f.begin();f.finish();f.review('pass');run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'check',status:'pass'}]});
  assert.deepEqual(project.status(f.root).checkpoint_due,['M1']);
  assert.throws(()=>task(f,'T3'),/PROJECT_CHECKPOINT_PENDING: M1/);

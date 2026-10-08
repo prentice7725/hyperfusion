@@ -72,7 +72,7 @@
   - 배치표 = 팀의 담당
   - 리뷰 = 팀의 리뷰 방식
 - 제외된 팀원은 그 프로젝트에서 불리지 않는다.
-- 작업이 CLOSE·BLOCKED가 되면(어느 경로로든) 지표(`.fusion/metrics/<task>.json`)가 자동으로 기록되고 마일스톤 진행이 갱신된다. 막힌 작업은 archive 없이도 다음 작업을 시작할 수 있고, archive 해도 `blocked`/`closed` 결과는 덮어쓰지 않는다.
+- 작업이 CLOSE·BLOCKED가 되면(어느 경로로든) 지표(제어 폴더의 `metrics/<task>.json`)가 자동으로 기록되고 마일스톤 진행이 갱신된다. 막힌 작업은 archive 없이도 다음 작업을 시작할 수 있고, archive 해도 `blocked`/`closed` 결과는 덮어쓰지 않는다.
 - 팀 구성 보고서의 "1순위"와 경고는 실제 배치와 같은 규칙(`router.matchRule`)으로 계산한다. 난이도가 정해진 담당만 있는 종류에 난이도 없는 작업을 넣으면 "담당자가 없다"는 경고가 나오고 팀 기본 순서로 배치된다.
 
 ## 4. 체크포인트
@@ -95,4 +95,4 @@ $P ack $HF_REPO ACK.json          # {"milestone": "M1", "user_message": "...", "
 $P status $HF_REPO
 ```
 
-프로젝트 파일은 대상 저장소의 `.fusion/project.json`이다. 프로젝트가 없으면 이전처럼 작업 단위로 쓴다.
+프로젝트 파일은 제어 폴더의 `project.json`이다(작업 폴더 밖). 프로젝트가 없으면 이전처럼 작업 단위로 쓴다.

@@ -3,7 +3,8 @@ import path from 'node:path';
 import {isMain} from './platform.mjs';
 import {read} from './artifact.mjs';
 import {adapter} from './adapters/index.mjs';
-import {config} from './executor-config.mjs';
+import {config,EXECUTORS} from './executor-config.mjs';
+import {controlPath} from './control-dir.mjs';
 
 // 작업 종류·난이도로 배치표 규칙을 고르고, 과거 실적과 설치 상태로 순서를 조정한다.
 // 결과는 투입 순서(candidates)와 근거(reason)다. 리드는 이를 기록하고 필요하면 명시 지정으로 덮어쓴다.
@@ -11,19 +12,20 @@ export function matchRule(rules,brief) {
  return rules.find(r=>(r.kind===undefined||r.kind===brief.task_kind)&&(r.difficulty===undefined||r.difficulty.includes(brief.difficulty)));
 }
 
-// .fusion/metrics/*.json에서 (작업 종류, 일꾼)별로 "참여한 작업 중 pass를 받은 비율"을 센다.
+// 제어 폴더의 metrics/*.json에서 (작업 종류, 일꾼)별로 "참여한 작업 중 pass를 받은 비율"을 센다.
 export function history(root,kind) {
- const dir=path.join(root,'.fusion/metrics'),stats={};
+ const dir=controlPath(root,'metrics'),stats=Object.create(null);
  if(!fs.existsSync(dir))return stats;
  for(const f of fs.readdirSync(dir).filter(x=>x.endsWith('.json'))){
   let m;try{m=read(path.join(dir,f));}catch{continue;}
   if((m.task_kind??null)!==(kind??null)||!Array.isArray(m.review_outcomes))continue;
-  for(const e of new Set(m.review_outcomes.map(r=>r.owner).filter(o=>o!=='lead'))){
+  // 지표 파일은 일꾼이 만든 값을 담을 수 있다. 실제 일꾼 이름만 센다(__proto__ 같은 키로 객체를 오염시키지 못하게).
+  for(const e of new Set(m.review_outcomes.map(r=>r.owner).filter(o=>EXECUTORS.includes(o)))){
    stats[e]??={tasks:0,passed:0};stats[e].tasks++;
    if(m.review_outcomes.some(r=>r.owner===e&&r.verdict==='pass'))stats[e].passed++;
   }
   // 읽기 전용 상담에서 트리를 건드린 일꾼은 실패 한 건으로 친다.
-  for(const c of m.consults??[])if(c.violated)for(const x of c.members){stats[x.executor]??={tasks:0,passed:0};stats[x.executor].tasks++;}
+  for(const c of Array.isArray(m.consults)?m.consults:[])if(c?.violated&&Array.isArray(c.members))for(const x of c.members){if(!EXECUTORS.includes(x?.executor))continue;stats[x.executor]??={tasks:0,passed:0};stats[x.executor].tasks++;}
  }
  return stats;
 }

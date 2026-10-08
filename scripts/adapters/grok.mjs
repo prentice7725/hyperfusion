@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
-import {prompt,bashRules,probe as probeCli,extractResult} from './common.mjs';
+import {denyRules} from '../bash-policy.mjs';
+import {prompt,bashRules,editDeny,probe as probeCli,extractResult} from './common.mjs';
 
 // Grok Build CLI 헤드리스 모드. stdin을 프롬프트로 읽지 않으므로 --prompt-file을 쓴다.
 // 플래그 출처: xai-org/grok-build user-guide 14-headless-mode.md
@@ -10,7 +11,7 @@ export const probe=()=>probeCli('Grok',binary(),requiredFlags);
 export const newSession=()=>crypto.randomUUID();
 // 상담은 편집과 셸을 모두 막는다. 규칙 문법이 버전마다 다를 수 있어 실제 보증은 상담 전후 스냅샷 비교다.
 export const CONSULT_DENY=['Edit(**)','Bash(*)'];
-export const DENY=['Edit(.fusion/**)','Edit(.git/**)','Bash(git commit*)','Bash(git push*)','Bash(git reset*)','Bash(git clean*)','Bash(git stash*)','Bash(git checkout*)','Bash(git add*)'];
+export const DENY=denyRules('grok');
 
 export function dispatch(brief,lease,{session,resume,probe:cli,promptFile}) {
  if(!session)throw Error('Grok requires a preallocated session UUID');
@@ -18,7 +19,7 @@ export function dispatch(brief,lease,{session,resume,probe:cli,promptFile}) {
  // 쓰기 권한은 scope 경로로만 연다. 이 규칙은 협업 통제이지 OS 샌드박스가 아니다.
  const allow=[...(edit?brief.scope.paths.flatMap(p=>[`Edit(${p})`,`Edit(${p}/**)`]):[]),...bashRules(brief)];
  const args=['--prompt-file',promptFile,'--output-format','json','--cwd',brief.repo_root,'--max-turns','40',
-  resume?'--resume':'--session-id',session,...allow.flatMap(r=>['--allow',r]),...[...DENY,...(brief.consult?CONSULT_DENY:[])].flatMap(r=>['--deny',r])];
+  resume?'--resume':'--session-id',session,...allow.flatMap(r=>['--allow',r]),...[...editDeny(brief),...DENY,...(brief.consult?CONSULT_DENY:[])].flatMap(r=>['--deny',r])];
  return {cli:{...cli,args,session_id:session,resume,prompt_file:promptFile},prompt:prompt(brief,lease)};
 }
 

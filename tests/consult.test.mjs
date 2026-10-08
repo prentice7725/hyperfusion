@@ -13,7 +13,7 @@ import {config} from '../scripts/executor-config.mjs';
 
 const ask=(f,input)=>run(f.root,'consult',{question:'Does the change meet AC1?',...input});
 const done=f=>run(f.root,'consult-finish',{quiescent:true});
-const argsOf=(f,name)=>read(path.join(f.root,`.fusion/fake-${name}-args.json`));
+const argsOf=(f,name)=>read(path.join(f.temp,`fake-${name}-args.json`));
 const inReview=async f=>{f.begin();f.mode('edit');await f.bridge();f.mode('ok');};
 
 test('advisor reviews another worker\'s diff read-only and its findings come back to the lead',async t=>{
@@ -22,7 +22,7 @@ test('advisor reviews another worker\'s diff read-only and its findings come bac
  assert.equal(c.members.length,1);assert.notEqual(c.members[0].executor,'grok');
  f.mode('findings');const out=await consult(f.root,c.consult_id);
  assert.equal(out.members[0].ok,true);
- const brief=JSON.parse(read(path.join(f.root,`.fusion/tasks/HF-test/consult-${c.consult_id}-m1.json`)).prompt).brief;
+ const brief=JSON.parse(read(path.join(f.control,`tasks/HF-test/consult-${c.consult_id}-m1.json`)).prompt).brief;
  assert.deepEqual(brief.consult.context.changed_files,['a.txt']);assert.match(brief.consult.context.diff,/\+fixed/);
  const r=done(f);
  assert.equal(r.violated,false);assert.equal(r.results[0].findings[0].file,'sub/a.txt');assert.equal(r.members[0].blockers,1);
@@ -84,10 +84,10 @@ test('line-level feedback from a consult can be handed straight to the next work
  assert.throws(()=>f.begin({lead_feedback:[{file:'a.txt',line:-1,comment:'no'}]}),/lead_feedback/);
  const d=f.begin({lead_feedback:[{file:'a.txt',line:3,comment:'handle empty input'},'keep the API']});
  assert.deepEqual(JSON.parse(d.prompt).brief.lead_feedback[0],{file:'a.txt',line:3,comment:'handle empty input'});
- assert.equal(read(path.join(f.root,'.fusion/tasks/HF-test/brief-2.json')).lead_feedback[0].line,3);
+ assert.equal(read(path.join(f.control,'tasks/HF-test/brief-2.json')).lead_feedback[0].line,3);
 });
 test('a worker that breaks read-only consults loses rank for that task kind',t=>{
- const f=fixture(t,{initialize:false});const dir=path.join(f.root,'.fusion/metrics');fs.mkdirSync(dir,{recursive:true});
+ const f=fixture(t,{initialize:false});const dir=path.join(f.control,'metrics');fs.mkdirSync(dir,{recursive:true});
  for(let i=0;i<3;i++)fs.writeFileSync(path.join(dir,`old-${i}.json`),JSON.stringify({task_kind:'code',review_outcomes:[],consults:[{violated:true,members:[{executor:'sonnet'}]}]}));
  assert.equal(route(f.root,config(f.root),{task_kind:'code',difficulty:'high'}).executor,'grok');
 });

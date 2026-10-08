@@ -27,7 +27,7 @@ test('samePath tolerates separator differences',t=>{const d=tmp(t);assert.ok(sam
 test('Windows command-line length guard',()=>{if(!isWin){assertCommandLine('x',['y'.repeat(40000)]);return;}assert.throws(()=>assertCommandLine('x',['y'.repeat(40000)]),/too long/);});
 test('backslash paths from a Windows worker are normalized before validation',async t=>{const f=fixture(t);f.begin();f.mode('backslash');const out=await execute(f.root);assert.deepEqual(read(out.result_file).files_read,['sub/a.txt']);});
 test('per-executor timeout_ms from config bounds the round',async t=>{const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{grok:{timeout_ms:150}}}));run(f.root,'init',{...f.brief,executor:'grok'});f.begin();f.mode('hang');await assert.rejects(()=>execute(f.root),/timeout/);assert.ok(f.state().writer);});
-test('process record states how the tree is killed on this platform',async t=>{const f=fixture(t);f.begin();await execute(f.root);const p=read(path.join(f.root,'.fusion/tasks/HF-test/process-1.json'));assert.equal(p.platform,process.platform);assert.equal(p.tree_kill,isWin?'taskkill /T /F':'process group');});
+test('process record states how the tree is killed on this platform',async t=>{const f=fixture(t);f.begin();await execute(f.root);const p=read(path.join(f.control,'tasks/HF-test/process-1.json'));assert.equal(p.platform,process.platform);assert.equal(p.tree_kill,isWin?'taskkill /T /F':'process group');});
 test('wrong binary (e.g. IDE launcher) is named in the probe error with its help text',t=>{
  const d=tmp(t),f=path.join(d,'agy.mjs');
  fs.writeFileSync(f,"console.error(process.argv.includes('--help')?'Usage: antigravity [options][paths...]\\n  --new-window':'1.2.3');");

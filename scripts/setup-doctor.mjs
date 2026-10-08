@@ -2,9 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {config,selectExecutor,EXECUTORS,CAP} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
-import {repo,git,read} from './artifact.mjs';
+import {repo,git,read,riskyGitConfig} from './artifact.mjs';
+import {controlRoot,controlPath,isLegacy} from './control-dir.mjs';
 import {workspaceOf} from './memory-policy.mjs';
-import {stats as memoryStats} from './memory-store.mjs';
+import {stats as memoryStats,bindingStatus} from './memory-store.mjs';
+import {repoId} from './control-dir.mjs';
 import {status as projectStatus} from './project.mjs';
 
 // 실행 전 점검. 일꾼 CLI는 모두 프로브해서 교체 가능한 인력을 미리 파악한다.
@@ -22,14 +24,23 @@ for(const name of c?.external.available??[]){
 }
 // auto면 한 명이라도 설치돼 있으면 통과. 명시 지정이면 그 일꾼이 반드시 있어야 한다.
 if(selected==='auto')check('workers',()=>{const ok=bench.filter(b=>b.ok).map(b=>b.name);if(!ok.length)throw Error('ADAPTER_UNAVAILABLE: no worker CLI installed');return ok.join(', ');});
+const warnings=[];
 let root;
 check('repository',()=>{root=repo(process.argv[2]??process.cwd());git(root,['rev-parse','HEAD']);return root;});
 if(root){
  check('worktree',()=>{if(git(root,['ls-files','--stage']).split('\n').some(x=>x.startsWith('160000')))throw Error('Submodules are not supported');return 'ordinary git worktree';});
- check('metadata',()=>{const d=path.join(root,'.fusion');if(fs.existsSync(d)&&fs.lstatSync(d).isSymbolicLink())throw Error('.fusion symlink');return 'cooperative locking only';});
+ // 제어 파일은 작업 폴더 밖에 둔다(일꾼의 편집 도구가 닿지 않게). 예전 .fusion이 남아 있으면 이전하라고 알린다.
+ check('control-dir',()=>{
+  const d=controlRoot(root);
+  if(fs.existsSync(d)&&fs.lstatSync(d).isSymbolicLink())throw Error('control directory is a symlink: '+d);
+  if(isLegacy(root))throw Error(`LEGACY_CONTROL_DIR: records are inside the workspace (${d}), where workers can edit them. Run: node fusion-state.mjs migrate ${root}`);
+  return d+' (outside the workspace; cooperative locking only)';
+ });
+ // 저장소 설정에 실행 가능한 항목(훅, fsmonitor, filter, 외부 diff)이 있으면 알린다. 막지는 않는다(husky 같은 정상 사용이 있다).
+ try{const risky=riskyGitConfig(root);if(risky.length)warnings.push('git config can run commands (verify they are yours): '+risky.join('; '));}catch(e){warnings.push('git config scan failed: '+e.message);}
  // 중단 흔적이 있으면 무엇이 남았는지와 다음 명령까지 보여 준다. 잠금은 절대 자동으로 지우지 않는다.
  check('recovery',()=>{
-  const lock=f=>path.join(root,'.fusion/locks',f),sf=path.join(root,'.fusion/state.json');
+  const lock=f=>controlPath(root,'locks',f),sf=controlPath(root,'state.json');
   const s=fs.existsSync(sf)?read(sf):null,problems=[];
   if(fs.existsSync(lock('control.lock')))problems.push('control.lock (controller crashed mid-command)');
   if(fs.existsSync(lock('writer.json'))){const w=read(lock('writer.json'));problems.push(`writer.json owner=${w.owner} task=${w.task_id} round=${w.round} since=${w.created_at}`);}
@@ -39,7 +50,6 @@ if(root){
   throw Error('RECOVERY_REQUIRED: '+problems.join('; ')+(s?` | state task=${s.task_id} schema=${s.schema_version} phase=${s.phase}`:' | no state.json')
    +' | next: confirm no worker/controller process is running, then '+(legacy?'archive (state from another branch/version)':'recover')+' with the writer token; see references/recovery-protocol.md');
  });
- check('metadata-ignore',()=>{try{git(root,['check-ignore','.fusion/state.json']);}catch{throw Error('Add /.fusion/ to local git info/exclude before init');}return 'ignored';});
 }
 // 리뷰 위임이 켜져 있으면 리뷰어(구현 일꾼이 아닌 Codex 포함)도 점검한다. 최소 한 명은 있어야 한다.
 let reviewers=null;
@@ -49,8 +59,8 @@ if(c?.review.by==='delegate'){
 }
 // 기억 계층은 선택 사항이라 실패해도 전체 점검을 막지 않는다.
 let memory=null;
-try{const w=c?workspaceOf(c):null;if(w)memory=memoryStats(w);}catch(e){memory={error:e.message};}
+try{const w=c?workspaceOf(c):null;if(w){memory={...memoryStats(w),binding:root?bindingStatus(w,repoId(root)):'unknown'};if(memory.binding==='foreign'||memory.binding==='unclaimed')warnings.push(`memory workspace "${w}" is ${memory.binding==='foreign'?'bound to other repositories':'not bound to any repository'}; memory commands will refuse until the user approves: node memory.mjs bind REPO`);}}catch(e){memory={error:e.message};}
 let project=null;
 try{if(root)project=projectStatus(root);}catch(e){project={error:e.message};}
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,bench,reviewers,memory,project,review:c?.review??null,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,bench,reviewers,memory,project,review:c?.review??null,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;
