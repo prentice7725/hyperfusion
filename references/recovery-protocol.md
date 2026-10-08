@@ -25,10 +25,9 @@ Get-Content "$CTRL\locks\writer.json"
 Get-Process grok, claude, agy -ErrorAction SilentlyContinue
 git -C $REPO status --short   # 일꾼이 남긴 변경 확인
 
-# 3) 입력 파일 작성 후 복구
+# 3) stdin으로 입력을 넘겨 복구
 $token = (Get-Content "$CTRL\locks\writer.json" | ConvertFrom-Json).token
-@{ token = $token; quiescent = $true; reason = "프로세스 없음 확인, diff 검토함" } | ConvertTo-Json | Set-Content -Encoding utf8 "$env:TEMP\hf-recover.json"
-node "$HF\scripts\fusion-state.mjs" recover $REPO "$env:TEMP\hf-recover.json"
+@{ token = $token; quiescent = $true; reason = "프로세스 없음 확인, diff 검토함" } | ConvertTo-Json | node "$HF\scripts\fusion-state.mjs" recover $REPO -
 ```
 
 - `status` 결과의 `schema_version`이 4가 아니면(main 브랜치나 이전 버전이 만든 작업) `recover` 대신 `archive`를 쓴다. 입력은 같고 명령만 `archive`다.

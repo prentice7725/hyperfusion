@@ -14,9 +14,12 @@ export function reportedPath(v) {
 }
 // 범위(scope)와 allow_out_of_scope에 쓰는 엄격한 경로. 쓰기 권한이 이 값으로 열리므로 글롭, 홈(~), NTFS 스트림(:), 끝 점·공백을 모두 거절한다.
 export function safePath(v) {
- return reportedPath(v)&&!/[*?\[\]{}:~]/.test(v)&&!v.split('/').some(x=>x!==x.trimEnd()||x.endsWith('.'));
+ return reportedPath(v)&&!/[*?\[\]{}:~]/.test(v)&&!v.split('/').some(x=>x!==x.trimEnd()||x.endsWith('.')||/^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\.|$)/i.test(x));
 }
 export function brief(v) {
+ v={...v,scope:{...v?.scope,allowed_expansion:v?.scope?.allowed_expansion??'ask-lead'},
+  forbidden_actions:v?.forbidden_actions??['commit','push','deploy','release','scope-expansion'],
+  evidence_required:v?.evidence_required??['files_changed','commands_run','test_results','remaining_risks']};
  requireThat(v&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(v.task_id),'Invalid task_id');
  requireThat(str(v.objective),'Missing objective');
  requireThat(v.scope&&Array.isArray(v.scope.paths)&&v.scope.paths.length&&v.scope.allowed_expansion==='ask-lead','Invalid bounded scope');

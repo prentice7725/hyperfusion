@@ -2,25 +2,32 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {config,selectExecutor,EXECUTORS,CAP} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
-import {repo,git,read,riskyGitConfig} from './artifact.mjs';
-import {controlRoot,controlPath,isLegacy} from './control-dir.mjs';
+import {repo,git,read,atomic,riskyGitConfig} from './artifact.mjs';
+import {controlRoot,controlPath,isLegacy,ensureControl} from './control-dir.mjs';
 import {workspaceOf} from './memory-policy.mjs';
 import {stats as memoryStats,bindingStatus} from './memory-store.mjs';
 import {repoId} from './control-dir.mjs';
 import {status as projectStatus} from './project.mjs';
+import {errorRecord} from './cli.mjs';
+import {SCHEMA_VERSION} from './versions.mjs';
 
 // 실행 전 점검. 일꾼 CLI는 모두 프로브해서 교체 가능한 인력을 미리 파악한다.
 const checks=[];
-const check=(name,fn)=>{try{checks.push({name,ok:true,detail:fn()});}catch(e){checks.push({name,ok:false,detail:e.message});}};
+const probeEvidence={};
+const probeMember=name=>{
+ try{const p=adapter(name).probe(c.executors[name]??{});probeEvidence[name]={...p,help:p.help};return p;}
+ catch(e){probeEvidence[name]={error:e.message,...e.probe};throw e;}
+};
+const check=(name,fn)=>{try{checks.push({name,ok:true,detail:fn()});}catch(e){checks.push({name,ok:false,detail:e.message,error:errorRecord(e)});}};
 check('node',()=>{if(Number(process.versions.node.split('.')[0])<20)throw Error('Node 20+ required');return process.version;});
 const flags=process.argv.slice(3);
 let selected,c;
 check('executor',()=>{c=config(process.argv[2]??process.cwd());if(flags.length&&(flags.length!==2||flags[0]!=='--executor'))throw Error('Use --executor NAME');selected=selectExecutor(c,flags[1]);return selected==='auto'?'auto (router picks per task)':selected;});
 const bench=[];
 for(const name of c?.external.available??[]){
- const entry=()=>adapter(name).probe(c.executors[name]??{});
+ const entry=()=>probeMember(name);
  if(name===selected)check(name+'-cli',entry);
- else{try{bench.push({name,ok:true,detail:entry()});}catch(e){bench.push({name,ok:false,detail:e.message});}}
+ else{try{bench.push({name,ok:true,detail:entry()});}catch(e){bench.push({name,ok:false,detail:e.message,error:errorRecord(e)});}}
 }
 // auto면 한 명이라도 설치돼 있으면 통과. 명시 지정이면 그 일꾼이 반드시 있어야 한다.
 if(selected==='auto')check('workers',()=>{const ok=bench.filter(b=>b.ok).map(b=>b.name);if(!ok.length)throw Error('ADAPTER_UNAVAILABLE: no worker CLI installed');return ok.join(', ');});
@@ -46,7 +53,7 @@ if(root){
   if(fs.existsSync(lock('writer.json'))){const w=read(lock('writer.json'));problems.push(`writer.json owner=${w.owner} task=${w.task_id} round=${w.round} since=${w.created_at}`);}
   if(s&&['EXECUTING','RECOVERY_REQUIRED'].includes(s.phase))problems.push('phase '+s.phase);
   if(!problems.length)return 'no interrupted mutation';
-  const legacy=s&&s.schema_version!==4;
+  const legacy=s&&s.schema_version!==SCHEMA_VERSION;
   throw Error('RECOVERY_REQUIRED: '+problems.join('; ')+(s?` | state task=${s.task_id} schema=${s.schema_version} phase=${s.phase}`:' | no state.json')
    +' | next: confirm no worker/controller process is running, then '+(legacy?'archive (state from another branch/version)':'recover')+' with the writer token; see references/recovery-protocol.md');
  });
@@ -62,5 +69,10 @@ let memory=null;
 try{const w=c?workspaceOf(c):null;if(w){memory={...memoryStats(w),binding:root?bindingStatus(w,repoId(root)):'unknown'};if(memory.binding==='foreign'||memory.binding==='unclaimed')warnings.push(`memory workspace "${w}" is ${memory.binding==='foreign'?'bound to other repositories':'not bound to any repository'}; memory commands will refuse until the user approves: node memory.mjs bind REPO`);}}catch(e){memory={error:e.message};}
 let project=null;
 try{if(root)project=projectStatus(root);}catch(e){project={error:e.message};}
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,bench,reviewers,memory,project,review:c?.review??null,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
+let probe_file=null;
+if(root&&!isLegacy(root)){
+ try{ensureControl(root);probe_file=controlPath(root,'doctor',`probes-${Date.now()}-${process.pid}.json`);atomic(probe_file,{at:new Date().toISOString(),probes:probeEvidence});}
+ catch(e){warnings.push('probe evidence not saved: '+e.message);}
+}
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,bench,reviewers,memory,project,probe_file,review:c?.review??null,roster:{lead:`${c?.lead_model??'Claude Opus'} (host)`,workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;

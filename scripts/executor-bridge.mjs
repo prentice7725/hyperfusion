@@ -11,16 +11,20 @@ import {EXECUTORS} from './executor-config.mjs';
 import {controlPath,ensureControl} from './control-dir.mjs';
 import {workerEnv} from './worker-env.mjs';
 import {verifyExecute,verifyConsult} from './dispatch-verify.mjs';
+import {assertBudget} from './budgets.mjs';
+import {printError} from './cli.mjs';
 
-const timeoutFor=(state,executor,override)=>{
+const timeoutFor=(root,state,executor,override)=>{
  // 일꾼별 timeout_ms 설정이 있으면 그 값, 없으면 20분.
  const t=override??state.configuration?.executors?.[executor]?.timeout_ms??1200000;
  if(!Number.isSafeInteger(t)||t<1)throw Error('Invalid timeout');
- return t;
+ const budget=assertBudget(root,state);
+ return budget.remaining_wall_ms===null?t:Math.min(t,budget.remaining_wall_ms);
 };
 
 // 일꾼 프로세스 하나를 감독하며 실행한다. tag는 산출물 이름(launch-<tag>.json 등)에 붙는다.
 async function supervise(root,dir,tag,request,{timeoutMs,maxBytes}) {
+ const started=Date.now();
  // create-once 실행 표식이 크래시나 재실행에서도 중복 프로세스를 막는다.
  immutable(path.join(dir,`launch-${tag}.json`),{executor:request.executor,bridge_pid:process.pid,session_id:request.cli.session_id,at:new Date().toISOString()});
  if(request.cli.prompt_file)fs.writeFileSync(request.cli.prompt_file,request.prompt,{flag:'wx',mode:0o600});
@@ -53,7 +57,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes}) {
   // 그룹 밖으로 빠져나간 자손(Windows에서는 일꾼이 먼저 끝난 뒤 남은 자손)은 리드가 확인해야 한다.
   killTree(child,{force:true,alive});
  }
- immutable(path.join(dir,`envelope-${tag}.json`),{executor:request.executor,exit,reason,stdout,stderr});
+ immutable(path.join(dir,`envelope-${tag}.json`),{executor:request.executor,exit,reason,stdout,stderr,started_at:new Date(started).toISOString(),ended_at:new Date().toISOString(),wall_ms:Date.now()-started});
  if(reason||exit.code!==0)throw Error(reason||request.executor+' exited with code '+exit.code);
  const parsed=adapter(request.executor).parse(stdout,request);
  // Windows 일꾼은 경로를 역슬래시로 보고하기도 한다. 저장소 경로 표기(슬래시)로 맞춘 뒤 검증한다.
@@ -71,7 +75,7 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024}={}) {
  ensureControl(root);
  const state=read(controlPath(root,'state.json'));
  if(state.phase!=='EXECUTING'||!EXECUTORS.includes(state.owner))throw Error('No active executor round');
- timeoutMs=timeoutFor(state,state.owner,timeoutMs);
+ timeoutMs=timeoutFor(root,state,state.owner,timeoutMs);
  const dir=controlPath(root,'tasks',state.task_id),n=state.iteration;
  const request=read(path.join(dir,`dispatch-${n}.json`));
  const lease=assertLease(root,request.token);
@@ -79,7 +83,8 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024}={}) {
  let result,parsed;
  try{
   // 파일이 아니라 컨트롤러가 다시 만든 요청으로 실행한다. 달라졌으면 여기서 멈춘다.
-  parsed=await supervise(root,dir,n,{...request,...verifyExecute(root,state,dir,request,lease)},{timeoutMs,maxBytes});
+  const verified=verifyExecute(root,state,dir,request,lease);
+  parsed=await supervise(root,dir,n,{...request,...verified},{timeoutMs:timeoutFor(root,state,state.owner,timeoutMs),maxBytes});
   result=validateResult(parsed.result,request.task_id,request.round);
  }catch(e){
   await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} failed`,{priority:'high'});
@@ -89,7 +94,7 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024}={}) {
  immutable(path.join(dir,`result-${n}.json`),result);
  await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} done (${result.status})`);
  // 여기서 lease를 놓지 않는다. 리드가 정지 여부를 확인하고 finish 해야 한다.
- return {status:'RESULT_READY',executor:request.executor,task_id:state.task_id,round:n,result_file:path.join(dir,`result-${n}.json`),next_action:'confirm quiescence, then fusion-state finish with writer token and result'};
+ return {status:'RESULT_READY',executor:request.executor,task_id:state.task_id,round:n,result_file:path.join(dir,`result-${n}.json`),next_action:'confirm quiescence, then fusion-state finish with writer token; result is read automatically'};
 }
 
 // 상담(advisor/committee) 한 건의 위원을 병렬로 실행한다. writer lease 없이 읽기 전용으로 돈다.
@@ -103,7 +108,7 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024}={}) {
  const runs=await Promise.allSettled(open.members.map(async m=>{
   const sent=read(path.join(dir,`consult-${id}-${m.member}.json`));
   const request={...sent,...verifyConsult(root,state,dir,sent,{id,member:m.member,executor:m.executor})};
-  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,request,{timeoutMs:timeoutFor(state,m.executor,timeoutMs),maxBytes});
+  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,request,{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs),maxBytes});
   const result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);
   const file=path.join(dir,`consult-result-${id}-${m.member}.json`);
   immutable(file,result);
@@ -119,5 +124,5 @@ if(isMain(import.meta.url)) {
   const [root,flag,id]=process.argv.slice(2);
   const out=flag==='--consult'?await consult(root,id):await execute(root);
   console.log(JSON.stringify(out,null,2));
- }catch(e){console.error(e.message);process.exitCode=1;}
+ }catch(e){printError(e);}
 }

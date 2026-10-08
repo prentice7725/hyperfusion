@@ -18,3 +18,4 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
+      - run: node scripts/generate-state-docs.mjs --check

@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {isWin} from './platform.mjs';
+import {printError} from './cli.mjs';
 
 // 제어 파일(상태, brief, 스냅샷, lease, 지표)이 사는 곳.
 //
@@ -62,38 +63,8 @@ export function ensureControl(root) {
   return dir;
 }
 
-// 컨트롤러 명령끼리 겹치지 않게 하는 짧은 배타 잠금(control.lock). 소유자(pid, 호스트, 시각)를 적어 둔다.
-// 같은 호스트에서 소유 프로세스가 이미 죽었으면 비정상 종료가 남긴 것이므로 치운다. 살아 있거나 다른 호스트면 소유자를 알리고 거절한다.
-// writer lease(writer.json)는 이 규칙과 별개다. lease는 일꾼이 아직 돌고 있을 수 있어 자동으로 치우지 않는다.
-const alive=pid=>{
-  try{process.kill(pid,0);return true;}catch(e){return e.code==='EPERM';}
-};
-const holderOf=file=>{try{const h=JSON.parse(fs.readFileSync(file,'utf8'));return h&&Number.isInteger(h.pid)&&typeof h.host==='string'?h:null;}catch{return null;}};
-export function acquireLock(file) {
-  for(let attempt=0;;attempt++){
-    try{
-      const fd=fs.openSync(file,'wx',0o600);
-      try{fs.writeSync(fd,JSON.stringify({pid:process.pid,host:os.hostname(),at:new Date().toISOString()}));}finally{fs.closeSync(fd);}
-      return ()=>fs.unlinkSync(file);
-    }catch(e){
-      if(e.code!=='EEXIST')throw e;
-      const holder=holderOf(file);
-      if(attempt===0&&holder&&holder.host===os.hostname()&&!alive(holder.pid)){
-        // 지우는 사이에 다른 프로세스가 새로 잡았을 수 있어, 이름을 바꿔 가져온 뒤 읽은 소유자와 같은 것일 때만 버린다.
-        const grave=`${file}.stale-${process.pid}`;
-        try{
-          fs.renameSync(file,grave);
-          const taken=holderOf(grave);
-          if(taken&&taken.pid===holder.pid&&taken.at===holder.at){fs.rmSync(grave,{force:true});continue;}
-          try{fs.linkSync(grave,file);}catch{}
-          fs.rmSync(grave,{force:true});
-        }catch{/* 다른 프로세스가 먼저 치웠다. 다시 시도한다 */continue;}
-      }
-      const who=holder?`by pid ${holder.pid} on ${holder.host} since ${holder.at}`:'by an unknown owner';
-      throw Error(`EEXIST: control.lock is held ${who}. If that controller is gone, see references/recovery-protocol.md; the lock is never cleared across hosts or while its process is alive`);
-    }
-  }
-}
+// Metadata locks share retry and dead-owner recovery. Writer leases remain separate.
+export {acquireLock} from './lock.mjs';
 
 const listFiles=(base,rel='')=>fs.readdirSync(path.join(base,rel),{withFileTypes:true}).flatMap(entry=>{
   const next=path.join(rel,entry.name);
@@ -126,7 +97,9 @@ export function migrate(root) {
 
 // 사용법: node control-dir.mjs path REPO  → 제어 폴더 위치를 출력한다(복구 절차에서 쓴다).
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ try{
   const [action,target]=process.argv.slice(2);
-  if(action!=='path'||!target){console.error('Usage: control-dir.mjs path REPO');process.exit(2);}
+  if(action!=='path'||!target)throw Error('Usage: control-dir.mjs path REPO');
   console.log(controlRoot(path.resolve(target)));
+ }catch(e){printError(e);}
 }

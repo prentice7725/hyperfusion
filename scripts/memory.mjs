@@ -1,3 +1,4 @@
+import {readInput,printError} from './cli.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {isMain} from './platform.mjs';
@@ -95,13 +96,13 @@ if(isMain(import.meta.url)) {
    context:()=>context(root),
    recall:()=>recall(root,rest[0],{type:flag('--type'),limit:flag('--limit')?Number(flag('--limit')):undefined}),
    candidates:()=>candidates(root,rest[0]),
-   commit:()=>commit(root,read(rest[0])),
-   resolve:()=>resolve(root,read(rest[0])),
+   commit:()=>commit(root,readInput(rest[0])),
+   resolve:()=>resolve(root,readInput(rest[0])),
    reflect:()=>reflect(root),
    forget:()=>forget(root,rest[0]),
    stats:()=>store.stats(workspace(repo(root)))
   }[cmd];
   if(!out)throw Error('Usage: memory.mjs bind|context|recall "query" [--type T] [--limit N]|candidates [TASK]|commit INPUT.json|resolve INPUT.json|reflect|forget ID|stats  (each takes REPO first)');
   console.log(JSON.stringify(out(),null,2));
- }catch(e){console.error(e.message);process.exitCode=1;}
+ }catch(e){printError(e);}
 }

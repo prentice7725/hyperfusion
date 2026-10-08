@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {read,atomic} from './artifact.mjs';
+import {acquireLock} from './lock.mjs';
 
 // 에이전트 공유 작업기억 저장소. AnchorMind의 설계(fragment, workspace 격리, 중복 병합, 모순 탐지,
 // importance 감쇠, TTL, 연상 확산, 출처·신뢰 표시)를 의존성 없이 로컬 파일로 구현한다.
@@ -92,9 +93,9 @@ function load(w) {
 function withStore(w,fn) {
  fs.mkdirSync(storeDir(),{recursive:true});
  const lock=fileOf(w)+'.lock';
- fs.closeSync(fs.openSync(lock,'wx',0o600));
+ const release=acquireLock(lock);
  try{const s=load(w);const out=fn(s);atomic(fileOf(w),s);return out;}
- finally{fs.unlinkSync(lock);}
+ finally{release();}
 }
 
 // 저장. 같은 내용이면 병합하고, 예전에 기각된 내용이면 거절하고, 충돌하면 검토 대기열로 보낸다.

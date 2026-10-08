@@ -27,6 +27,12 @@
 | 일꾼 | Sonnet (`claude --model claude-sonnet-5-5`) | 3라운드 |
 | auto | 배치표 + 실적 + 설치 상태로 선택 | — |
 
+## 모델과 작업 상한
+
+`executors.sonnet.model`은 실제 `--model` 인자로 전달한다. Grok·Antigravity의 model은 설치된 CLI가 정확한 `--model` 옵션을 광고할 때만 전달하고, 지원하지 않으면 preflight에서 거절한다. `lead_model`은 `claude-opus-*` 모델 ID를 받으며 기본값은 `claude-opus-5-5`다. 대상 모델 ID를 설정해도 호스트 모델 자체를 바꾸지는 않는다.
+
+`routing.half_life_days`는 실적 반감기(기본 90일), `routing.explore_every`는 강등된 일꾼을 첫 후보로 다시 쓰는 주기(기본 10, 0이면 비활성)다. `limits`로 작업 단위 상한을 설정한다: `{"max_cost_usd": 1.5, "max_wall_ms": 900000}`. init brief의 `limits`가 같은 키를 덮어쓰고, 진행 중 작업의 상한은 고정된다. 비용의 미측정 값과 단일 라운드 초과 한계는 [operations.md](operations.md)를 참고한다.
+
 ## 리뷰 주체
 
 `"review": {"by": "lead" | "delegate", "reviewers": ["sol","sonnet","antigravity","grok","luna"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. Codex 팀원 설정은 `executors.sol` / `executors.luna`의 `model`과 `reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 기본 모델은 sol `gpt-6.1-sol`, luna `gpt-6-luna`이다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).

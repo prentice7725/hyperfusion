@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "HyperFusion Opus-lead v0.3 state",
+  "title": "HyperFusion state (storage schema 4)",
   "type": "object",
   "required": [
     "schema_version",
@@ -144,14 +144,14 @@
     "phase": {
       "enum": [
         "PLAN",
-        "EXECUTING",
-        "REVIEW",
         "REDO",
         "ALTERNATIVE_REQUIRED",
-        "DECISION_REQUIRED",
         "TAKEOVER_REQUIRED",
-        "RECOVERY_REQUIRED",
+        "EXECUTING",
+        "REVIEW",
+        "DECISION_REQUIRED",
         "VERIFY",
+        "RECOVERY_REQUIRED",
         "CLOSE",
         "BLOCKED",
         "ARCHIVED"
@@ -454,6 +454,30 @@
       "type": "string"
     },
     "memory_error": {
+      "type": "string"
+    },
+    "package_version": {
+      "type": "string"
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_cost_usd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "max_wall_ms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "budget_error": {
       "type": "string"
     }
   }
