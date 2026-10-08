@@ -31,3 +31,12 @@ node "$HF\scripts\fusion-state.mjs" recover $REPO "$env:TEMP\hf-recover.json"
 - `status` 결과의 `schema_version`이 4가 아니면(main 브랜치나 이전 버전이 만든 작업) `recover` 대신 `archive`를 쓴다. 입력은 같고 명령만 `archive`다.
 - `state.json`이 CLOSE/ARCHIVED인데 writer.json만 남았다면 init 직후나 begin 도중 컨트롤러가 죽은 경우다. 프로세스가 없음을 확인한 뒤 `archive`로 정리한다.
 - writer.json을 손으로 지우지 않는다. 남은 변경을 되돌릴지 여부는 리드가 diff를 보고 정한다.
+
+## 범위 밖에 남은 파일
+
+복구는 일꾼이 남긴 변경을 자동으로 되돌리지 않는다. 그래서 라운드가 범위 밖 파일 때문에 실패한 뒤 그 파일이 남아 있으면, 컨트롤러는 그 파일을 기억해 두고 **다음 라운드에서도 계속 막는다**(`Earlier out-of-scope changes still present`). 아래 둘 중 하나를 해야 한다.
+
+1. **되돌린다.** 리드가 diff를 보고 그 파일을 직접 되돌린 뒤 `recover`한다. 다음 라운드가 깨끗한 기준선에서 시작한다.
+2. **알고 받아들인다.** `recover`에 `allow_out_of_scope: [{"path":"b.txt","reason":"사용자가 이 수정에 b.txt도 포함하라고 했다"}]`를 준다. 사유가 필수이고 기록(`scope_exceptions`)으로 남는다.
+
+마지막 관문인 `verify`는 라운드 단위가 아니라 **최초 기준선과 비교해** 허용 범위(시작 brief와 모든 라운드 brief의 범위 + 예외) 밖에 남은 변경이 있으면 거절한다. 라운드 사이에 사용자가 다른 파일을 고친 경우도 여기서 걸린다. 그 변경이 의도된 것이면 `verify`에 같은 `allow_out_of_scope`를 줄 수 있다. 되돌리는 쪽이면 작업이 다시 한 라운드 필요하다.

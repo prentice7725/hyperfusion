@@ -7,6 +7,7 @@ import {assertLease} from './writer-lease.mjs';
 import {result as validateResult,consultResult} from './contracts.mjs';
 import {adapter} from './adapters/index.mjs';
 import {notify} from './notify.mjs';
+import {EXECUTORS} from './executor-config.mjs';
 
 const timeoutFor=(state,executor,override)=>{
  // 일꾼별 timeout_ms 설정이 있으면 그 값, 없으면 20분.
@@ -53,7 +54,8 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes}) {
  if(reason||exit.code!==0)throw Error(reason||request.executor+' exited with code '+exit.code);
  const parsed=adapter(request.executor).parse(stdout,request);
  // Windows 일꾼은 경로를 역슬래시로 보고하기도 한다. 저장소 경로 표기(슬래시)로 맞춘 뒤 검증한다.
- const slash=p=>typeof p==='string'?p.replaceAll('\\','/'):p;
+ // 역슬래시와 앞의 './'를 걷어 내 저장소 경로 표기로 맞춘다.
+ const slash=p=>typeof p==='string'?p.replaceAll('\\','/').replace(/^(\.\/)+/,''):p;
  for(const k of ['files_read','files_changed'])if(Array.isArray(parsed.result?.[k]))parsed.result[k]=parsed.result[k].map(slash);
  if(Array.isArray(parsed.result?.findings))for(const f of parsed.result.findings)if(f)f.file=slash(f.file);
  immutable(path.join(dir,`usage-${tag}.json`),{executor:request.executor,session_id:parsed.session_id,...parsed.usage,cost_basis:'executor client-side report, not billed cost'});
@@ -64,7 +66,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes}) {
 export async function execute(root,{timeoutMs,maxBytes=8*1024*1024}={}) {
  root=repo(root);
  const state=read(path.join(root,'.fusion/state.json'));
- if(state.phase!=='EXECUTING'||!['grok','antigravity','sonnet','luna'].includes(state.owner))throw Error('No active executor round');
+ if(state.phase!=='EXECUTING'||!EXECUTORS.includes(state.owner))throw Error('No active executor round');
  timeoutMs=timeoutFor(state,state.owner,timeoutMs);
  const dir=path.join(root,'.fusion/tasks',state.task_id),n=state.iteration;
  const request=read(path.join(dir,`dispatch-${n}.json`));

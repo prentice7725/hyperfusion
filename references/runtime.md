@@ -12,16 +12,23 @@
 | finish | token, quiescent:true, result → REVIEW 또는 RECOVERY_REQUIRED. 브리지가 남긴 세션 ID를 묶음 |
 | review | 판정/근거/증거 → 다음 단계. `{"adopt":true}`면 보류된 위임 판정 채택 |
 | decide | decision → 같은 일꾼 REDO(예산 내) |
-| verify | acceptance_satisfied:true, 실제 통과 테스트 → CLOSE |
-| recover | token(보유 시), quiescent:true, reason |
+| verify | acceptance_satisfied:true, 실제 통과 테스트 → CLOSE. 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 거절한다. 알고 받아들일 때만 `allow_out_of_scope: [{path, reason}]` |
+| recover | token(보유 시), quiescent:true, reason, 선택 `allow_out_of_scope: [{path, reason}]`(범위 밖에 남은 파일을 알고 받아들일 때) |
 | archive | quiescent:true, reason, token(보유 시) → ARCHIVED |
 | consult | mode(advisor/committee), question, focus?, executors? → 읽기 전용 상담 dispatch. [consult.md](consult.md) |
 | delegate-review | REVIEW에서 다른 모델에게 읽기 전용 리뷰를 맡김(executors? 생략 시 review.reviewers 순서, 구현자 제외) |
 | consult-finish | quiescent:true → 위원별 결과. 트리가 바뀌었으면 답변 폐기 후 RECOVERY_REQUIRED |
-| status | 상태, 다이제스트, 일꾼별 남은 예산, 남은 상담 횟수 |
+| status | 상태, 다이제스트, 일꾼별 남은 예산, 남은 상담 횟수, `unavailable`(설정에는 있지만 설치되지 않은 일꾼) |
 
 일꾼 begin은 lease와 시도를 쓰기 전에 CLI를 프로브한다. 반환된 `command`/`args`(executor-bridge)를 라운드당 한 번 실행한다. RESULT_READY 후에도 lease는 유지되고, 리드가 정지 확인 후 finish 한다.
 
 예산: Grok 3, Antigravity 3, Sonnet 3, 리드 takeover 1 → 최대 10 변경 라운드. lease 획득 후 중단은 시도를 소모한다. 일꾼 소진 시 순서: 예산 있는 다른 일꾼 → (다른 일꾼이 없으면) 같은 일꾼 → 리드 takeover(허용 시) → BLOCKED.
 
 스키마 v4가 Opus 리드 구조다. `lead_target_model`은 `claude-opus-5-5`, `lead_model:null`은 실제 호스트 모델이 확인되지 않았다는 뜻이다. 테스트: `node --test SKILL/tests/*.test.mjs`. 대역 CLI는 프로세스/프로토콜 동작만 검증한다.
+
+## 설치되지 않은 일꾼, 끝난 작업, 정산 기록
+
+- **설치 여부:** `external.available`에 있어도 CLI가 설치돼 있지 않으면(또는 필요한 플래그가 없으면) 그 일꾼은 교체 후보와 "예산이 남았다"는 판단에서 빠진다. 컨트롤러 호출마다 새로 확인하므로 나중에 설치하면 바로 반영된다. 교체할 일꾼이 하나도 없으면 같은 단계에 갇히지 않고 takeover 또는 BLOCKED로 넘어간다. `status`의 `unavailable`에 사유가 나온다.
+- **끝난 작업:** CLOSE, BLOCKED, ARCHIVED가 되면 다음 작업을 `init`할 수 있다. 막힌 작업을 정리하려고 archive를 거칠 필요가 없고, archive 해도 프로젝트에는 `blocked`/`closed` 결과가 그대로 남는다.
+- **정산:** 작업이 CLOSE나 BLOCKED가 되는 순간(review, decide, recover, verify 어느 경로든) 지표 기록, 프로젝트 마일스톤 갱신, 기억 후보 추출이 한 번 실행된다. 하나가 실패해도 나머지는 계속하고, 실패는 상태의 `metrics_error`, `project_error`, `memory_error`에 남는다. 이 필드가 있으면 router 학습이나 프로젝트 진행이 일부 빠진 것이니 확인한다.
+- **선택 기능의 실패:** 기억 장부 기록이 실패해도 검증을 통과한 라운드는 버려지지 않는다(`memory_error`만 남는다).

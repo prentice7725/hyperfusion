@@ -415,6 +415,46 @@
           "type": "string"
         }
       }
+    },
+    "open_violations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "실패한 라운드가 남긴 범위 밖 파일. 되돌려지거나 허용될 때까지 다음 라운드를 막는다"
+    },
+    "scope_exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "round": {
+            "type": "integer"
+          },
+          "at": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "metrics_error": {
+      "type": "string"
+    },
+    "project_error": {
+      "type": "string"
+    },
+    "memory_error": {
+      "type": "string"
     }
   }
 }

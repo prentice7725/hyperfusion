@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {isMain} from './platform.mjs';
 import {read,atomic} from './artifact.mjs';
+import {EXECUTORS} from './executor-config.mjs';
 
 // 목표 지표: 성공 작업당 Opus(리드) 토큰. 일꾼 비용·시간은 별도 가드레일로만 본다.
 export function measure(root,observations=null) {
@@ -25,7 +26,7 @@ export function measure(root,observations=null) {
   // 리드가 직접 본 리뷰 대 위임 리뷰. 위임 비율이 오르면 Opus 토큰이 줄어야 한다.
   delegated_reviews:(s.reviews??[]).filter(r=>r.reviewed_by&&r.reviewed_by!=='lead').length,lead_overrides:(s.reviews??[]).filter(r=>r.overrode).length,
   consults:(s.consults??[]).map(c=>({id:c.id,mode:c.mode,violated:c.violated,members:c.members.map(m=>({executor:m.executor,ok:m.ok,recommended_verdict:m.recommended_verdict??null}))})),consult_runs:s.consult_runs??0,
-  worker_usage:usage,worker_rounds:Object.fromEntries(['grok','antigravity','sonnet','luna'].map(e=>[e,byExecutor(e).length])),
+  worker_usage:usage,worker_rounds:Object.fromEntries(EXECUTORS.map(e=>[e,byExecutor(e).length])),
   worker_cost_estimate_usd:usage.length&&usage.every(u=>known(u.total_cost_usd))?usage.reduce((a,u)=>a+u.total_cost_usd,0):null,
   review_rounds:s.reviews.length,delegation_count:s.iteration,escalation_count:s.escalations.length,lead_takeovers:s.attempts?.lead??0,
   wall_ms:s.closed_at?Date.parse(s.closed_at)-Date.parse(s.started_at):null,

@@ -2,11 +2,14 @@ import {checkPrior} from './memory-policy.mjs';
 const requireThat=(v,m)=>{if(!v)throw Error(m);};
 const str=v=>typeof v==='string'&&v.trim().length>0;
 const strs=v=>Array.isArray(v)&&v.every(str);
-export function safePath(v) {return str(v)&&!v.startsWith('/')&&!v.includes('\\')&&!v.includes('\0')&&!v.split('/').some(x=>['..','.git','.fusion',''].includes(x));}
+// 저장소 기준 상대 경로만 허용한다. '.'와 './src'는 git이 돌려주는 경로와 절대 일치하지 않아 모든 변경이 범위 밖이 되므로 거절한다.
+export function safePath(v) {return str(v)&&!v.startsWith('/')&&!v.includes('\\')&&!v.includes('\0')&&!v.split('/').some(x=>['..','.','.git','.fusion',''].includes(x));}
 export function brief(v) {
  requireThat(v&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(v.task_id),'Invalid task_id');
  requireThat(str(v.objective),'Missing objective');
- requireThat(v.scope&&Array.isArray(v.scope.paths)&&v.scope.paths.length&&v.scope.paths.every(safePath)&&v.scope.allowed_expansion==='ask-lead','Invalid bounded scope');
+ requireThat(v.scope&&Array.isArray(v.scope.paths)&&v.scope.paths.length&&v.scope.allowed_expansion==='ask-lead','Invalid bounded scope');
+ const badPath=v.scope.paths.find(p=>!safePath(p));
+ requireThat(badPath===undefined,`Invalid bounded scope: '${badPath}' is not a repository-relative path (no '.', '..', '.git', '.fusion', empty or trailing-slash segments)`);
  for(const k of ['constraints','success_criteria','allowed_actions','forbidden_actions','evidence_required'])requireThat(strs(v[k]),'Invalid '+k);
  requireThat(v.success_criteria.length>0,'Acceptance criteria empty');
  requireThat(v.allowed_actions.every(x=>['read','edit','test','lint','build'].includes(x)),'Unsupported action');

@@ -56,7 +56,25 @@ function openControl(root) {
   // 일꾼 예산과 교체 순서
   c.pool=()=>c.s.configuration.external.available;
   c.budget=owner=>c.s.attempts[owner]<CAP[owner];
-  c.idleWorkers=()=>c.pool().filter(c.budget);
+
+  // 일꾼 CLI가 설치돼 있는지. 컨트롤러 호출 한 번 안에서는 한 번만 확인하고, 호출마다 새로 확인한다.
+  // 그래서 나중에 설치하면 바로 반영되고, 설치되지 않은 일꾼 때문에 작업이 멈추지 않는다.
+  const installMemo=new Map();
+  c.installError=name=>{
+    if(!installMemo.has(name)){
+      try{
+        adapter(name).probe(c.s.configuration.executors[name]??{});
+        installMemo.set(name,null);
+      } catch(err){
+        installMemo.set(name,err.message);
+      }
+    }
+    return installMemo.get(name);
+  };
+  // 예산이 남아 있고 설치도 돼 있어서 실제로 일을 시킬 수 있는 일꾼.
+  c.canWork=name=>c.budget(name)&&!c.installError(name);
+  c.unavailable=()=>Object.fromEntries(c.pool().map(e=>[e,c.installError(e)]).filter(([,message])=>message));
+  c.idleWorkers=()=>c.pool().filter(c.canWork);
   // 일꾼이 하나라도 남아 있으면 리드 takeover는 금지.
   c.takeoverOrBlocked=()=>{
     const allowed=c.s.configuration.lead_takeover&&c.budget('lead')&&!c.idleWorkers().length;
@@ -65,9 +83,23 @@ function openControl(root) {
   // 현재 일꾼이 소진되거나 반복 실패하면: 다른 일꾼 → 같은 일꾼 재시도 → 리드 takeover → BLOCKED 순.
   c.exhausted=()=>{
     if(c.s.owner==='lead')return 'BLOCKED';
-    if(c.pool().some(e=>e!==c.s.owner&&c.budget(e)))return 'ALTERNATIVE_REQUIRED';
-    if(c.budget(c.s.owner))return 'REDO';
+    if(c.pool().some(e=>e!==c.s.owner&&c.canWork(e)))return 'ALTERNATIVE_REQUIRED';
+    if(c.canWork(c.s.owner))return 'REDO';
     return c.takeoverOrBlocked();
+  };
+  // 작업 전체의 범위. 시작 brief와 지금까지 라운드 brief의 경로를 합친 것에 리드가 허용한 예외를 더한다.
+  c.allowedPaths=()=>{
+    const paths=[];
+    const briefs=[c.optional('initial-brief.json'),...Array.from({length:c.s.iteration},(_,i)=>c.optional(`brief-${i+1}.json`))];
+    for(const b of briefs)paths.push(...(b?.scope?.paths??[]));
+    return [...paths,...(c.s.scope_exceptions??[]).map(e=>e.path)];
+  };
+  c.inScope=(file,paths)=>paths.some(p=>file===p||file.startsWith(p+'/'));
+  // 최초 기준선(init 시점)과 비교해 허용 범위 밖에 있는 변경 파일.
+  c.outsideBaseline=snap=>{
+    const baseline=read(path.join(c.taskdir(),'baseline.json'));
+    const allowed=c.allowedPaths();
+    return changes(baseline,snap).filter(f=>!c.inScope(f,allowed));
   };
   // 배치 순서에서 방금 반려된 일꾼 다음부터 돌아가며 후보를 늘어놓는다(자기 자신은 맨 끝).
   c.rotation=()=>{
@@ -88,12 +120,48 @@ function harvest(c) {
   }
 }
 
-// 작업이 끝나면(CLOSE/BLOCKED) 지표를 자동으로 남기고, 프로젝트 작업이면 마일스톤 진행을 갱신한다.
-function settle(c,status) {
-  try{measure(c.root);}catch{}
-  if(!c.s.project)return;
-  if(settleTask(c.root,c.s.task_id,status)==='checkpoint_due'){
-    notify(`HyperFusion ${c.s.project.name}`,`milestone ${c.s.project.milestone} finished; checkpoint report due`,{priority:'high'});
+// 작업이 CLOSE나 BLOCKED가 된 순간 한 번 하는 정산. 어떤 경로로 끝났든(review, decide, recover, verify) 똑같이 부른다.
+// 지표, 프로젝트 마일스톤, 기억 후보 순서로 하고, 하나가 실패해도 나머지는 계속한다. 실패는 숨기지 않고 상태에 남긴다.
+function finalizeTask(c,outcome) {
+  const s=c.s;
+  let dirty=false;
+  // router가 일꾼 실적을 배우는 재료다. 빠지면 학습이 조용히 멈추므로 실패를 기록한다.
+  try{
+    measure(c.root);
+  } catch(e){
+    s.metrics_error=`metrics not recorded: ${e.message}`;
+    dirty=true;
+  }
+  if(s.project){
+    try{
+      if(settleTask(c.root,s.task_id,outcome)==='checkpoint_due'){
+        notify(`HyperFusion ${s.project.name}`,`milestone ${s.project.milestone} finished; checkpoint report due`,{priority:'high'});
+      }
+    } catch(e){
+      s.project_error=`project milestone not updated: ${e.message}`;
+      dirty=true;
+    }
+  }
+  // 선택 기능이라 마지막에 한다. 실패해도 위 정산에는 영향이 없다.
+  try{
+    harvest(c);
+  } catch(e){
+    s.memory_error=`memory candidates not extracted: ${e.message}`;
+    dirty=true;
+  }
+  if(dirty)c.save();
+}
+
+// 리드가 판단해야 하는 단계로 넘어갈 때 알린다.
+const NEEDS_LEAD=['BLOCKED','TAKEOVER_REQUIRED','DECISION_REQUIRED'];
+
+function afterTransition(c,before) {
+  const s=c.s;
+  if(!s||s.schema_version!==4||s.phase===before)return;
+  if(s.phase==='CLOSE')finalizeTask(c,'closed');
+  if(s.phase==='BLOCKED')finalizeTask(c,'blocked');
+  if(NEEDS_LEAD.includes(s.phase)){
+    notify(`HyperFusion ${s.task_id}`,`needs the lead: ${s.phase} after ${s.owner} round ${s.iteration}`,{priority:'high'});
   }
 }
 
@@ -128,7 +196,8 @@ function init(c,input) {
   }
 
   const requested=selectExecutor(configuration,input.executor);
-  if(c.s&&!['CLOSE','ARCHIVED'].includes(c.s.phase))throw Error('Existing unfinished task; inspect/recover');
+  // 끝난 작업(완료, 막힘, 보관) 뒤에는 새 작업을 시작할 수 있다. 막힌 작업의 기록은 그대로 남는다.
+  if(c.s&&!['CLOSE','ARCHIVED','BLOCKED'].includes(c.s.phase))throw Error('Existing unfinished task; inspect/recover');
   contract.brief(input);
   if(c.writerHeld())throw Error('Existing writer; recover first');
   if(fs.existsSync(path.join(c.dir,'tasks',input.task_id)))throw Error('Task ID already used');
@@ -181,12 +250,14 @@ function archive(c,input) {
     throw Error('Archive requires stopped processes and a reason');
   }
   if(c.writerHeld())assertLease(c.root,input.token);
+  // 막혔거나 끝난 작업을 정리하는 것이면 프로젝트에는 그 결과를 그대로 남긴다.
+  const outcome={BLOCKED:'blocked',CLOSE:'closed'}[s.phase]??'archived';
   c.art(`archive-${crypto.randomUUID()}.json`,{reason:input.reason,previous:s,current:snapshot(c.root)});
   if(c.writerHeld())release(c.root,input.token);
   s.writer=null;
   s.phase='ARCHIVED';
   c.save();
-  if(s.project)settleTask(c.root,s.task_id,'archived');
+  if(s.project)settleTask(c.root,s.task_id,outcome);
   return s;
 }
 
@@ -197,7 +268,9 @@ function status(c) {
     lease_present:c.writerHeld(),
     current_digest:snapshot(c.root).digest,
     remaining:Object.fromEntries(Object.keys(CAP).map(k=>[k,CAP[k]-s.attempts[k]])),
-    consult_remaining:CONSULT_CAP-(s.consult_runs??0)
+    consult_remaining:CONSULT_CAP-(s.consult_runs??0),
+    // 설정에는 있지만 이 PC에 설치되지 않았거나 플래그가 맞지 않는 일꾼. 배치와 takeover 판단에서 빠진다.
+    unavailable:c.unavailable()
   };
 }
 
@@ -378,6 +451,11 @@ function applyDelegatedReview(c,open,member,result) {
     applyReview(c,delegated);
     return {status:'applied',verdict,reviewed_by:member.executor,phase:s.phase};
   } catch(e){
+    if(s.phase!=='REVIEW'){
+      // 적용하다 트리 변경이 드러나 이미 복구 단계다. 이 판정은 낡았으므로 보류하지 않고, review는 이 단계에서 받지도 않는다.
+      s.pending_review=null;
+      return {status:'recovery_required',error:e.message,phase:s.phase,next_action:'recover first (the tree changed since the round finished), then review the round again'};
+    }
     s.pending_review=delegated;
     return {status:'needs_lead',error:e.message,next_action:'review with {"adopt":true} after fixing, or give your own verdict'};
   }
@@ -399,8 +477,14 @@ function begin(c,input) {
     // 지정이 없으면 배치표에서 방금 반려된 일꾼 다음 순번부터 돌아가며 예산 있는 일꾼을 투입한다.
     const pick=input.executor===undefined||input.executor==='auto';
     owner=pick
-      ?c.rotation().find(e=>e!==s.owner&&c.budget(e))
+      ?c.rotation().find(e=>e!==s.owner&&c.canWork(e))
       :selectExecutor(s.configuration,input.executor);
+    if(!owner&&pick){
+      // 예산이 남은 일꾼이 있어도 설치돼 있지 않으면 쓸 수 없다. 이 단계에 갇히지 않게 다음 단계(takeover 또는 BLOCKED)로 옮긴다.
+      s.phase=c.exhausted();
+      c.save();
+      throw Error(`No installed alternative executor with budget (unavailable: ${JSON.stringify(c.unavailable())}); phase is now ${s.phase}`);
+    }
     if(!owner)throw Error('No alternative executor with budget');
     if(owner===s.owner)throw Error('Alternative requires a different executor than the one just rejected');
   } else {
@@ -486,8 +570,19 @@ function finish(c,input) {
   const errors=[];
   try{contract.result(input.result,s.task_id,n);}catch(e){errors.push(e.message);}
   const brief=read(path.join(c.taskdir(),`brief-${n}.json`));
-  const outside=changed.filter(f=>!brief.scope.paths.some(p=>f===p||f.startsWith(p+'/')));
+  const accepted=(s.scope_exceptions??[]).map(e=>e.path);
+  const outside=changed.filter(f=>!c.inScope(f,[...brief.scope.paths,...accepted]));
   if(outside.length)errors.push('Out of scope: '+outside.join(', '));
+  // 실패한 라운드가 남긴 범위 밖 파일은 복구해도 자동으로 되돌리지 않는다. 그래서 다음 라운드의 기준선에 섞여 들어가
+  // 라운드 단위 비교만으로는 다시 걸리지 않는다. 지적된 파일을 기록해 두고 되돌려지거나 허용될 때까지 계속 막는다.
+  const baseline=read(path.join(c.taskdir(),'baseline.json'));
+  const stillChanged=new Set(changes(baseline,post));
+  const allowed=c.allowedPaths();
+  s.open_violations=[...new Set([...(s.open_violations??[]),...outside])].filter(f=>stillChanged.has(f)&&!c.inScope(f,allowed));
+  const lingering=s.open_violations.filter(f=>!outside.includes(f));
+  if(lingering.length){
+    errors.push(`Earlier out-of-scope changes still present: ${lingering.join(', ')}; revert them, or record them with recover allow_out_of_scope [{path, reason}]`);
+  }
   if(post.head!==base.head||post.index_hash!==base.index_hash)errors.push('HEAD/index changed');
   if(!errors.length&&JSON.stringify([...new Set(input.result.files_changed)].sort())!==JSON.stringify(changed)){
     errors.push('Declared changes differ from snapshot');
@@ -503,8 +598,13 @@ function finish(c,input) {
     return s;
   }
   // 일꾼이 제안한 교훈은 장부에만 올린다. 리드가 승인해야 기억에 저장된다.
+  // 기억 장부는 선택 기능이다. 실패해도 이미 검증을 통과한 라운드를 버리지 않고 사실만 남긴다.
   if(memoryOn(c)&&input.result.memory_candidates?.length){
-    propose(c.root,s.task_id,input.result.memory_candidates,{role:'worker',executor:s.owner,round:n});
+    try{
+      propose(c.root,s.task_id,input.result.memory_candidates,{role:'worker',executor:s.owner,round:n});
+    } catch(e){
+      s.memory_error=`worker lessons not recorded: ${e.message}`;
+    }
   }
   s.result_failures=0;
   s.phase='REVIEW';
@@ -534,7 +634,7 @@ function applyReview(c,input) {
   if(verdict==='takeover'&&c.idleWorkers().length){
     throw Error('Workers still have budget ('+c.idleWorkers().join(', ')+'); make them work instead of taking over');
   }
-  if(verdict==='alternative'&&(s.owner==='lead'||!c.pool().some(e=>e!==s.owner&&c.budget(e)))){
+  if(verdict==='alternative'&&(s.owner==='lead'||!c.pool().some(e=>e!==s.owner&&c.canWork(e)))){
     throw Error('No alternative executor with budget; redo or report');
   }
 
@@ -551,7 +651,7 @@ function applyReview(c,input) {
   else if(verdict==='alternative')s.phase='ALTERNATIVE_REQUIRED';
   else if(s.owner==='lead')s.phase='BLOCKED';
   // 같은 반려 사유를 두 번 받은 일꾼은 다른 일꾼이 있으면 교체한다.
-  else if(!c.budget(s.owner)||(assessment.hard&&c.pool().some(x=>x!==s.owner&&c.budget(x))))s.phase=c.exhausted();
+  else if(!c.canWork(s.owner)||(assessment.hard&&c.pool().some(x=>x!==s.owner&&c.canWork(x))))s.phase=c.exhausted();
   else s.phase='REDO';
 
   if(!['VERIFY','REDO','DECISION_REQUIRED'].includes(s.phase)){
@@ -562,13 +662,8 @@ function applyReview(c,input) {
   s.hint=assessment.hard&&s.phase==='ALTERNATIVE_REQUIRED'&&committeeFits
     ?{suggest:'consult',mode:'committee',reason:'repeated failure; get a root cause and plan before the next worker'}
     :null;
-  if(s.phase==='BLOCKED')harvest(c);
-  if(['BLOCKED','TAKEOVER_REQUIRED','DECISION_REQUIRED'].includes(s.phase)){
-    notify(`HyperFusion ${s.task_id}`,`needs the lead: ${s.phase} after ${s.owner} round ${s.iteration}`,{priority:'high'});
-  }
   s.escalation_assessment=assessment;
   c.save();
-  if(s.phase==='BLOCKED')settle(c,'blocked');
   return s;
 }
 
@@ -591,7 +686,7 @@ function decide(c,input) {
   c.requirePhase('DECISION_REQUIRED');
   if(typeof input.decision!=='string'||!input.decision.trim())throw Error('Record architecture decision');
   c.art(`decision-${s.iteration}.json`,input);
-  s.phase=s.owner!=='lead'&&c.budget(s.owner)?'REDO':c.exhausted();
+  s.phase=s.owner!=='lead'&&c.canWork(s.owner)?'REDO':c.exhausted();
   c.save();
   return s;
 }
@@ -603,17 +698,25 @@ function verify(c,input) {
     &&input.tests.every(t=>typeof t.command==='string'&&t.command.trim()&&t.status==='pass')
     &&input.acceptance_satisfied===true;
   if(!passing)throw Error('Passing verification evidence required');
-  if(snapshot(c.root).digest!==s.post_digest){
+  const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope);
+  const now=snapshot(c.root);
+  if(now.digest!==s.post_digest){
     s.phase='RECOVERY_REQUIRED';
     c.save();
     throw Error('Tree drift during verification');
+  }
+  // 마지막 관문: 라운드 단위 검사를 다 통과했어도, 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 닫지 않는다.
+  const before=s.scope_exceptions;
+  s.scope_exceptions=[...(before??[]),...stampExceptions(accepted,s.iteration)];
+  const stray=c.outsideBaseline(now);
+  if(stray.length){
+    s.scope_exceptions=before;
+    throw Error(`Out-of-scope changes since the baseline: ${stray.join(', ')}; revert them (the task will need another round), or pass allow_out_of_scope [{path, reason}] to accept them knowingly`);
   }
   c.art('verification.json',input);
   s.phase='CLOSE';
   s.closed_at=new Date().toISOString();
   c.save();
-  harvest(c);
-  settle(c,'closed');
   return s;
 }
 
@@ -624,6 +727,8 @@ function recover(c,input) {
   if(input.quiescent!==true||typeof input.reason!=='string'||!input.reason.trim()){
     throw Error('Recovery requires stopped writers and rationale');
   }
+  // 범위 밖에 남은 파일을 리드가 알고 받아들이는 경우. 상태를 바꾸기 전에 입력부터 검사한다.
+  const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope);
   c.requirePhase('PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED','EXECUTING','RECOVERY_REQUIRED','REVIEW');
   if(['PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED'].includes(s.phase)){
     // 디스패치 전에 컨트롤러가 죽어 남은 고아 lease. 소모된 시도는 되돌리지 않는다.
@@ -633,15 +738,24 @@ function recover(c,input) {
     s.owner=orphan.owner;
     s.iteration=Math.max(s.iteration,orphan.round);
   }
+  s.scope_exceptions=[...(s.scope_exceptions??[]),...stampExceptions(accepted,s.iteration)];
   c.art(`recovery-${Date.now()}.json`,{...input,current:snapshot(c.root),prior_phase:s.phase});
   s.phase='RECOVERY_REQUIRED';
   c.save();
   if(c.writerHeld())release(c.root,input.token);
   s.writer=null;
-  s.phase=s.result_failures>=2||s.owner==='lead'||!c.budget(s.owner)?c.exhausted():'REDO';
+  s.phase=s.result_failures>=2||s.owner==='lead'||!c.canWork(s.owner)?c.exhausted():'REDO';
   c.save();
   return s;
 }
+
+// allow_out_of_scope: [{path, reason}]. 범위 밖 변경을 알고 받아들일 때 남기는 기록이다.
+function parseScopeExceptions(list) {
+  const valid=Array.isArray(list)&&list.every(e=>e&&contract.safePath(e.path)&&typeof e.reason==='string'&&e.reason.trim());
+  if(!valid)throw Error('Invalid allow_out_of_scope: a list of {path, reason} with a repository-relative path and a reason');
+  return list.map(e=>({path:e.path,reason:e.reason}));
+}
+const stampExceptions=(list,round)=>list.map(e=>({...e,round,at:new Date().toISOString()}));
 
 // ── 진입점 ──────────────────────────────────────────────────────────
 
@@ -653,7 +767,10 @@ export function run(root,action,input={}) {
   try {
     c.action=action;
     c.load();
-    return dispatch(c,action,input);
+    const before=c.s?.phase;
+    const result=dispatch(c,action,input);
+    afterTransition(c,before);
+    return result;
   } finally {
     c.unlock();
   }
