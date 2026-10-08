@@ -67,7 +67,7 @@ test('the phase matrix rejects every invalid action-phase pair and generates doc
  }
  for(const phase of TERMINAL_PHASES)assert.throws(()=>assertAction(phase,'begin'));
  assert.throws(()=>assertAction('PLAN','consult',{mode:'review'}));
- assert.ok(fs.readFileSync(new URL('../references/state-actions.md',import.meta.url),'utf8').includes(phaseTable()));
+ assert.ok(fs.readFileSync(new URL('../references/state-actions.md',import.meta.url),'utf8').replaceAll('\r\n','\n').includes(phaseTable()));
 });
 
 test('option matching does not mistake --resume-last for --resume',()=>{
