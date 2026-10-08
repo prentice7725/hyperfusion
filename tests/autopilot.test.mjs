@@ -15,7 +15,7 @@ const setup=(t,extra={})=>{
 };
 test('autopilot passes independent review and stops at VERIFY with process and masking audit',async t=>{
  const f=setup(t);const out=await autopilot(f.root);
- assert.equal(out.phase,'VERIFY');assert.equal(out.reason,'VERIFY');assert.equal(f.state().writer,null);
+ assert.equal(out.phase,'VERIFY',JSON.stringify(out));assert.equal(out.reason,'VERIFY');assert.equal(f.state().writer,null);
  assert.equal(f.state().reviews.at(-1).reviewed_by,'sol');
  const dir=path.join(f.control,'tasks',f.brief.task_id);assert.equal(read(path.join(dir,'quiescence-1.json')).quiescent,true);
  assert.equal(read(path.join(dir,'redaction-1.json')).enabled,true);assert.ok(!fs.existsSync(path.join(dir,'verification.json')));
@@ -75,6 +75,15 @@ test('unavailable process table or live tracked descendants cannot prove quiesce
  let calls=0;const watcher=watchProcessTree({readTable:async()=>++calls===1?[{pid:100,parent:0,created:'p'},{pid:101,parent:100,created:'c'}]:[{pid:101,parent:0,created:'c'}]});
  watcher.start(100);assert.equal((await watcher.finish({exited:true})).quiescent,false);
  const aborted=watchProcessTree({readTable:async()=>[]});aborted.start(100);assert.equal((await aborted.finish({exited:false,aborted:true})).quiescent,false);
+});
+test('slow process-table observations do not accumulate a polling backlog',async()=>{
+ let calls=0,release;const gate=new Promise(resolve=>{release=resolve;});
+ const watcher=watchProcessTree({pollMs:5,readTable:async()=>{
+  calls++;if(calls===1){await gate;return [{pid:100,parent:0,created:'p'}];}return [];
+ }});
+ watcher.start(100);await new Promise(resolve=>setTimeout(resolve,30));
+ const finished=watcher.finish({exited:true});release();
+ assert.equal((await finished).quiescent,true);assert.equal(calls,2,'one in-flight observation and one final check');
 });
 test('independent rejection is forwarded to the next round without changing acceptance commands',async t=>{
  const f=setup(t);f.mode('review-redo');const out=await autopilot(f.root,{max_steps:7});

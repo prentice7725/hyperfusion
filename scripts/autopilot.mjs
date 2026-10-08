@@ -67,7 +67,7 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
      if(s.owner==='lead')return stop('TAKEOVER_REQUIRED');
      if(fs.existsSync(path.join(dir,`launch-${s.iteration}.json`)))throw failure('AUTOPILOT_EXISTING_LAUNCH','A launch marker already exists; inspect quiescence and settle or recover manually');
      const result=await execute(root,{proveQuiescence:true,signal});event('execute',state());
-     if(result.quiescence?.quiescent!==true)throw failure('AUTOPILOT_QUIESCENCE_REQUIRED','Supervisor could not confirm process-tree quiescence; retain the writer lease');
+     if(result.quiescence?.quiescent!==true)throw failure('AUTOPILOT_QUIESCENCE_REQUIRED',`Supervisor could not confirm process-tree quiescence (${result.quiescence?.reason??'missing evidence'}); retain the writer lease`);
      settle('finish',{token:s.writer.token,quiescent:true});continue;
     }
     if(s.phase==='REVIEW'){

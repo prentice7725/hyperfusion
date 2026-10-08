@@ -1,7 +1,11 @@
 import {execFile} from 'node:child_process';
 import {isWin} from './platform.mjs';
 
-const command=(file,args)=>new Promise((resolve,reject)=>execFile(file,args,{encoding:'utf8',windowsHide:true,timeout:10000,maxBuffer:8*1024*1024},(e,out)=>e?reject(e):resolve(out)));
+// Cold CIM startup can take over 10 seconds on a busy Windows CI runner.
+// Keep a bounded timeout, without interpreting a timeout as proof of shutdown.
+const command=(file,args)=>new Promise((resolve,reject)=>execFile(file,args,{encoding:'utf8',windowsHide:true,timeout:isWin?30000:10000,maxBuffer:8*1024*1024},(e,out)=>{
+ if(e){if(e.killed)e.code='PROCESS_TABLE_TIMEOUT';reject(e);}else resolve(out);
+}));
 
 async function table() {
  if(isWin){
@@ -26,19 +30,25 @@ export function descendants(rows,pid,tracked=new Map()) {
 
 // This is supervised process-tree evidence, not an OS sandbox: escaped/reparented children
 // between observations cannot be guaranteed absent. Unknown process-table errors fail closed.
-export function watchProcessTree({readTable=table}={}) {
- const tracked=new Map();let pid=null,timer=null,pending=Promise.resolve(),error=null;
+export function watchProcessTree({readTable=table,pollMs=1000}={}) {
+ const tracked=new Map();let pid=null,timer=null,pending=Promise.resolve(),error=null,querying=false,stopped=false;
  const observe=async()=>{
   try{const rows=await readTable();for(const p of descendants(rows,pid,tracked)){
-   if(!Number.isSafeInteger(p.pid)||p.pid<1||typeof p.created!=='string'||!p.created)throw Error('Process identity unavailable');
+   if(!Number.isSafeInteger(p.pid)||p.pid<1||typeof p.created!=='string'||!p.created)throw Object.assign(Error('Process identity unavailable'),{code:'PROCESS_IDENTITY_UNAVAILABLE'});
    tracked.set(p.pid,p.created);
   }}
   catch(e){error=e.code??'PROCESS_TABLE_UNAVAILABLE';}
  };
+ // Do not queue observations behind a slow CIM call: that creates a growing
+ // backlog precisely when the process-table service is overloaded.
+ const poll=()=>{
+  if(querying||stopped)return;
+  querying=true;pending=observe().finally(()=>{querying=false;});
+ };
  return {
-  start(value){pid=value;pending=observe();timer=setInterval(()=>{pending=pending.then(observe);},1000);timer.unref();},
+  start(value){pid=value;poll();timer=setInterval(poll,pollMs);timer.unref();},
   async finish({exited,aborted=false}){
-   clearInterval(timer);await pending;
+   stopped=true;clearInterval(timer);await pending;
    if(!pid||!exited||aborted)return {quiescent:false,reason:'Executor termination was not confirmed'};
    try{
     const rows=await readTable(),live=descendants(rows,pid,tracked);
