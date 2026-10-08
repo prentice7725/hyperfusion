@@ -20,6 +20,8 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes}) {
  // create-once 실행 표식이 크래시나 재실행에서도 중복 프로세스를 막는다.
  immutable(path.join(dir,`launch-${tag}.json`),{executor:request.executor,bridge_pid:process.pid,session_id:request.cli.session_id,at:new Date().toISOString()});
  if(request.cli.prompt_file)fs.writeFileSync(request.cli.prompt_file,request.prompt,{flag:'wx',mode:0o600});
+ // 스키마처럼 CLI가 파일 경로로 받는 입력. 컨트롤러가 정한 경로에 한 번만 쓴다.
+ for(const f of request.cli.extra_files??[])fs.writeFileSync(f.path,f.content,{flag:'wx',mode:0o600});
  let stdout='',stderr='',reason=null,child,killTimer,timer,forceResolve,alive=false;
  const stop=why=>{if(reason)return;reason=why;killTree(child,{alive});killTimer=setTimeout(()=>{killTree(child,{force:true,alive});child?.stdout.destroy();child?.stderr.destroy();child?.stdin?.destroy();forceResolve?.({code:null,signal:'SUPERVISOR_ABORT'});},2000);};
  const onTerm=()=>stop('bridge interrupted');
@@ -93,7 +95,7 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024}={}) {
  const runs=await Promise.allSettled(open.members.map(async m=>{
   const request=read(path.join(dir,`consult-${id}-${m.member}.json`));
   const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,request,{timeoutMs:timeoutFor(state,m.executor,timeoutMs),maxBytes});
-  const result=consultResult(parsed.result,state.task_id,id,m.member);
+  const result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);
   const file=path.join(dir,`consult-result-${id}-${m.member}.json`);
   immutable(file,result);
   return {member:m.member,executor:m.executor,ok:true,recommended_verdict:result.recommended_verdict,findings:result.findings.length,result_file:file};

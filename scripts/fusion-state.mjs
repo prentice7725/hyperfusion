@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isMain} from './platform.mjs';
-import {config,selectExecutor,EXECUTORS,CAP,CONSULT_CAP} from './executor-config.mjs';
+import {config,selectExecutor,EXECUTORS,CAP,CONSULT_CAP,REVIEWERS,REVIEW_RUNS_PER_ROUND} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
 import {atomic,immutable,read,repo,snapshot,changes,git} from './artifact.mjs';
@@ -81,19 +81,35 @@ export function run(root,action,input={}) {
   if(action==='status')return {...s,lease_present:writerHeld(),current_digest:snapshot(root).digest,remaining:Object.fromEntries(Object.keys(CAP).map(k=>[k,CAP[k]-s.attempts[k]])),consult_remaining:CONSULT_CAP-(s.consult_runs??0)};
   // 상담 중에는 다음 수를 두지 않는다. 결과를 보고 판단한다.
   if(s.open_consult&&action!=='consult-finish')throw Error('Consult '+s.open_consult.id+' in progress; run its bridge, then consult-finish');
+  // 위임 리뷰: 이번 라운드를 구현하지 않은 다른 모델이 읽기 전용으로 판정한다. 상담 장치를 그대로 쓴다.
+  if(action==='delegate-review'){action='consult';input={...input,mode:'review'};}
   if(action==='consult') {
-   phase('PLAN','REVIEW','REDO','ALTERNATIVE_REQUIRED','DECISION_REQUIRED');
-   if(writerHeld())throw Error('Writer still present; recover');
    const mode=input.mode;
-   if(!['advisor','committee'].includes(mode))throw Error('Consult mode must be advisor or committee');
+   if(!['advisor','committee','review'].includes(mode))throw Error('Consult mode must be advisor, committee or review');
+   if(mode==='review')phase('REVIEW');else phase('PLAN','REVIEW','REDO','ALTERNATIVE_REQUIRED','DECISION_REQUIRED');
+   if(writerHeld())throw Error('Writer still present; recover');
+   if(mode==='review'){
+    input={question:`Review round ${s.iteration} by ${s.owner} against every success criterion and give the verdict.`,...input};
+    if((s.review_runs?.[s.iteration]??0)>=REVIEW_RUNS_PER_ROUND)throw Error(`Delegated review cap reached for round ${s.iteration}; review it yourself`);
+   }
    if(typeof input.question!=='string'||!input.question.trim())throw Error('Consult requires a concrete question');
    if(input.focus!==undefined&&!(Array.isArray(input.focus)&&input.focus.every(x=>typeof x==='string')))throw Error('Invalid focus');
-   const size=mode==='advisor'?1:2;
-   if((s.consult_runs??0)+size>CONSULT_CAP)throw Error(`Consult cap reached (${CONSULT_CAP} member runs per task)`);
+   const size=mode==='committee'?2:1;
+   if(mode!=='review'&&(s.consult_runs??0)+size>CONSULT_CAP)throw Error(`Consult cap reached (${CONSULT_CAP} member runs per task)`);
+   // 상담·리뷰에는 구현 일꾼 외에 리뷰 전용 인력(Codex)도 부를 수 있다.
+   const hire=e=>{
+    if(e==='auto'||!REVIEWERS.includes(e))throw Error('Consult executors must be named from '+REVIEWERS.join(', '));
+    if(!pool().includes(e)&&!s.configuration.review.reviewers.includes(e))throw Error('Not enabled in external.available or review.reviewers: '+e);
+    return e;
+   };
    let picks,explicit=input.executors!==undefined;
    if(explicit){
     if(!Array.isArray(input.executors)||input.executors.length!==size||new Set(input.executors).size!==size)throw Error(`${mode} needs ${size} distinct executor(s)`);
-    picks=input.executors.map(e=>{const x=selectExecutor(s.configuration,e);if(x==='auto')throw Error('Name consult executors explicitly or omit them');return x;});
+    picks=input.executors.map(hire);
+    // 자기 작업은 자기가 리뷰하지 않는다.
+    if(mode==='review'&&picks.includes(s.owner))throw Error(`${s.owner} implemented round ${s.iteration}; pick a different reviewer`);
+   } else if(mode==='review'){
+    picks=s.configuration.review.reviewers.filter(e=>e!==s.owner&&!(s.review_failed?.[s.iteration]??[]).includes(e));
    } else {
     // 기본: 방금 일한 일꾼은 뒤로. 자기 작업을 자기가 검사하지 않게 하고, 위원회는 서로 다른 모델로 꾸린다.
     const order=[...new Set([...s.routing.candidates,...pool()])].filter(e=>pool().includes(e));
@@ -105,7 +121,7 @@ export function run(root,action,input={}) {
     let cli;try{cli=adapter(e).probe(s.configuration.executors[e]??{});}catch(err){if(explicit)throw err;continue;}
     members.push({member:'m'+(members.length+1),executor:e,cli});
    }
-   if(members.length<size)throw Error(`ADAPTER_UNAVAILABLE: ${mode} needs ${size} installed worker(s)`);
+   if(members.length<size)throw Error(`ADAPTER_UNAVAILABLE: ${mode} needs ${size} installed ${mode==='review'?'reviewer other than '+s.owner:'worker(s)'}`);
    const id='c'+((s.consults?.length??0)+1);
    const n=s.iteration,opt=name=>{const f=path.join(taskdir(),name);return fs.existsSync(f)?read(f):null;};
    const latest=opt(`brief-${n}.json`)??opt('initial-brief.json');
@@ -127,7 +143,9 @@ export function run(root,action,input={}) {
    art(`consult-${id}-base.json`,base);
    for(const [member,request] of requests)art(`consult-${id}-${member}.json`,request);
    art(`consult-${id}.json`,{id,mode,question:input.question,focus:input.focus??[],members:roster,phase:s.phase});
-   s.consult_runs=(s.consult_runs??0)+size;s.hint=null;
+   if(mode==='review')s.review_runs={...(s.review_runs??{}),[n]:(s.review_runs?.[n]??0)+1};
+   else s.consult_runs=(s.consult_runs??0)+size;
+   s.hint=null;
    s.open_consult={id,mode,members:roster,digest:base.digest,started_at:new Date().toISOString()};
    save();
    return {consult_id:id,mode,members:roster,command:process.execPath,args:[BRIDGE,root,'--consult',id],next_action:'run command once, then consult-finish with quiescent:true'};
@@ -150,8 +168,28 @@ export function run(root,action,input={}) {
    art(`consult-${open.id}-finish.json`,record);
    s.consults=[...(s.consults??[]),record];s.open_consult=null;
    if(violated){s.phase='RECOVERY_REQUIRED';s.last_errors=['Consult modified the tree: '+(touched.join(', ')||'HEAD/index')];}
+   let applied=null;
+   if(open.mode==='review'&&!violated){
+    const m=members[0],r=results[0];
+    if(!r){
+     // 리뷰어가 결과를 못 냈으면 다음 리뷰어를 쓰거나 리드가 직접 본다.
+     s.review_failed={...(s.review_failed??{}),[s.iteration]:[...(s.review_failed?.[s.iteration]??[]),m.executor]};
+     applied={status:'reviewer_failed',executor:m.executor,next_action:'delegate-review again (another reviewer) or review it yourself'};
+    } else {
+     const raw=read(path.join(taskdir(),`raw-result-${s.iteration}.json`));
+     let verdict=r.recommended_verdict,blocking=r.blocking_criteria;
+     // 일꾼이 미완료라고 보고한 라운드는 리뷰어가 pass를 줘도 통과시킬 수 없다.
+     if(verdict==='pass'&&raw.status!=='complete'){verdict='redo';blocking=['worker reported '+raw.status];}
+     const delegated={verdict,rationale:r.summary,blocking_criteria:blocking,commands_run:['delegated read-only review by '+m.executor],independent_diff_review:true,
+      reviewed_by:m.executor,consult_id:open.id,confidence:r.confidence,findings:r.findings};
+     if(s.configuration.review.auto_apply){
+      try{applyReview(delegated);applied={status:'applied',verdict,reviewed_by:m.executor,phase:s.phase};}
+      catch(e){s.pending_review=delegated;applied={status:'needs_lead',error:e.message,next_action:'review with {"adopt":true} after fixing, or give your own verdict'};}
+     } else {s.pending_review=delegated;applied={status:'pending',next_action:'review with {"adopt":true} or your own verdict'};}
+    }
+   }
    save();
-   return {...record,results,phase:s.phase};
+   return {...record,results,phase:s.phase,...(applied?{review:applied}:{})};
   }
   if(action==='begin') {
    phase('PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED');contract.brief(input);
@@ -171,6 +209,14 @@ export function run(root,action,input={}) {
    } else {
     owner=s.phase==='PLAN'?s.active_executor:s.owner;
     if(input.executor!==undefined&&input.executor!==owner)throw Error('Executor switch requires an alternative verdict');
+   }
+   // "@review": 직전 리뷰의 반려 사유와 파일·줄 지적을 그대로 명령서로 쓴다. 리드가 diff를 다시 읽지 않아도 된다.
+   if(input.lead_feedback==='@review'){
+    const last=s.reviews.at(-1);
+    const items=[...(last?.findings??[]).filter(f=>['blocker','major'].includes(f.severity)).map(f=>({file:f.file,...(f.line?{line:f.line}:{}),comment:`${f.issue}${f.suggestion?' → '+f.suggestion:''}`})),
+     ...(last?.blocking_criteria??[]).map(c=>`Unmet: ${c}${last.rationale?' ('+last.rationale.slice(0,200)+')':''}`)];
+    if(!items.length)throw Error('Last review has no findings or blocking criteria to forward; write lead_feedback yourself');
+    input={...input,lead_feedback:items};
    }
    if(s.phase!=='PLAN'&&owner!=='lead')contract.feedback(input.lead_feedback);
    if(!budget(owner))throw Error(owner+' round cap reached');
@@ -223,17 +269,18 @@ export function run(root,action,input={}) {
    s.result_failures=0;s.phase='REVIEW';save();
    release(root,input.token);s.writer=null;save();return s;
   }
-  if(action==='review') {
-   phase('REVIEW');contract.review(input);
-   if(writerHeld())throw Error('Writer still present; recover');
+  // 판정을 적용한다. 리드가 직접 내린 판정이든 위임 리뷰어의 판정이든 같은 규칙을 거친다.
+  function applyReview(input) {
+   contract.review(input);
    if(snapshot(root).digest!==s.post_digest){s.phase='RECOVERY_REQUIRED';save();throw Error('Tree drift before review');}
    const raw=read(path.join(taskdir(),`raw-result-${s.iteration}.json`));
    if(input.verdict==='pass'&&raw.status!=='complete')throw Error('Incomplete result cannot pass');
    const verdict=input.verdict==='escalate'?'alternative':input.verdict;
+   if(verdict==='takeover'&&input.reviewed_by!=='lead')throw Error('Only the lead can order a takeover');
    if(verdict==='takeover'&&idleWorkers().length)throw Error('Workers still have budget ('+idleWorkers().join(', ')+'); make them work instead of taking over');
    if(verdict==='alternative'&&(s.owner==='lead'||!pool().some(e=>e!==s.owner&&budget(e))))throw Error('No alternative executor with budget; redo or report');
    const record={...input,verdict,owner:s.owner,round:s.iteration};
-   art(`review-${s.iteration}.json`,record);s.reviews.push(record);
+   art(`review-${s.iteration}.json`,record);s.reviews.push(record);s.pending_review=null;
    const e=contract.escalation(s.reviews.filter(r=>r.owner===s.owner),s.result_failures,input.complexity??{});
    const from=s.phase;
    if(verdict==='pass')s.phase='VERIFY';
@@ -250,6 +297,17 @@ export function run(root,action,input={}) {
    if(s.phase==='BLOCKED')harvest();
    if(['BLOCKED','TAKEOVER_REQUIRED','DECISION_REQUIRED'].includes(s.phase))notify(`HyperFusion ${s.task_id}`,`needs the lead: ${s.phase} after ${s.owner} round ${s.iteration}`,{priority:'high'});
    s.escalation_assessment=e;save();return s;
+  }
+  if(action==='review') {
+   phase('REVIEW');
+   if(writerHeld())throw Error('Writer still present; recover');
+   // adopt: 보류된 위임 판정을 그대로 채택. 아니면 리드 자신의 판정(위임 판정이 있었다면 덮어쓴 것으로 기록).
+   if(input.adopt===true){
+    if(!s.pending_review)throw Error('No pending delegated review to adopt');
+    return applyReview({...s.pending_review,adopted_by_lead:true});
+   }
+   const overridden=s.pending_review?{overrode:s.pending_review.reviewed_by,overrode_verdict:s.pending_review.verdict}:{};
+   return applyReview({...input,reviewed_by:'lead',...overridden});
   }
   if(action==='decide') {
    phase('DECISION_REQUIRED');

@@ -40,8 +40,14 @@ if(root){
  });
  check('metadata-ignore',()=>{try{git(root,['check-ignore','.fusion/state.json']);}catch{throw Error('Add /.fusion/ to local git info/exclude before init');}return 'ignored';});
 }
+// 리뷰 위임이 켜져 있으면 리뷰어(구현 일꾼이 아닌 Codex 포함)도 점검한다. 최소 한 명은 있어야 한다.
+let reviewers=null;
+if(c?.review.by==='delegate'){
+ reviewers=c.review.reviewers.map(name=>{const b=bench.find(x=>x.name===name);if(b)return {name,ok:b.ok,detail:b.detail};if(name===selected)return {name,ok:true};try{return {name,ok:true,detail:adapter(name).probe(c.executors[name]??{})};}catch(e){return {name,ok:false,detail:e.message};}});
+ check('reviewers',()=>{const ok=reviewers.filter(r=>r.ok).map(r=>r.name);if(!ok.length)throw Error('review.by is delegate but no reviewer CLI is installed');return ok.join(', ');});
+}
 // 기억 계층은 선택 사항이라 실패해도 전체 점검을 막지 않는다.
 let memory=null;
 try{const w=c?workspaceOf(c):null;if(w)memory=memoryStats(w);}catch(e){memory={error:e.message};}
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,bench,memory,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,bench,reviewers,memory,review:c?.review??null,roster:{lead:'Claude Opus 5.5 (host)',workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;

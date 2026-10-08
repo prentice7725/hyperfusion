@@ -1,6 +1,6 @@
 {
   "name": "hyperfusion",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Claude Opus 5.5 리드가 Grok·Antigravity·Sonnet 일꾼을 작업별로 골라 부리는 Claude Code 스킬",
   "type": "module",

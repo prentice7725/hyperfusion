@@ -36,6 +36,8 @@ PLAN 이후의 모든 일꾼 begin(REDO, ALTERNATIVE_REQUIRED)에는 비어 있�
 
 나쁜 예: `["다시 해봐"]`, `["테스트 고쳐"]`. 무엇을, 어디서, 어떤 기준으로가 없으면 명령이 아니다.
 
+직전 리뷰를 그대로 넘기려면 `"lead_feedback": "@review"`를 쓴다. blocker·major 지적은 `{file, line, comment}`로, 반려 사유는 `Unmet: …`로 펼쳐진다. 위임 리뷰와 함께 쓰면 리드가 diff를 다시 읽지 않아도 된다.
+
 위치를 정확히 짚을 때는 문자열 대신 `{file, line?, comment}`를 쓴다(Orca의 diff 주석 방식). 상담 결과의 findings를 그대로 옮기기 좋다.
 
 ```json

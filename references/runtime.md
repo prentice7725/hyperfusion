@@ -10,12 +10,13 @@
 | begin (ALTERNATIVE_REQUIRED) | `executor` 생략 시 배치 순서상 다음 일꾼, 지정 시 그 일꾼. `lead_feedback` 필수. 기존 세션이 있으면 재개 |
 | begin (TAKEOVER_REQUIRED) | `takeover_reason` 필수. 리드가 lease를 받음 |
 | finish | token, quiescent:true, result → REVIEW 또는 RECOVERY_REQUIRED. 브리지가 남긴 세션 ID를 묶음 |
-| review | 판정/근거/증거 → 다음 단계 |
+| review | 판정/근거/증거 → 다음 단계. `{"adopt":true}`면 보류된 위임 판정 채택 |
 | decide | decision → 같은 일꾼 REDO(예산 내) |
 | verify | acceptance_satisfied:true, 실제 통과 테스트 → CLOSE |
 | recover | token(보유 시), quiescent:true, reason |
 | archive | quiescent:true, reason, token(보유 시) → ARCHIVED |
 | consult | mode(advisor/committee), question, focus?, executors? → 읽기 전용 상담 dispatch. [consult.md](consult.md) |
+| delegate-review | REVIEW에서 다른 모델에게 읽기 전용 리뷰를 맡김(executors? 생략 시 review.reviewers 순서, 구현자 제외) |
 | consult-finish | quiescent:true → 위원별 결과. 트리가 바뀌었으면 답변 폐기 후 RECOVERY_REQUIRED |
 | status | 상태, 다이제스트, 일꾼별 남은 예산, 남은 상담 횟수 |
 

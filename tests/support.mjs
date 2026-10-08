@@ -15,6 +15,8 @@ const finish=(request,id)=>{
  const result={...request.result_template,summary:'Fake transport result; no live model'};
  if(mode==='edit'){fs.writeFileSync('a.txt','fixed');result.files_changed=['a.txt'];}
  if(mode==='lazy'){result.status='blocked';result.unresolved=['did not bother'];}
+ // 위임 리뷰 모드: 기본은 pass, review-redo면 AC1 반려와 파일·줄 지적을 낸다.
+ if('blocking_criteria' in result){if(mode==='review-redo'){result.recommended_verdict='redo';result.blocking_criteria=['AC1'];result.findings=[{file:'a.txt',line:1,severity:'blocker',issue:'AC1 not met',suggestion:'write fixed'}];result.summary='AC1 fails';}else if(mode==='review-bad'){result.recommended_verdict='redo';result.blocking_criteria=[];}else if(mode==='review-alt'){result.recommended_verdict='alternative';result.blocking_criteria=['approach']; }else{result.recommended_verdict='pass';result.blocking_criteria=[];result.summary='All criteria met';}}
  if(mode==='findings'&&result.consult_id){result.findings=[{file:'sub\\\\a.txt',line:3,severity:'blocker',issue:'AC1 not met',suggestion:'handle empty input'}];result.recommended_verdict='redo';result.confidence='high';}
  return result;
 };
@@ -51,6 +53,17 @@ const result=finish(request,id);
 console.log(JSON.stringify({conversation_id:id,status:mode==='agy-fail'?'failed':'success',response:'done',structured_output:result,num_turns:2,usage:{total_tokens:20}}));
 `;
 
+const FAKE_CODEX=FAKE_COMMON+`
+if(args.includes('--version')){console.log('FAKE codex for protocol tests');process.exit(0);}
+if(args[0]==='exec'&&args.includes('--help')){console.log('--sandbox --output-schema -C, --cd --ephemeral -m, --model');process.exit(0);}
+if(args.includes('--help')){console.log('Commands: exec');process.exit(0);}
+fs.writeFileSync('.fusion/fake-codex-args.json',JSON.stringify(args));
+const schema=JSON.parse(fs.readFileSync(args[args.indexOf('--output-schema')+1],'utf8'));
+if(!schema.properties)process.exit(3);
+const request=JSON.parse(fs.readFileSync(0,'utf8'));
+if(mode==='codex-crash')process.exit(1);
+console.log(JSON.stringify(finish(request,null)));
+`;
 const FAKE_CLAUDE=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE claude for protocol tests');process.exit(0);}
 if(args.includes('--help')){console.log('--model --output-format --json-schema --resume --session-id --safe-mode --tools --allowedTools --disallowedTools --permission-mode --max-turns');process.exit(0);}
@@ -66,17 +79,17 @@ console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,sessi
 // executor 기본값은 grok(기존 테스트 호환). 라우팅 테스트는 executor:'auto'를 넘긴다.
 export function fixture(t,{initialize=true,executor='grok'}={}) {
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'hf-v03-')),root=path.join(temp,'repo');fs.mkdirSync(root);
- const old={grok:process.env.HF_GROK_BIN,agy:process.env.HF_AGY_BIN,claude:process.env.HF_CLAUDE_BIN};
+ const old={grok:process.env.HF_GROK_BIN,agy:process.env.HF_AGY_BIN,claude:process.env.HF_CLAUDE_BIN,codex:process.env.HF_CODEX_BIN};
  t.after(()=>{
-  for(const [k,v] of [['HF_GROK_BIN',old.grok],['HF_AGY_BIN',old.agy],['HF_CLAUDE_BIN',old.claude]]){if(v===undefined)delete process.env[k];else process.env[k]=v;}
+  for(const [k,v] of [['HF_GROK_BIN',old.grok],['HF_AGY_BIN',old.agy],['HF_CLAUDE_BIN',old.claude],['HF_CODEX_BIN',old.codex]]){if(v===undefined)delete process.env[k];else process.env[k]=v;}
   fs.rmSync(temp,{recursive:true,force:true});
  });
  // Windows는 shebang을 실행하지 못하므로 .mjs 진입점으로 만들어 node로 실행되게 한다.
  const ext=process.platform==='win32'?'.mjs':'';
  const grok=path.join(temp,'fake grok'+ext),agy=path.join(temp,'fake agy'+ext);
- const claude=path.join(temp,'fake claude'+ext);
- fs.writeFileSync(grok,FAKE_GROK,{mode:0o755});fs.writeFileSync(agy,FAKE_AGY,{mode:0o755});fs.writeFileSync(claude,FAKE_CLAUDE,{mode:0o755});
- process.env.HF_GROK_BIN=grok;process.env.HF_AGY_BIN=agy;process.env.HF_CLAUDE_BIN=claude;
+ const claude=path.join(temp,'fake claude'+ext),codex=path.join(temp,'fake codex'+ext);
+ fs.writeFileSync(grok,FAKE_GROK,{mode:0o755});fs.writeFileSync(agy,FAKE_AGY,{mode:0o755});fs.writeFileSync(claude,FAKE_CLAUDE,{mode:0o755});fs.writeFileSync(codex,FAKE_CODEX,{mode:0o755});
+ process.env.HF_GROK_BIN=grok;process.env.HF_AGY_BIN=agy;process.env.HF_CLAUDE_BIN=claude;process.env.HF_CODEX_BIN=codex;
  const git=(...a)=>execFileSync('git',['-C',root,...a],{stdio:'pipe'});
  git('init');git('config','user.email','test@example.invalid');git('config','user.name','Test');
  fs.writeFileSync(path.join(root,'a.txt'),'base');git('add','.');git('commit','-m','fixture');fs.appendFileSync(path.join(root,'.git/info/exclude'),'\n/.fusion/\n');
