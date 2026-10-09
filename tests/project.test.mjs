@@ -16,7 +16,7 @@ const plan=(over={})=>({
   {member:'luna',role:'쉬운 구현·소규모 수정',owns:['code:low','docs'],why:'빠르고 저렴'},
   {member:'grok',role:'삽화 애셋',owns:['image-asset'],why:'이미지 생성'},
   {member:'sol',role:'리뷰 전담',owns:[],why:'Opus와 다른 계열의 교차 검증'}],
- excluded:[{member:'antigravity',why:'UI 작업이 없음'}],
+ excluded:[{member:'antigravity',why:'UI 작업이 없음'},{member:'haiku',why:'이번 프로젝트는 Luna로 충분'}],
  milestones:[
   {id:'M1',title:'기반',goal:'기사 모델',checkpoint:['기사 CRUD 테스트 통과'],tasks:[{id:'T1',title:'기사 모델',kind:'code',difficulty:'high'},{id:'T2',title:'README',kind:'docs'}]},
   {id:'M2',title:'삽화',goal:'표지 이미지',checkpoint:['표지 3종'],tasks:[{id:'T3',title:'표지',kind:'image-asset'}]}],
@@ -29,7 +29,7 @@ const approved=t=>{const f=setup(t);project.propose(f.root,plan());project.appro
 
 test('roster lists every member with default role, model and install state',t=>{
  const f=setup(t);const r=project.roster(f.root);
- assert.deepEqual(r.map(x=>x.member),['sonnet','grok','antigravity','luna','sol']);
+ assert.deepEqual(r.map(x=>x.member),['sonnet','grok','antigravity','haiku','luna','sol']);
  assert.equal(r.find(x=>x.member==='sol').model,'gpt-6.1-sol');assert.equal(r.find(x=>x.member==='sol').implementer,false);
  assert.equal(r.find(x=>x.member==='luna').model,'gpt-6-luna');assert.ok(r.every(x=>x.installed));
 });
@@ -40,7 +40,7 @@ test('a plan must decide on every member, give reasons, and keep Sol a reviewer'
  const bad=plan();bad.team[3]={...bad.team[3],owns:['code']};assert.throws(()=>project.propose(f.root,bad),/sol reviews/);
  const painter=plan();painter.team[0]={...painter.team[0],owns:[...painter.team[0].owns,'image-asset']};assert.throws(()=>project.propose(f.root,painter),/cannot generate images/);
  const noWhy=plan();delete noWhy.team[0].why;assert.throws(()=>project.propose(f.root,noWhy),/role and why/);
- const both=plan({excluded:[{member:'sonnet',why:'x'},{member:'antigravity',why:'x'}]});assert.throws(()=>project.propose(f.root,both),/both on the team/);
+ const both=plan({excluded:[{member:'sonnet',why:'x'},{member:'antigravity',why:'x'},{member:'haiku',why:'x'}]});assert.throws(()=>project.propose(f.root,both),/both on the team/);
 });
 test('the team report shows roles, models, exclusions, milestones and who goes first',t=>{
  const f=setup(t);const out=project.propose(f.root,plan());
@@ -111,7 +111,7 @@ test('changing the team needs re-approval; adding a task to the running mileston
  const a=project.amend(f.root,{add_tasks:[{milestone:'M1',task:{id:'T1b',title:'기사 검색',kind:'code',difficulty:'low'}}]});
  assert.equal(a.needs_approval,false);assert.equal(a.status,'ACTIVE');assert.match(a.report,/T1b 기사 검색 _\(추가\)_/);
  assert.equal(task(f,'T1b').initial_executor,'luna');
- const b=project.amend(f.root,{team:plan().team.filter(x=>x.member!=='grok'),excluded:[{member:'antigravity',why:'UI 없음'},{member:'grok',why:'삽화는 외주'}],user_message:'grok은 빼자'});
+ const b=project.amend(f.root,{team:plan().team.filter(x=>x.member!=='grok'),excluded:[{member:'antigravity',why:'UI 없음'},{member:'haiku',why:'Luna로 충분'},{member:'grok',why:'삽화는 외주'}],user_message:'grok은 빼자'});
  assert.equal(b.needs_approval,true);assert.equal(b.status,'PROPOSED');assert.match(b.report,/rev 2, 승인 대기/);assert.match(b.report,/\| grok \| 삽화는 외주 \|/);
  f.begin();f.finish();f.review('pass');run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'c',status:'pass'}]});
  assert.throws(()=>task(f,'T1'),/PROJECT_NOT_APPROVED/);

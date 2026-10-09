@@ -132,7 +132,7 @@ const plan=()=>({
   {member:'luna',role:'쉬운 구현',owns:['code:low','docs'],why:'빠르고 저렴'},
   {member:'grok',role:'삽화',owns:['image-asset'],why:'이미지 생성'},
   {member:'sol',role:'리뷰',owns:[],why:'교차 검증'}],
- excluded:[{member:'antigravity',why:'UI 없음'}],
+ excluded:[{member:'antigravity',why:'UI 없음'},{member:'haiku',why:'Luna로 충분'}],
  milestones:[
   {id:'M1',title:'기반',goal:'기사 모델',checkpoint:['CRUD 통과'],tasks:[{id:'T1',title:'기사 모델',kind:'code',difficulty:'high'},{id:'T2',title:'README',kind:'docs'}]},
   {id:'M2',title:'삽화',goal:'표지',checkpoint:['표지 3종'],tasks:[{id:'T3',title:'표지',kind:'image-asset'}]}]

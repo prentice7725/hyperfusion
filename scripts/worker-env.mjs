@@ -12,6 +12,7 @@ const BASE=new Set(['PATH','PATHEXT','SYSTEMROOT','WINDIR','COMSPEC','HOME','USE
 const VENDOR={
  grok:['XAI_','GROK_'],
  sonnet:['ANTHROPIC_','CLAUDE_'],
+ haiku:['ANTHROPIC_','CLAUDE_'],
  antigravity:['GOOGLE_','GEMINI_','AGY_','ANTIGRAVITY_'],
  luna:['OPENAI_','CODEX_'],
  sol:['OPENAI_','CODEX_']

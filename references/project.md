@@ -14,6 +14,7 @@
 | sonnet | claude-sonnet-5-5 | 핵심 구현: 중·고난도 코드, 테스트 설계, 리팩터 | `code:medium\|high`, `tests`, `refactor` |
 | grok | Grok CLI 기본 | 이미지 애셋 생성, 빠른 일반 구현 | `image-asset` |
 | antigravity | agy 기본 | UI·프론트엔드, 문서 | `ui`, `docs` |
+| haiku | claude-haiku-5-5 | 빠른 구현 보조: 쉬운 코드, 문서, 테스트 보강 | (없음, 예비) |
 | luna | gpt-6-luna (Codex) | 쉬운 구현·소규모 수정, 기계적 대량 편집, 이미지 애셋 보조 | `code:low` |
 | sol | gpt-6.1-sol (Codex) | 리뷰 전담(판정 책임), 위원회 상담. 코드는 쓰지 않음 | 리뷰 |
 
