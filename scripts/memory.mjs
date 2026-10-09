@@ -9,7 +9,7 @@ import * as store from './memory-store.mjs';
 import {workspaceOf,readLedger,writeLedger,propose,checkCandidate} from './memory-policy.mjs';
 
 // 리드 전용 기억 도구. 흐름은 context → recall → (작업) → candidates → commit → reflect.
-// 기억은 정본이 아니다. 가져온 기억은 Drive SOT와 Git HEAD로 확인한 뒤에만 brief에 넣는다.
+// 기억은 정본이 아니다. 가져온 기억은 정본(설계 문서)과 Git HEAD로 확인한 뒤에만 brief에 넣는다.
 
 const workspace=root=>{
  const w=workspaceOf(config(root));
@@ -37,7 +37,7 @@ export function recall(root,query,{type,limit}={}) {
  const r=store.recall(w,query,{type,limit:limit??config(root).memory?.recall_limit??8});
  return {workspace:w,query,...r,
   prior_experience:r.hits.map(h=>({id:h.id,type:h.type,content:h.content,assertion:h.assertion})),
-  next_action:'check each hit against Drive SOT / Git HEAD, then copy only the confirmed ones into brief.prior_experience; settle needs_review items with resolve'};
+  next_action:'check each hit against the source of truth (design docs) and Git HEAD, then copy only the confirmed ones into brief.prior_experience; settle needs_review items with resolve'};
 }
 
 const lockOf=root=>controlPath(root,'locks/control.lock');

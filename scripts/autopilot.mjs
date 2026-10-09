@@ -58,6 +58,10 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
     const brief=read(path.join(dir,s.iteration?`brief-${s.iteration}.json`:'initial-brief.json'));
     if(!brief.acceptance_commands?.length)throw failure('AUTOPILOT_ACCEPTANCE_REQUIRED','Add lead-approved acceptance_commands before running autopilot');
     if(s.configuration.review.auto_apply!==true)throw failure('AUTOPILOT_REVIEW_REQUIRED','Autopilot requires review.auto_apply:true');
+    // 오토파일럿의 실질적 관문은 수용 테스트다. 처음부터 통과하는 테스트로는 엉터리 결과도 통과하므로, 기준 트리에서 실패가 확인된(red) 명령만 받는다.
+    const baseline=s.acceptance_baseline;
+    if(baseline?baseline.status!=='red':(s.phase!=='PLAN'||brief.acceptance_baseline_green))
+     throw failure('AUTOPILOT_ACCEPTANCE_NOT_RED',`Autopilot needs acceptance_commands proven to fail on the untouched tree (baseline: ${baseline?.status??'not checked'}); the lead must review this task`);
     if(['PLAN','REDO','ALTERNATIVE_REQUIRED'].includes(s.phase)){
      const input={...brief};delete input.executor;
      if(s.phase!=='PLAN')input.lead_feedback='@review';

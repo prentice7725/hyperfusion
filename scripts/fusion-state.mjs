@@ -235,6 +235,7 @@ function init(c,input) {
     writer:null,reviews:[],escalations:[],result_failures:0,started_at:new Date().toISOString(),
     ...(projectTask?{project:{name:projectTask.project,milestone:projectTask.milestone,task:projectTask.id}}:{})
   };
+  acceptanceBaseline(c,input);
   c.art('initial-brief.json',input);
   c.art('baseline.json',base);
   c.save();
@@ -541,6 +542,7 @@ function begin(c,input) {
   const cli=a?a.probe(options):null;
   if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options});
 
+  acceptanceBaseline(c,input);
   const lease=acquire(c.root,s.task_id,round,owner);
   if(s.owner!==owner)s.result_failures=0;
   s.hint=null;
@@ -658,6 +660,34 @@ function finish(c,input) {
       independent_diff_review:true,acceptance_feedback:failureFeedback(acc.results)});
   }
   return s;
+}
+
+// red-first: 수용 테스트가 아무 변경 전에도 이미 통과한다면, 그 테스트로는 맞는 결과와 엉터리 결과를 가를 수 없다
+// (필터가 아무 테스트도 잡지 않거나, 이미 통과하는 테스트를 가리킨 경우). 그래서 명령이 처음 정해질 때 기준 트리에서
+// 한 번 돌려 실패하는지 확인한다. 리팩터처럼 처음부터 통과해야 정상인 작업은 acceptance_baseline_green에 이유를 적는다.
+// 작업이 시작된 뒤(라운드 1 이후)에 명령이 바뀌면 기준 트리가 남아 있지 않으므로 unchecked로만 기록한다.
+function acceptanceBaseline(c,brief) {
+  const s=c.s,cmds=brief.acceptance_commands;
+  if(!cmds)return;
+  const key=crypto.createHash('sha256').update(JSON.stringify(cmds)).digest('hex').slice(0,16);
+  if(s.acceptance_baseline?.key===key)return;
+  if(s.iteration>0){
+    s.acceptance_baseline={key,status:'unchecked',round:s.iteration,reason:'acceptance_commands changed after work started; there is no untouched tree to prove they fail'};
+    return;
+  }
+  const before=snapshot(c.root);
+  const results=runCommands(c.root,cmds,{timeout_ms:brief.acceptance_timeout_ms});
+  const after=snapshot(c.root);
+  const dirty=changes(before,after);
+  if(dirty.length||after.digest!==before.digest)throw Error(`ACCEPTANCE_DIRTY: running acceptance_commands on the untouched tree changed it (${dirty.join(', ')||'git status or index'}); make the commands side-effect free, restore the tree, then retry`);
+  const green=results.every(r=>r.status==='pass');
+  if(green&&!brief.acceptance_baseline_green){
+    throw Error('ACCEPTANCE_ALREADY_GREEN: acceptance_commands already pass before any change, so they cannot tell a correct result from a wrong one. '
+      +'Point them at a failing test (write one first, or fix a filter that matches nothing), or set acceptance_baseline_green:"<why they should already pass>" for refactors');
+  }
+  const file=`acceptance-baseline-${Date.now()}.json`;
+  c.art(file,{stage:'baseline',commands:cmds,results,tree_digest:before.digest,at:new Date().toISOString(),...(green?{green_reason:brief.acceptance_baseline_green}:{})});
+  s.acceptance_baseline={key,status:green?'green-acknowledged':'red',file,...(green?{reason:brief.acceptance_baseline_green}:{})};
 }
 
 // 수용 테스트를 실행하고 기록한다. reference는 비교할 무시된 파일 목록(라운드 시작 또는 직전 실행 후).

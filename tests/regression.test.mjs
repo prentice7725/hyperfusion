@@ -8,6 +8,7 @@ import {run} from '../scripts/fusion-state.mjs';
 import {consult} from '../scripts/executor-bridge.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {safePath,brief as validateBrief} from '../scripts/contracts.mjs';
+import * as contract from '../scripts/contracts.mjs';
 import {EXECUTORS,config} from '../scripts/executor-config.mjs';
 import {route} from '../scripts/router.mjs';
 import {measure} from '../scripts/metrics.mjs';
@@ -365,4 +366,15 @@ test('worker lists come from EXECUTORS, so a new worker needs no scattered edits
 
 test('every implementer in EXECUTORS has a team catalog entry, so the roster cannot silently omit one',()=>{
  assert.deepEqual([...project.MEMBERS].sort(),[...EXECUTORS,'sol'].sort());
+});
+
+// ── "같은 반려 사유" 판정: 자유 문장이 아니라 수용 기준 ID로 비교 ─────────────
+
+test('the same acceptance criterion counts as the same reason even when worded differently',()=>{
+ const r=c=>({blocking_criteria:c});
+ assert.equal(contract.escalation([r(['AC2: empty input crashes']),r(['AC2 still broken after the fix'])]).hard,true);
+ assert.equal(contract.escalation([r(['ac2 fails']),r(['AC2'])]).hard,true);
+ assert.equal(contract.escalation([r(['AC1: wrong total']),r(['AC2: wrong rounding'])]).hard,false,'different criteria are different reasons');
+ assert.equal(contract.escalation([r(['Fix the parser.']),r(['fix  the PARSER'])]).hard,true,'free text ignores case and punctuation');
+ assert.deepEqual(contract.criterionKeys('AC3 and AC10 fail'),['AC3','AC10']);
 });

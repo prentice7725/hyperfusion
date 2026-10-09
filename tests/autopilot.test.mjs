@@ -9,9 +9,11 @@ import {read,atomic} from '../scripts/artifact.mjs';
 import {acquireLock} from '../scripts/lock.mjs';
 import {descendants,watchProcessTree} from '../scripts/process-proof.mjs';
 
+// 수용 명령은 기준 트리에서 실패해야(red-first) 오토파일럿이 받는다. 바깥 표식 파일로 init 뒤에만 통과하게 만든다.
+const greenAfterInit=f=>{const mark=path.join(f.temp,'green');return {cmd:`node -e "process.exit(require('fs').existsSync(process.argv[1])?0:1)" "${mark}"`,flip:()=>fs.writeFileSync(mark,'1')};};
 const setup=(t,extra={})=>{
- const f=fixture(t,{initialize:false});f.brief.acceptance_commands=['node -e "process.exit(0)"'];
- run(f.root,'init',{...f.brief,executor:'grok',...extra});return f;
+ const f=fixture(t,{initialize:false}),g=greenAfterInit(f);f.brief.acceptance_commands=[g.cmd];
+ run(f.root,'init',{...f.brief,executor:'grok',...extra});g.flip();return f;
 };
 test('autopilot passes independent review and stops at VERIFY with process and masking audit',async t=>{
  const f=setup(t);const out=await autopilot(f.root);
@@ -108,7 +110,7 @@ test('ignored executable input changes stop before delegated review',async t=>{
  const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'.gitignore'),'.env\nnode_modules/\n');f.git('add','.gitignore');f.git('commit','-m','ignore');
  const cli=process.env.HF_GROK_BIN;
  fs.writeFileSync(cli,fs.readFileSync(cli,'utf8').replace('PLANT[mode]?.();',"if(mode==='ignored'){fs.mkdirSync('node_modules/dep',{recursive:true});fs.writeFileSync('node_modules/dep/index.js','changed');}else PLANT[mode]?.();"));
- f.brief.acceptance_commands=['node -e "process.exit(0)"'];run(f.root,'init',{...f.brief,executor:'grok'});f.mode('ignored');
+ const g=greenAfterInit(f);f.brief.acceptance_commands=[g.cmd];run(f.root,'init',{...f.brief,executor:'grok'});g.flip();f.mode('ignored');
  const out=await autopilot(f.root);assert.equal(out.reason,'AUTOPILOT_ACCEPTANCE_UNVERIFIED');assert.equal(f.state().acceptance.status,'skipped');assert.equal(f.state().open_consult,undefined);
 });
 test('stale passing acceptance evidence is not forwarded to another reviewer',async t=>{
@@ -118,4 +120,11 @@ test('stale passing acceptance evidence is not forwarded to another reviewer',as
 test('reported cost cap prevents a delegated review launch',async t=>{
  const f=setup(t,{limits:{max_cost_usd:0.001}});const out=await autopilot(f.root);
  assert.equal(out.reason,'BUDGET_EXCEEDED');assert.equal(f.state().review_runs,undefined);assert.equal(f.state().writer,null);
+});
+
+test('autopilot refuses acceptance commands that were never proven to fail',async t=>{
+ const f=fixture(t,{initialize:false});
+ run(f.root,'init',{...f.brief,executor:'grok',acceptance_commands:['node -e "process.exit(0)"'],acceptance_baseline_green:'refactor'});
+ const out=await autopilot(f.root);
+ assert.equal(out.reason,'AUTOPILOT_ACCEPTANCE_NOT_RED');assert.equal(f.state().iteration,0);
 });
