@@ -132,3 +132,16 @@ test('an older process whose parent PID was reused is not counted as a descendan
  const rows=[{pid:100,parent:1,created:'2026-10-09T04:00:10Z'},{pid:200,parent:100,created:'2026-10-09T03:00:00Z'},{pid:300,parent:100,created:'2026-10-09T04:00:11Z'}];
  assert.deepEqual(descendants(rows,100).map(p=>p.pid),[100,300]);
 });
+test('a just-exited process that lingers briefly in the process table is waited for, not reported as a survivor',async()=>{
+ let calls=0;
+ const watcher=watchProcessTree({pollMs:1000,settle:{tries:4,delayMs:5},readTable:async()=>{
+  calls++;return calls<=2?[{pid:100,parent:0,created:'p'},{pid:101,parent:100,created:'c'}]:[];
+ }});
+ watcher.start(100);await new Promise(r=>setTimeout(r,10));
+ const proof=await watcher.finish({exited:true});
+ assert.equal(proof.quiescent,true,JSON.stringify(proof));assert.equal(proof.checks,2);
+ const stuck=watchProcessTree({pollMs:1000,settle:{tries:3,delayMs:5},readTable:async()=>[{pid:100,parent:0,created:'p'},{pid:101,parent:100,created:'c'}]});
+ stuck.start(100);await new Promise(r=>setTimeout(r,10));
+ const failed=await stuck.finish({exited:true});
+ assert.equal(failed.quiescent,false);assert.equal(failed.checks,3);
+});

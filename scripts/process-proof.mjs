@@ -35,7 +35,12 @@ export function descendants(rows,pid,tracked=new Map()) {
 
 // This is supervised process-tree evidence, not an OS sandbox: escaped/reparented children
 // between observations cannot be guaranteed absent. Unknown process-table errors fail closed.
-export function watchProcessTree({readTable=table,pollMs=1000}={}) {
+// A process that has just exited can stay in the Windows process table for a moment
+// (open handles, its conhost.exe child). Re-check a few times before reporting survivors;
+// survivors after the last check still fail closed.
+const SETTLE=isWin?{tries:8,delayMs:500}:{tries:3,delayMs:200};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+export function watchProcessTree({readTable=table,pollMs=1000,settle=SETTLE}={}) {
  const tracked=new Map();let pid=null,timer=null,pending=Promise.resolve(),error=null,querying=false,stopped=false;
  const observe=async()=>{
   try{const rows=await readTable();for(const p of descendants(rows,pid,tracked)){
@@ -56,12 +61,17 @@ export function watchProcessTree({readTable=table,pollMs=1000}={}) {
    stopped=true;clearInterval(timer);await pending;
    if(!pid||!exited||aborted)return {quiescent:false,reason:'Executor termination was not confirmed'};
    try{
-    const rows=await readTable(),live=descendants(rows,pid,tracked);
     if(error)return {quiescent:false,reason:error};
-    // Same PID with a different creation time is a reused PID, not our process.
-    const remaining=live.filter(p=>p.pid!==pid||!tracked.has(pid)||tracked.get(pid)===p.created);
+    let remaining=[],checks=0;
+    for(;;){
+     const rows=await readTable(),live=descendants(rows,pid,tracked);checks++;
+     // Same PID with a different creation time is a reused PID, not our process.
+     remaining=live.filter(p=>p.pid!==pid||!tracked.has(pid)||tracked.get(pid)===p.created);
+     if(!remaining.length||checks>=settle.tries)break;
+     await sleep(settle.delayMs);
+    }
     return {quiescent:remaining.length===0,reason:remaining.length?'Supervised processes remain':'Supervised process tree stopped',
-     tracked:tracked.size,remaining:remaining.map(p=>({pid:p.pid,created:p.created})),checked_at:new Date().toISOString(),platform:process.platform};
+     tracked:tracked.size,checks,remaining:remaining.map(p=>({pid:p.pid,created:p.created})),checked_at:new Date().toISOString(),platform:process.platform};
    }catch(e){return {quiescent:false,reason:e.code??'PROCESS_TABLE_UNAVAILABLE'};}
   }
  };
