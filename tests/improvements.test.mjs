@@ -183,6 +183,9 @@ test('isolated worktrees can execute two tasks concurrently with separate state 
  assert.throws(()=>removeWorktree(f.root,a.task_id,{quiescent:true}));
  assert.ok(fs.existsSync(path.join(a.workspace,'untracked.txt')));
  fs.unlinkSync(path.join(a.workspace,'untracked.txt'));
+ const pending=controlPath(a.workspace,'locks/acceptance.json');fs.writeFileSync(pending,'{}');
+ assert.throws(()=>removeWorktree(f.root,a.task_id,{quiescent:true}),/Acceptance shutdown/);
+ fs.unlinkSync(pending);
  removeWorktree(f.root,a.task_id,{quiescent:true});removeWorktree(f.root,b.task_id,{quiescent:true});
  assert.deepEqual(listWorktrees(f.root),[]);
 });

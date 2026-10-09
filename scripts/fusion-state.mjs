@@ -235,7 +235,7 @@ function init(c,input) {
     writer:null,reviews:[],escalations:[],result_failures:0,started_at:new Date().toISOString(),
     ...(projectTask?{project:{name:projectTask.project,milestone:projectTask.milestone,task:projectTask.id}}:{})
   };
-  acceptanceBaseline(c,input);
+  if(acceptanceBaseline(c,input)===false)return c.s;
   c.art('initial-brief.json',input);
   c.art('baseline.json',base);
   c.save();
@@ -263,6 +263,7 @@ function archive(c,input) {
   c.art(`archive-${crypto.randomUUID()}.json`,{reason:input.reason,previous:s,current:snapshot(c.root)});
   if(c.writerHeld())release(c.root,input.token);
   s.writer=null;
+  fs.rmSync(acceptanceMarker(c),{force:true});
   s.phase='ARCHIVED';
   c.save();
   if(s.project)settleTask(c.root,s.task_id,outcome);
@@ -542,7 +543,7 @@ function begin(c,input) {
   const cli=a?a.probe(options):null;
   if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options});
 
-  acceptanceBaseline(c,input);
+  if(acceptanceBaseline(c,input)===false)return s;
   const lease=acquire(c.root,s.task_id,round,owner);
   if(s.owner!==owner)s.result_failures=0;
   s.hint=null;
@@ -638,12 +639,7 @@ function finish(c,input) {
   }
   const acc=brief.acceptance_commands&&input.result.status==='complete'
     ?acceptanceRun(c,brief,'finish',c.optional(`ignored-base-${n}.json`)):null;
-  if(acc?.tree_changed?.length){
-    s.last_errors=['Acceptance commands changed the tree: '+acc.tree_changed.join(', ')+'; make the tests leave the tree clean (or gitignore their outputs), then recover'];
-    s.phase='RECOVERY_REQUIRED';
-    c.save();
-    return s;
-  }
+  if(acceptanceHalt(c,acc))return s;
   s.result_failures=0;
   s.phase='REVIEW';
   c.save();
@@ -676,10 +672,20 @@ function acceptanceBaseline(c,brief) {
     return;
   }
   const before=snapshot(c.root);
-  const results=runCommands(c.root,cmds,{timeout_ms:brief.acceptance_timeout_ms});
+  const results=supervisedAcceptance(c,brief,'baseline');
   const after=snapshot(c.root);
   const dirty=changes(before,after);
+  if(results.some(r=>r.quiescence?.quiescent!==true)||results.some(r=>r.code==='BUDGET_EXCEEDED')||budgetStatus(c.root,s).reason){
+    if(!c.optional('initial-brief.json'))c.art('initial-brief.json',brief);
+    if(!c.optional('baseline.json'))c.art('baseline.json',before);
+    c.art(`acceptance-baseline-${Date.now()}.json`,{stage:'baseline',results,tree_digest:after.digest});
+    acceptanceHalt(c,{results,tree_changed:dirty});
+    return false;
+  }
   if(dirty.length||after.digest!==before.digest)throw Error(`ACCEPTANCE_DIRTY: running acceptance_commands on the untouched tree changed it (${dirty.join(', ')||'git status or index'}); make the commands side-effect free, restore the tree, then retry`);
+  if(results.some(r=>r.status==='not_run'||r.code==='PROCESS_TABLE_UNAVAILABLE'||r.code==='PROCESS_TABLE_TIMEOUT')){
+    throw Error('ACCEPTANCE_BASELINE_UNVERIFIED: acceptance commands could not be supervised or started; restore process inventory access and retry');
+  }
   const green=results.every(r=>r.status==='pass');
   if(green&&!brief.acceptance_baseline_green){
     throw Error('ACCEPTANCE_ALREADY_GREEN: acceptance_commands already pass before any change, so they cannot tell a correct result from a wrong one. '
@@ -703,7 +709,8 @@ function acceptanceRun(c,brief,stage,reference,{trust=false}={}) {
       reason:'gitignored files changed since the reference point, so repository code may not be what the snapshot shows; inspect them, then verify with acceptance_trust_ignored:true'});
   } else {
     const before=snapshot(c.root);
-    record.results=runCommands(c.root,brief.acceptance_commands,{timeout_ms:brief.acceptance_timeout_ms});
+    record.results=supervisedAcceptance(c,brief,stage);
+    record.quiescent=record.results.every(r=>r.quiescence?.quiescent===true);
     record.status=record.results.every(r=>r.status==='pass')?'pass':'fail';
     if(touched.length)record.trusted_ignored_changes=touched.slice(0,50);
     const after=snapshot(c.root);
@@ -714,8 +721,41 @@ function acceptanceRun(c,brief,stage,reference,{trust=false}={}) {
     record.ignored_after=`${name}-ignored.json`;
   }
   c.art(`${name}.json`,record);
-  s.acceptance={round:n,stage,status:record.status,file:`${name}.json`,tree_digest:record.tree_digest??null,ignored_after:record.ignored_after??null};
+  s.acceptance={round:n,stage,status:record.status,quiescent:record.quiescent===true,file:`${name}.json`,tree_digest:record.tree_digest??null,ignored_after:record.ignored_after??null};
   return record;
+}
+
+// A durable marker prevents a controller crash from converting an unfinished test
+// into reusable evidence. Only proven shutdown or explicit lead recovery clears it.
+const acceptanceMarker=c=>path.join(c.dir,'locks/acceptance.json');
+function supervisedAcceptance(c,brief,stage) {
+  const s=c.s,budget=budgetStatus(c.root,s);
+  const deadline_ms=s.limits?.max_wall_ms===undefined?null:Date.parse(s.started_at)+s.limits.max_wall_ms;
+  if(budget.reason)return brief.acceptance_commands.map(command=>({command,status:'not_run',code:'BUDGET_EXCEEDED',
+    output_tail:'',quiescence:{quiescent:true,reason:'Budget exhausted; command not started'}}));
+  atomic(acceptanceMarker(c),{state:s,brief,baseline:c.optional('baseline.json')??snapshot(c.root),stage,at:new Date().toISOString()});
+  const results=runCommands(c.root,brief.acceptance_commands,{timeout_ms:brief.acceptance_timeout_ms,deadline_ms});
+  if(results.every(r=>r.quiescence?.quiescent===true))fs.unlinkSync(acceptanceMarker(c));
+  return results;
+}
+
+function acceptanceHalt(c,evidence) {
+  const s=c.s,unsafe=evidence?.results?.find(r=>r.quiescence?.quiescent!==true);
+  const unavailable=evidence?.results?.some(r=>r.code==='PROCESS_TABLE_UNAVAILABLE'||r.code==='PROCESS_TABLE_TIMEOUT');
+  const budget=budgetStatus(c.root,s);
+  if(unsafe||unavailable||evidence?.tree_changed?.length){
+    s.last_errors=[unsafe?`ACCEPTANCE_NOT_QUIESCENT: ${unsafe.quiescence?.reason??'Missing termination evidence'}; stop the processes before recovery`
+      :unavailable?'ACCEPTANCE_UNAVAILABLE: process inventory unavailable; restore inventory access before recovery'
+      :'Acceptance commands changed the tree: '+evidence.tree_changed.join(', ')+'; restore the tree before recovery'];
+    s.phase='RECOVERY_REQUIRED';c.save();return true;
+  }
+  if(budget.reason||evidence?.results?.some(r=>r.code==='BUDGET_EXCEEDED')){
+    s.last_errors=[`BUDGET_EXCEEDED: ${budget.reason??'max_wall_ms'}`];
+    // Worker shutdown was already confirmed by finish, and acceptance is quiescent.
+    if(s.writer){release(c.root,s.writer.token);s.writer=null;}
+    s.phase='BLOCKED';c.save();return true;
+  }
+  return false;
 }
 
 // ── 리뷰 ────────────────────────────────────────────────────────────
@@ -817,21 +857,19 @@ function verify(c,input) {
     s.scope_exceptions=before;
     throw Error(`Out-of-scope changes since the baseline: ${stray.join(', ')}; revert them (the task will need another round), or pass allow_out_of_scope [{path, reason}] to accept them knowingly`);
   }
+  if(acceptanceHalt(c,null)){s.scope_exceptions=before;c.save();return s;}
   let evidence=null;
   if(auto){
     // finish 직후 실행이 통과했고 그 뒤로 트리와 무시된 파일이 그대로면 같은 상태에 대한 같은 증거이므로 다시 돌리지 않는다.
     const prev=s.acceptance?.round===s.iteration?s.acceptance:null;
     const after=prev?.ignored_after?c.optional(prev.ignored_after):null;
-    const ignoredNow=after&&prev.status==='pass'&&prev.tree_digest===now.digest?ignoredManifest(c.root,brief.acceptance_artifacts):null;
+    const priorEvidence=prev?.file?c.optional(prev.file):null;
+    const proven=prev?.quiescent===true&&priorEvidence?.results?.every(r=>r.quiescence?.quiescent===true);
+    const ignoredNow=after&&proven&&prev.status==='pass'&&prev.tree_digest===now.digest?ignoredManifest(c.root,brief.acceptance_artifacts):null;
     if(ignoredNow&&!ignoredChanges(after,ignoredNow).length)evidence={status:'pass',reused:prev.file};
     else {
       evidence=acceptanceRun(c,brief,'verify',after??c.optional(`ignored-base-${s.iteration}.json`),{trust:input.acceptance_trust_ignored===true});
-      if(evidence.tree_changed?.length){
-        s.scope_exceptions=before;
-        s.phase='RECOVERY_REQUIRED';
-        c.save();
-        throw Error('Acceptance commands changed the tree during verification: '+evidence.tree_changed.join(', '));
-      }
+      if(acceptanceHalt(c,evidence)){s.scope_exceptions=before;c.save();return s;}
       if(evidence.status==='skipped'){
         s.scope_exceptions=before;
         c.save();
@@ -848,6 +886,7 @@ function verify(c,input) {
       }
     }
   }
+  if(acceptanceHalt(c,null))return s;
   c.art('verification.json',{...input,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{})});
   s.phase='CLOSE';
   s.closed_at=new Date().toISOString();
@@ -878,7 +917,8 @@ function recover(c,input) {
   c.save();
   if(c.writerHeld())release(c.root,input.token);
   s.writer=null;
-  s.phase=s.result_failures>=2||s.owner==='lead'||!c.canWork(s.owner)?c.exhausted():'REDO';
+  fs.rmSync(acceptanceMarker(c),{force:true});
+  s.phase=s.iteration===0?'PLAN':s.result_failures>=2||s.owner==='lead'||!c.canWork(s.owner)?c.exhausted():'REDO';
   c.save();
   return s;
 }
@@ -919,6 +959,16 @@ export function run(root,action,input={}) {
 }
 
 function dispatch(c,action,input) {
+  if(fs.existsSync(acceptanceMarker(c))){
+    const pending=read(acceptanceMarker(c));
+    if(!c.s||c.s.task_id!==pending.state.task_id)c.s=pending.state;
+    if(!c.optional('initial-brief.json'))c.art('initial-brief.json',pending.brief);
+    if(!c.optional('baseline.json'))c.art('baseline.json',pending.baseline);
+    c.s.phase='RECOVERY_REQUIRED';
+    c.s.last_errors=['ACCEPTANCE_NOT_QUIESCENT: interrupted or unproven acceptance run; confirm stopped processes before recovery'];
+    c.save();
+    if(!['recover','archive','status','report'].includes(action))throw Error(c.s.last_errors[0]);
+  }
   if(action==='init')return init(c,input);
   if(!c.s)throw Error('Initialize first');
   if(action==='archive')return archive(c,input);

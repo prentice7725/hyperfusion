@@ -54,7 +54,7 @@ test('interrupting a running worker stops supervision and retains the lease',asy
  assert.ok(!fs.existsSync(path.join(f.control,'tasks',f.brief.task_id,'result-1.json')));
 });
 test('budget exhaustion stops before launching',async t=>{
- const f=setup(t,{limits:{max_wall_ms:1}});await new Promise(r=>setTimeout(r,5));
+ const f=setup(t),s=f.state();s.limits={max_wall_ms:1};s.started_at=new Date(Date.now()-100).toISOString();atomic(path.join(f.control,'state.json'),s);
  const out=await autopilot(f.root);assert.equal(out.reason,'BUDGET_EXCEEDED');assert.equal(out.phase,'BLOCKED',JSON.stringify(out));assert.equal(f.state().iteration,0);
 });
 test('worker scope violations require recovery and retain the lease',async t=>{
@@ -119,7 +119,14 @@ test('stale passing acceptance evidence is not forwarded to another reviewer',as
 });
 test('reported cost cap prevents a delegated review launch',async t=>{
  const f=setup(t,{limits:{max_cost_usd:0.001}});const out=await autopilot(f.root);
- assert.equal(out.reason,'BUDGET_EXCEEDED');assert.equal(f.state().review_runs,undefined);assert.equal(f.state().writer,null);
+ assert.equal(out.reason,'BLOCKED');assert.match(f.state().last_errors[0],/BUDGET_EXCEEDED.*max_cost_usd/);
+ assert.equal(f.state().review_runs,undefined);assert.equal(f.state().writer,null);
+});
+
+test('acceptance evidence from before supervision cannot be forwarded to a reviewer',async t=>{
+ const f=setup(t);f.begin({acceptance_commands:f.brief.acceptance_commands});f.finish();
+ const s=f.state();delete s.acceptance.quiescent;atomic(path.join(f.control,'state.json'),s);
+ const out=await autopilot(f.root);assert.equal(out.reason,'AUTOPILOT_ACCEPTANCE_UNVERIFIED');assert.equal(f.state().open_consult,undefined);
 });
 
 test('autopilot refuses acceptance commands that were never proven to fail',async t=>{

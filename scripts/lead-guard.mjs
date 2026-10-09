@@ -31,6 +31,7 @@ export function decide(input) {
  if(typeof target!=='string'||!target)return null;
  const root=repoRootOf(path.resolve(input.cwd??process.cwd(),target));
  if(!root)return null;
+ if(fs.existsSync(controlPath(root,'locks/acceptance.json')))return deny('HyperFusion: 수용 테스트의 프로세스 정지가 확인되지 않았습니다. 남은 프로세스를 중지하고 recover 또는 archive로 기록하기 전에는 트리를 수정할 수 없습니다.');
  const stateFile=controlPath(root,'state.json'),writerFile=controlPath(root,'locks/writer.json');
  if(!fs.existsSync(stateFile)&&!fs.existsSync(writerFile))return null;
  // 상태가 있는데 읽지 못하면 막는다. 규칙을 확인할 수 없을 때 열어 두면 강제가 아니다.
