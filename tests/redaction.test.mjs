@@ -7,8 +7,30 @@ import {fixture} from './support.mjs';
 import {execute,consult} from '../scripts/executor-bridge.mjs';
 import {run} from '../scripts/fusion-state.mjs';
 import {read} from '../scripts/artifact.mjs';
+import {workerEnv} from '../scripts/worker-env.mjs';
 
-const SENSITIVE='alice@example.com 192.168.10.1 2001:db8::1 password="two words" OPENAI_API_KEY=super-secret-value sk-proj-123456789012345678901234';
+test('PowerShell runtime module paths survive filtering while unrelated secrets do not',()=>{
+ const env=workerEnv('acceptance',{PSModulePath:'C:/Windows/System32/WindowsPowerShell/v1.0/Modules',DATABASE_PASSWORD:'private',ANTHROPIC_API_KEY:'private'});
+ assert.equal(env.PSModulePath,'C:/Windows/System32/WindowsPowerShell/v1.0/Modules');
+ assert.equal(env.DATABASE_PASSWORD,undefined);assert.equal(env.ANTHROPIC_API_KEY,undefined);
+});
+
+const SENSITIVE='alice@example.com 192.168.10.1 2001:db8::1 password="two words" OPENAI_API_KEY=super-secret-value sk-proj-123456789012345678901234 password="sk-proj-123456789012345678901234 additional-secret" password="[REDACTED:secret]still-secret"';
+
+test('partial masks and user-supplied placeholders never exempt the rest of a secret assignment',()=>{
+ for(const value of ['sk-proj-123456789012345678901234 additional-secret','[REDACTED:secret]still-secret',
+  'Bearer abcDEF123 additional-secret','[REDACTED:anything]still-secret']){
+  for(const quote of ['"',"'"]){
+   const masked=redactText(`password=${quote}${value}${quote}`);
+   assert.equal(masked,`password=${quote}[REDACTED:secret]${quote}`);
+   assert.equal(redactText(masked),masked);
+  }
+ }
+ const request={prompt:JSON.stringify({brief:{constraints:[SENSITIVE]},diff:SENSITIVE,previous:{summary:SENSITIVE}}),cli:{args:[]}};
+ const sent=maskTransport(request).request.prompt;
+ for(const secret of ['additional-secret','still-secret'])assert.ok(!sent.includes(secret));
+ assert.ok(request.prompt.includes('additional-secret'));
+});
 test('redacts supported patterns, nested JSON and assignment values without changing the input',()=>{
  const input={objective:SENSITIVE,prior:JSON.stringify({DB_PASSWORD:'some value',ip:'::1'}),auth:'Bearer abcDEF123==',pem:'-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----'};
  const copy=structuredClone(input),counts={},masked=redactValue(input,counts);
@@ -34,7 +56,7 @@ for(const executor of ['grok','antigravity','sonnet','luna'])test(executor+' act
  assert.ok(dispatch.prompt.includes('alice@example.com'));
  const out=await execute(f.root);assert.equal(out.status,'RESULT_READY');
  const received=fs.readFileSync(path.join(f.temp,'received-prompt.json'),'utf8');
- for(const value of ['alice@example.com','192.168.10.1','two words','super-secret-value'])assert.ok(!received.includes(value),executor+': '+value);
+ for(const value of ['alice@example.com','192.168.10.1','two words','super-secret-value','additional-secret','still-secret'])assert.ok(!received.includes(value),executor+': '+value);
  const dir=path.join(f.control,'tasks',f.brief.task_id);
  const audit=read(path.join(dir,'redaction-1.json'));assert.ok(audit.total>0);assert.ok(!JSON.stringify(audit).includes('alice'));
  if(executor==='grok')assert.ok(!fs.readFileSync(dispatch.cli.prompt_file,'utf8').includes('alice@example.com'));
@@ -47,6 +69,8 @@ test('consult prior-result and diff context is masked before transport',async t=
  const dir=path.join(f.control,'tasks',f.brief.task_id),sent=read(path.join(dir,`consult-${d.consult_id}-m1.json`));
  assert.ok(sent.prompt.includes('alice@example.com'));
  assert.ok(!fs.readFileSync(sent.cli.prompt_file,'utf8').includes('alice@example.com'));
+ assert.ok(!fs.readFileSync(sent.cli.prompt_file,'utf8').includes('additional-secret'));
+ assert.ok(!fs.readFileSync(sent.cli.prompt_file,'utf8').includes('still-secret'));
 });
 test('help probes receive only the chosen vendor environment',t=>{
  const f=fixture(t),old=process.env.UNRELATED_DATABASE_PASSWORD;process.env.UNRELATED_DATABASE_PASSWORD='private';

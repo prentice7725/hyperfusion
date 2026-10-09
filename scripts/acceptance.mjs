@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {git,hash} from './artifact.mjs';
 import {workerEnv} from './worker-env.mjs';
@@ -15,7 +16,7 @@ import {workerEnv} from './worker-env.mjs';
 // 테스트가 만드는 산출물 중 실행되지 않는 것. 비교에서 뺀다. 실행될 수 있는 산출물(dist/, __pycache__ 등)은 넣지 않는다.
 export const DEFAULT_ARTIFACTS=['coverage/**','.nyc_output/**','**/.pytest_cache/**','test-results/**','node_modules/.cache/**','**/*.log','.coverage','.coverage.*'];
 export const MAX_IGNORED=200000;
-const TAIL=4000;
+const RUNNER=fileURLToPath(new URL('./acceptance-runner.mjs',import.meta.url));
 
 export function globRegex(glob) {
  let re='';
@@ -56,18 +57,21 @@ export function ignoredChanges(a,b) {
 
 // 명령을 차례로 실행한다. 일꾼과 같은 걸러진 환경변수를 쓴다(리드의 비밀값을 테스트 코드에 넘기지 않는다).
 // 바이트코드 캐시를 쓰지 않게 해서 실행 산출물이 무시된 파일 비교를 흔들지 않게 한다.
-export function runCommands(root,commands,{timeout_ms=600000}={}) {
+export function runCommands(root,commands,{timeout_ms=600000,deadline_ms=null}={}) {
  const env={...workerEnv('acceptance'),CI:'1',PYTHONDONTWRITEBYTECODE:'1'};
- return commands.map(command=>{
-  const started=Date.now();
-  const r=spawnSync(command,{cwd:root,shell:true,env,timeout:timeout_ms,windowsHide:true,maxBuffer:64*1024*1024});
-  const out=Buffer.concat([r.stdout??Buffer.alloc(0),r.stderr??Buffer.alloc(0)]);
-  const timed_out=r.error?.code==='ETIMEDOUT';
-  const text=out.toString('utf8');
-  return {command,exit_code:r.status,signal:r.signal??null,timed_out,error:r.error&&!timed_out?r.error.message:null,
-   status:r.status===0&&!r.error?'pass':'fail',duration_ms:Date.now()-started,
-   output_sha256:hash(out),output_bytes:out.length,output_tail:text.length>TAIL?text.slice(-TAIL):text};
- });
+ // Keep the controller's synchronous API. The helper owns asynchronous tree
+ // supervision and bounded command timers; killing only this helper is unsafe.
+ const r=spawnSync(process.execPath,[RUNNER],{cwd:root,env,windowsHide:true,
+  input:JSON.stringify({root,commands,options:{timeout_ms,deadline_ms}}),encoding:'utf8',maxBuffer:1024*1024});
+ if(r.status===0&&!r.error){
+  try{
+   const results=JSON.parse(r.stdout);
+   if(Array.isArray(results)&&results.length===commands.length&&results.every((v,i)=>v.command===commands[i]&&typeof v.quiescence?.quiescent==='boolean'))return results;
+  }catch{}
+ }
+ return commands.map(command=>({command,status:'fail',code:'ACCEPTANCE_SUPERVISOR_FAILED',exit_code:null,signal:r.signal??null,
+  timed_out:false,error:'Acceptance supervisor failed; process termination is unknown',duration_ms:0,
+  output_sha256:hash(''),output_bytes:0,output_tail:'',quiescence:{quiescent:false,reason:'Acceptance supervisor failed'}}));
 }
 
 // 실패한 명령을 다음 라운드 명령서(lead_feedback) 항목으로 바꾼다.

@@ -76,6 +76,8 @@ Claude CodeでOpus 5.5を選び：
 
 初期化済みの作業は`node scripts/fusion-state.mjs autopilot <リポジトリ>`でラウンド実行と独立した委任レビューを自動進行できます。リードが承認した`acceptance_commands`と`review.auto_apply:true`が必要です。VERIFY・設計判断・BLOCKED・takeoverではリードに制御を返し、プロセス停止・スナップショット・予算・検証の確認に失敗した場合も停止します。最終verifyはリードが担当します（[運用説明（韓国語）](references/operations.md#오토파일럿)）。
 
+受け入れテストでも子プロセスの停止を確認します。停止の証拠がなければRECOVERY_REQUIREDで止まり、リードの停止確認を待ちます。タスクの時間上限は受け入れテストと最終検証にも適用されます。
+
 外部に送るbrief・diff・過去の結果には、メール・IP・キー・パスワードのパターンマスキングを標準適用します。認証に必要なベンダー環境変数は維持します。CLIが直接読み取って送るリポジトリの内容まで保護するDLPではないため、社内コードではファイルアクセスと外部送信の方針も別途管理してください（[送信範囲（韓国語）](references/operations.md#외부-전송-마스킹)）。
 
 ドキュメント：[runtime](references/runtime.md) · [ワーカーランタイム（Windows含む）](references/executor-runtime.md) · [configuration](references/configuration.md) · [state-schema](references/state-schema.json)

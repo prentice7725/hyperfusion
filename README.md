@@ -76,6 +76,8 @@ Claude Code에서 Opus 5.5를 고르고:
 
 초기화된 작업은 `node scripts/fusion-state.mjs autopilot <저장소>`로 라운드 실행과 독립 위임 리뷰를 자동 진행할 수 있다. 리드가 정한 `acceptance_commands`와 `review.auto_apply:true`가 필요하다. VERIFY·설계 결정·BLOCKED·takeover에서 리드에게 제어를 돌려주며, 정지·스냅샷·예산·검증 확인에 실패하면 멈춘다. 최종 verify는 리드가 한다([운영 설명](references/operations.md#오토파일럿)).
 
+수용 테스트도 자식 프로세스 종료를 확인한다. 종료 증거가 없으면 RECOVERY_REQUIRED에서 멈추고 리드의 정지 확인을 기다린다. 작업 시간 상한은 수용 테스트와 최종 검증에도 적용된다.
+
 외부로 보내는 brief·diff·이전 결과에는 이메일·IP·키·비밀번호 패턴 마스킹이 기본 적용된다. 인증에 필요한 벤더 환경변수는 유지한다. CLI가 직접 읽어 보내는 저장소 파일까지 가리는 DLP 기능은 아니므로, 회사 코드 사용 시 파일 접근과 외부 전송 정책도 별도로 통제해야 한다([전송 범위](references/operations.md#외부-전송-마스킹)).
 
 문서: [runtime](references/runtime.md) · [일꾼 런타임(Windows 포함)](references/executor-runtime.md) · [configuration](references/configuration.md) · [state-schema](references/state-schema.json)

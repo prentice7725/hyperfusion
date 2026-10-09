@@ -78,7 +78,10 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
     }
     if(s.phase==='REVIEW'){
      if(s.pending_review)throw failure('AUTOPILOT_PENDING_REVIEW','A delegated verdict requires lead review');
-     if(s.acceptance?.round!==s.iteration||s.acceptance.status!=='pass')throw failure('AUTOPILOT_ACCEPTANCE_UNVERIFIED','Acceptance evidence is missing, failed or skipped; the lead must inspect it');
+     const acceptance=s.acceptance?.file?read(path.join(dir,s.acceptance.file)):null;
+     if(s.acceptance?.round!==s.iteration||s.acceptance.status!=='pass'||s.acceptance.quiescent!==true
+       ||!acceptance?.results?.length||!acceptance.results.every(r=>r.quiescence?.quiescent===true))
+      throw failure('AUTOPILOT_ACCEPTANCE_UNVERIFIED','Acceptance evidence or process shutdown proof is missing, failed or skipped; the lead must inspect it');
      const ignored=s.acceptance.ignored_after?read(path.join(dir,s.acceptance.ignored_after)):null;
      if(s.acceptance.tree_digest!==snapshot(root).digest||!ignored||ignoredChanges(ignored,ignoredManifest(root,brief.acceptance_artifacts)).length)
       throw failure('AUTOPILOT_ACCEPTANCE_UNVERIFIED','The tree or ignored inputs changed after acceptance; the lead must inspect them');
