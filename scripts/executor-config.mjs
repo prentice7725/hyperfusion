@@ -13,6 +13,12 @@ export const REVIEW_RUNS_PER_ROUND=2;
 export const CAP={grok:3,antigravity:3,sonnet:3,haiku:3,luna:3,lead:1};
 // 상담(advisor 1명, committee 2명) 위원 실행 총량. 구현 예산과 별도다.
 export const CONSULT_CAP=4;
+// 추론 강도(reasoning_effort)로 받는 값. CLI마다 다르다(각 CLI --help 기준).
+// Codex: codex exec -c model_reasoning_effort=…, Claude Code·agy: --effort, Grok: --reasoning-effort(값 목록은 도움말에 없어 Claude와 같게 둔다).
+const HIGH=['low','medium','high','xhigh','max'];
+// 기본 추론 강도. 설정에 reasoning_effort가 없으면 이 값을 쓰고, null이면 플래그를 넘기지 않는다(CLI 기본값).
+export const DEFAULT_EFFORT={sonnet:'high',haiku:'max',antigravity:'high',grok:'xhigh',luna:'xhigh',sol:'medium'};
+export const EFFORT_LEVELS={sol:['minimal','low','medium','high','xhigh'],luna:['minimal','low','medium','high','xhigh'],sonnet:HIGH,haiku:HIGH,antigravity:HIGH,grok:HIGH};
 export const TASK_KINDS=['code','ui','image-asset','tests','refactor','docs'];
 export const DIFFICULTIES=['low','medium','high'];
 // 능력(caps): 배치는 이름이 아니라 능력으로 후보를 거른다. 작업 종류마다 필요한 능력이 하나 있다.
@@ -60,6 +66,7 @@ export function config(root) {
  if(['sol','astra'].includes(v.lead))throw Error('Invalid HyperFusion configuration: Codex lead config belongs to the main branch; this branch is Opus-led');
  v.lead??='opus';v.lead_model??='claude-opus-5-5';v.lead_takeover??=true;v.external??=structuredClone(DEFAULT_CONFIG.external);
  v.executors??={};v.executors.antigravity??={sandbox:true};
+ for(const [k,e] of Object.entries(DEFAULT_EFFORT)){v.executors[k]??={};if(v.executors[k].reasoning_effort===undefined)v.executors[k].reasoning_effort=e;else if(v.executors[k].reasoning_effort===null)delete v.executors[k].reasoning_effort;}
  v.routing={...structuredClone(DEFAULT_CONFIG.routing),...(v.routing??{})};
  v.review={...structuredClone(DEFAULT_CONFIG.review),...(v.review??{})};
  const ext=v.external;
@@ -67,11 +74,16 @@ export function config(root) {
   &&(ext.default==='auto'||ext.available.includes(ext.default))&&typeof (v.executors.antigravity.sandbox??true)==='boolean'
   &&Array.isArray(v.routing.rules)&&v.routing.rules.length&&v.routing.rules.every(r=>validRule(r,v,userRules))&&typeof v.routing.learn==='boolean'
   &&Object.entries(v.executors).every(([k,o])=>REVIEWERS.includes(k)&&o&&typeof o==='object'&&(o.timeout_ms===undefined||(Number.isSafeInteger(o.timeout_ms)&&o.timeout_ms>0))
-   &&(o.model===undefined||(typeof o.model==='string'&&/^[\w.:/-]{1,80}$/.test(o.model)))&&(o.reasoning_effort===undefined||['minimal','low','medium','high','xhigh'].includes(o.reasoning_effort))&&validCaps(o.caps))
+   &&(o.model===undefined||(typeof o.model==='string'&&/^[\w.:/-]{1,80}$/.test(o.model)))&&(o.reasoning_effort===undefined||typeof o.reasoning_effort==='string')&&validCaps(o.caps))
   &&['lead','delegate'].includes(v.review.by)&&Array.isArray(v.review.reviewers)&&v.review.reviewers.length>0&&v.review.reviewers.every(x=>REVIEWERS.includes(x))&&new Set(v.review.reviewers).size===v.review.reviewers.length&&typeof v.review.auto_apply==='boolean'
   &&Number.isInteger(v.routing.min_samples)&&v.routing.min_samples>0&&typeof v.routing.demote_below==='number'&&v.routing.demote_below>=0&&v.routing.demote_below<=1
   &&Number.isFinite(v.routing.half_life_days)&&v.routing.half_life_days>0&&Number.isInteger(v.routing.explore_every)&&v.routing.explore_every>=0&&Number.isInteger(v.routing.newcomer_every)&&v.routing.newcomer_every>=0;
  if(!ok)throw Error('Invalid HyperFusion configuration');
+ // 추론 강도는 일꾼 CLI가 받는 값만 허용한다. 틀린 값을 조용히 넘기면 CLI가 실패하거나 무시하므로 여기서 막는다.
+ for(const [k,o] of Object.entries(v.executors)){
+  if(o.reasoning_effort!==undefined&&!(EFFORT_LEVELS[k]??[]).includes(o.reasoning_effort))
+   throw Error(`EFFORT_UNSUPPORTED: ${k} reasoning_effort must be one of ${(EFFORT_LEVELS[k]??[]).join(', ')||'(none)'}`);
+ }
  v.limits=validateLimits(v.limits);
  // 저장소 안의 설정 파일은 일꾼이나 복제한 저장소가 쓴 것일 수 있다. 샌드박스 해제 같은 보안 완화는 설정 파일로 켤 수 없고,
  // 운영자가 환경변수로 직접 허용해야 한다.

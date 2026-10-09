@@ -66,3 +66,14 @@
 `executors.<이름>.caps`: 그 일꾼이 맡을 수 있는 작업 능력(`code`, `tests`, `refactor`, `ui`, `docs`, `image-gen`). 생략하면 기본값을 쓴다. `executors.<이름>.model`: 같은 CLI로 부를 모델. 새 모델은 이 두 줄로 붙인다([routing.md](routing.md#능력caps으로-거르기)). `routing.newcomer_every`(기본 4, 0이면 끔)는 실적 없는 일꾼에게 가끔 첫 기회를 주는 주기다.
 
 Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model claude-haiku-5-5`로 부른다. 세션과 시도 예산은 Sonnet과 따로다.
+
+`executors.<이름>.reasoning_effort`: 일꾼의 추론 강도. 일꾼 CLI마다 플래그와 받는 값이 다르다.
+
+| 일꾼 | CLI 플래그 | 값 |
+|---|---|---|
+| Sonnet, Haiku (Claude Code) | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` |
+| Antigravity (agy) | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` |
+| Grok | `--reasoning-effort` | `low`, `medium`, `high`, `xhigh`, `max` (도움말에 값 목록이 없어 Claude와 같게 둠) |
+| Luna, Sol (Codex) | `-c model_reasoning_effort=…` | `minimal`, `low`, `medium`, `high`, `xhigh` |
+
+기본값은 Sonnet `high`, Haiku `max`, Antigravity `high`, Grok `xhigh`, Luna `xhigh`, Sol `medium`이다. 설정에 값을 적으면 덮어쓰고, `null`을 적으면 플래그를 넘기지 않고 CLI 기본값을 쓴다(예전 CLI에 effort 플래그가 없을 때). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.

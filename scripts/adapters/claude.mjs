@@ -10,18 +10,20 @@ export const requiredFlags=['--model','--output-format','--json-schema','--resum
 export const binary=()=>process.env.HF_CLAUDE_BIN||'claude';
 
 function member(name,{model:MODEL,label}) {
- const probe=()=>probeCli(`Claude Code (${label})`,binary(),requiredFlags);
+ // 추론 강도(--effort)는 설정했을 때만 필수 플래그로 확인한다.
+ const probe=(options={})=>probeCli(`Claude Code (${label})`,binary(),[...requiredFlags,...(options.reasoning_effort?['--effort']:[])],['--effort']);
  const newSession=()=>crypto.randomUUID();
 
  function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
   const model=options.model??MODEL;
+  if(options.reasoning_effort&&!cli.supports?.['--effort'])throw Error(`EFFORT_UNSUPPORTED: ${label} requires --effort support for a reasoning_effort setting`);
   if(!session)throw Error(`${label} requires a preallocated session UUID`);
   const edit=brief.allowed_actions.includes('edit')&&!brief.consult;
   const allowed=['Read','Glob','Grep',...(edit?['Edit','Write']:[]),...bashRules(brief)];
   // 상담은 Bash 자체를 주지 않는다. 읽기 도구만 있으면 트리를 바꿀 수단이 없다.
   const tools=brief.consult?'Read,Glob,Grep':edit?'Read,Glob,Grep,Edit,Write,Bash':'Read,Glob,Grep,Bash';
   // safe-mode로 사용자 플러그인·훅·메모리를 끄고, dontAsk로 허용 목록 밖은 묻지 않고 거절한다.
-  const args=['-p','--model',model,'--safe-mode','--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),
+  const args=['-p','--model',model,...(options.reasoning_effort?['--effort',options.reasoning_effort]:[]),'--safe-mode','--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),
    '--permission-mode','dontAsk','--tools',tools,
    '--allowedTools',allowed.join(','),'--disallowedTools',['Agent','Task','Skill','mcp__*',...editDeny(brief),...denyRules('claude')].join(','),
    '--max-turns','40',resume?'--resume':'--session-id',session];

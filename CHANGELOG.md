@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 기본 추론 강도: Sonnet high, Haiku max, Antigravity high, Grok xhigh, Luna xhigh, Sol medium. 설정으로 덮어쓰고 `null`이면 플래그를 넘기지 않는다.
+- 추론 강도(`reasoning_effort`)를 모든 일꾼에 적용: Claude Code(Sonnet·Haiku)와 agy는 `--effort`, Grok은 `--reasoning-effort`, Codex는 `model_reasoning_effort`. 일꾼마다 받는 값만 허용(`EFFORT_UNSUPPORTED`)하고, CLI에 플래그가 없으면 무시하지 않고 거절한다.
 - 비밀번호 값 일부가 먼저 마스킹됐거나 사용자가 마스킹 표식을 넣었을 때 나머지 값이 그대로 전송되던 문제를 수정했다. 민감값 할당 전체를 다시 가린다.
 - 수용 명령의 실행 전후 프로세스 표와 PID·생성 시각을 확인한다. 잔존 자손·새 고아 프로세스·조회 실패에서는 성공 증거를 만들지 않고 RECOVERY_REQUIRED에서 멈춘다. 실행 중 표식은 컨트롤러 중단 후에도 남고 리드의 정지 확인 전에는 새 실행·검증을 막는다.
 - 수용 테스트의 기준 트리 검사·finish·verify에도 작업 시간 상한을 적용한다. 명령 timeout을 남은 시간으로 줄이고 상한 이후 명령과 성공 증거 재사용을 막는다. 정지가 확인된 예산 소진은 BLOCKED로 정산한다.
