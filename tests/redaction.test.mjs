@@ -7,6 +7,13 @@ import {fixture} from './support.mjs';
 import {execute,consult} from '../scripts/executor-bridge.mjs';
 import {run} from '../scripts/fusion-state.mjs';
 import {read} from '../scripts/artifact.mjs';
+import {workerEnv} from '../scripts/worker-env.mjs';
+
+test('PowerShell runtime module paths survive filtering while unrelated secrets do not',()=>{
+ const env=workerEnv('acceptance',{PSModulePath:'C:/Windows/System32/WindowsPowerShell/v1.0/Modules',DATABASE_PASSWORD:'private',ANTHROPIC_API_KEY:'private'});
+ assert.equal(env.PSModulePath,'C:/Windows/System32/WindowsPowerShell/v1.0/Modules');
+ assert.equal(env.DATABASE_PASSWORD,undefined);assert.equal(env.ANTHROPIC_API_KEY,undefined);
+});
 
 const SENSITIVE='alice@example.com 192.168.10.1 2001:db8::1 password="two words" OPENAI_API_KEY=super-secret-value sk-proj-123456789012345678901234 password="sk-proj-123456789012345678901234 additional-secret" password="[REDACTED:secret]still-secret"';
 

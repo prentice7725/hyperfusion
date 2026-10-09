@@ -15,7 +15,9 @@ const command=(file,args)=>new Promise((resolve,reject)=>{
 export async function processTable() {
  let rows,query;
  if(isWin){
-  query=await command('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,@{n='created';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}}} | ConvertTo-Json -Compress"]);
+  // Load the system module explicitly: automatic module discovery can stall in
+  // a filtered environment on hosted Windows runners. Do not resolve a repo module.
+  query=await command('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Import-Module (Join-Path $PSHOME 'Modules\\CimCmdlets\\CimCmdlets.psd1') -ErrorAction Stop; CimCmdlets\\Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,@{n='created';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}}} | ConvertTo-Json -Compress"]);
   const parsed=JSON.parse(query.out);rows=(Array.isArray(parsed)?parsed:[parsed]).map(p=>({pid:p.ProcessId,parent:p.ParentProcessId,created:p.created}));
  } else {
   query=await command('ps',['-eo','pid=,ppid=,stat=,lstart=']);
