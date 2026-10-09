@@ -265,10 +265,10 @@ test('a task nobody owns exactly is reported as a warning, not silently matched 
 
 test('SKILL.md does not forbid a worker that the code supports',()=>{
  const skill=fs.readFileSync(new URL('../SKILL.md',import.meta.url),'utf8');
- assert.doesNotMatch(skill,/`luna`는 일꾼 이름이 아니다/);
+ assert.doesNotMatch(skill,/`luna`(는 일꾼 이름이 아니다| is not a worker)/);
  const line=skill.split('\n').find(l=>l.includes('/hyperfusion --executor'));
  for(const name of EXECUTORS)assert.ok(line.includes(name),`--executor list is missing ${name}`);
- assert.match(skill,/sol.*(리뷰|상담)/);
+ assert.match(skill,/sol.*(리뷰|상담|review)/i);
 });
 test('README does not claim Luna was removed without saying it came back',()=>{
  for(const file of ['../README.md','../README.ja.md']){
