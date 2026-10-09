@@ -485,8 +485,12 @@
         "object",
         "null"
       ],
-      "description": "Last controller-run acceptance result for this task (acceptance-N-<stage>.json holds the full record).",
+      "description": "Last controller-run acceptance result for this task (acceptance-N-<stage>.json holds results and process termination evidence).",
       "properties": {
+        "quiescent": {
+          "type": "boolean",
+          "description": "True only when every command has confirmed process-tree shutdown. Older records without this field cannot be reused."
+        },
         "round": {
           "type": "integer",
           "minimum": 1

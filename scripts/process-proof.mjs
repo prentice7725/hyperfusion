@@ -3,21 +3,33 @@ import {isWin} from './platform.mjs';
 
 // Cold CIM startup can take over 10 seconds on a busy Windows CI runner.
 // Keep a bounded timeout, without interpreting a timeout as proof of shutdown.
-const command=(file,args)=>new Promise((resolve,reject)=>execFile(file,args,{encoding:'utf8',windowsHide:true,timeout:isWin?30000:10000,maxBuffer:8*1024*1024},(e,out)=>{
- if(e){if(e.killed)e.code='PROCESS_TABLE_TIMEOUT';reject(e);}else resolve(out);
-}));
-
-async function table() {
- if(isWin){
-  const out=await command('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,@{n='created';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress"]);
-  const rows=JSON.parse(out);return (Array.isArray(rows)?rows:[rows]).map(p=>({pid:p.ProcessId,parent:p.ParentProcessId,created:p.created}));
- }
- const out=await command('ps',['-eo','pid=,ppid=,lstart=']);
- return out.trim().split('\n').filter(Boolean).map(line=>{
-  const m=line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
-  if(!m)throw Error('Unrecognized process table');
-  return {pid:Number(m[1]),parent:Number(m[2]),created:m[3]};
+const command=(file,args)=>new Promise((resolve,reject)=>{
+ const child=execFile(file,args,{encoding:'utf8',windowsHide:true,timeout:isWin?30000:10000,maxBuffer:8*1024*1024},(e,out)=>{
+  if(e){if(e.killed)e.code='PROCESS_TABLE_TIMEOUT';reject(e);}else resolve({out,pid:child.pid});
  });
+ // The inventory query has no input. Windows PowerShell can wait on an open
+ // redirected stdin even with -NonInteractive when launched from a pipe-fed helper.
+ child.stdin.end();
+});
+
+export async function processTable() {
+ let rows,query;
+ if(isWin){
+  // Load the system module explicitly: automatic module discovery can stall in
+  // a filtered environment on hosted Windows runners. Do not resolve a repo module.
+  query=await command('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Import-Module (Join-Path $PSHOME 'Modules\\CimCmdlets\\CimCmdlets.psd1') -ErrorAction Stop; CimCmdlets\\Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,@{n='created';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}}} | ConvertTo-Json -Compress"]);
+  const parsed=JSON.parse(query.out);rows=(Array.isArray(parsed)?parsed:[parsed]).map(p=>({pid:p.ProcessId,parent:p.ParentProcessId,created:p.created}));
+ } else {
+  query=await command('ps',['-eo','pid=,ppid=,stat=,lstart=']);
+  rows=query.out.trim().split('\n').filter(Boolean).map(line=>{
+   const m=line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
+   if(!m)throw Error('Unrecognized process table');
+   return {pid:Number(m[1]),parent:Number(m[2]),zombie:m[3].startsWith('Z'),created:m[4]};
+  }).filter(p=>!p.zombie);
+ }
+ // The inventory query is our child, but is not part of the command being supervised.
+ const queryIds=new Set(descendants(rows,query.pid).map(p=>p.pid));
+ return rows.filter(p=>!queryIds.has(p.pid));
 }
 
 // Windows keeps a dead parent's PID in ParentProcessId and reuses PIDs quickly, so an unrelated older
@@ -40,7 +52,7 @@ export function descendants(rows,pid,tracked=new Map()) {
 // survivors after the last check still fail closed.
 const SETTLE=isWin?{tries:20,delayMs:500}:{tries:3,delayMs:200};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-export function watchProcessTree({readTable=table,pollMs=1000,settle=SETTLE}={}) {
+export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETTLE,baseline=null}={}) {
  const tracked=new Map();let pid=null,timer=null,pending=Promise.resolve(),error=null,querying=false,stopped=false;
  const observe=async()=>{
   try{const rows=await readTable();for(const p of descendants(rows,pid,tracked)){
@@ -67,6 +79,10 @@ export function watchProcessTree({readTable=table,pollMs=1000,settle=SETTLE}={})
      const rows=await readTable(),live=descendants(rows,pid,tracked);checks++;
      // Same PID with a different creation time is a reused PID, not our process.
      remaining=live.filter(p=>p.pid!==pid||!tracked.has(pid)||tracked.get(pid)===p.created);
+     if(baseline){
+      const ids=new Set(remaining.map(p=>p.pid));
+      for(const p of unattributedProcesses(rows,baseline,process.pid))if(!ids.has(p.pid)){remaining.push(p);ids.add(p.pid);}
+     }
      if(!remaining.length||checks>=settle.tries)break;
      await sleep(settle.delayMs);
     }
@@ -75,4 +91,22 @@ export function watchProcessTree({readTable=table,pollMs=1000,settle=SETTLE}={})
    }catch(e){return {quiescent:false,reason:e.code??'PROCESS_TABLE_UNAVAILABLE'};}
   }
  };
+}
+
+// Acceptance commands may exit before the first observation. A newly live orphan
+// cannot be attributed safely to another process: fail closed instead of losing it.
+// New descendants of an unrelated, pre-existing process are allowed (concurrent CI).
+export function unattributedProcesses(rows,baseline,supervisorPid) {
+ const old=new Map(baseline.map(p=>[p.pid,p.created])),byPid=new Map(rows.map(p=>[p.pid,p]));
+ return rows.filter(p=>{
+  if(p.pid===supervisorPid||old.get(p.pid)===p.created)return false;
+  const seen=new Set([p.pid]);let current=p;
+  for(;;){
+   const parent=byPid.get(current.parent);
+   if(!parent||parent.pid===1||seen.has(parent.pid)||olderThanParent(current,parent))return true;
+   if(parent.pid===supervisorPid)return true;
+   if(old.get(parent.pid)===parent.created)return false;
+   seen.add(parent.pid);current=parent;
+  }
+ });
 }

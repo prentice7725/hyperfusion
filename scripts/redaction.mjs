@@ -28,7 +28,8 @@ export function redactText(text,counts={}) {
   counts.secret=(counts.secret??0)+1;return p+placeholder('secret')+end;
  });
  text=text.replace(/((?:["']?\b(?:[\w.-]{1,64}[_-])?(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization)\b["']?)\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\s,;}&]+)/gi,(m,p,v)=>{
-  if(v.includes('[REDACTED:'))return m;
+  // A preceding pass may have masked only part of this value. Mask the whole
+  // assignment even when it already contains a placeholder (including user input).
   counts.secret=(counts.secret??0)+1;
   const quote=/^["']/.test(v)?v[0]:'';
   return p+quote+placeholder('secret')+quote;

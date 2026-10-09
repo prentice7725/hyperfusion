@@ -20,6 +20,13 @@ test('lead guard leaves repositories without an active task alone',t=>{
  assert.equal(decide({tool_name:'Read',cwd:f.root,tool_input:{file_path:'a.txt'}}),null);
 });
 
+test('an acceptance marker blocks edits even if the task or takeover state was not saved',t=>{
+ const f=fixture(t,{initialize:false});
+ fs.mkdirSync(path.join(f.control,'locks'),{recursive:true});
+ fs.writeFileSync(path.join(f.control,'locks/acceptance.json'),'{}');
+ assert.ok(denied(edit(f)));assert.equal(decide({tool_name:'Read',cwd:f.root,tool_input:{file_path:'a.txt'}}),null);
+});
+
 test('lead guard blocks lead edits while a task is active and while a worker holds the lease',t=>{
  const f=fixture(t);
  const plan=edit(f,'new/file.txt','Write');

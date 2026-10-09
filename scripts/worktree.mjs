@@ -43,6 +43,7 @@ export function removeWorktree(root,id,input={}) {
   assertPlainDir(expected);
   const sf=controlPath(expected,'state.json');
   if(fs.existsSync(controlPath(expected,'locks/writer.json')))throw Error('Writer still present; recover');
+  if(fs.existsSync(controlPath(expected,'locks/acceptance.json')))throw Error('Acceptance shutdown is unconfirmed; recover or archive before removal');
   if(fs.existsSync(sf)){const state=read(sf);if(!TERMINAL_PHASES.includes(state.phase)||state.open_consult)throw Error('Worktree task is unfinished');}
   // Git refuses dirty/untracked contents. No force removal and no automatic merge.
   git(root,['worktree','remove',expected]);fs.unlinkSync(file);

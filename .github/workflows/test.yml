@@ -17,5 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - name: Acceptance supervision preflight
+        run: node --input-type=module -e "import {runCommands} from './scripts/acceptance.mjs'; const results=runCommands(process.cwd(),['node -p 1']); console.log(JSON.stringify(results)); if(results.some(r=>r.status!=='pass'))process.exit(1);"
       - run: npm test
       - run: node scripts/generate-state-docs.mjs --check
