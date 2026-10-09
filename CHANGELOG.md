@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- `reasoning_effort`를 실제로 넘기지 않는 일꾼(Sonnet·Haiku·Grok·Antigravity)에 적으면 조용히 무시하지 않고 `EFFORT_UNSUPPORTED` 설정 오류로 막는다. 지금 적용되는 건 Codex(Sol·Luna)뿐이다.
+- 추론 강도(`reasoning_effort`)를 모든 일꾼에 적용: Claude Code(Sonnet·Haiku)와 agy는 `--effort`, Grok은 `--reasoning-effort`, Codex는 `model_reasoning_effort`. 일꾼마다 받는 값만 허용(`EFFORT_UNSUPPORTED`)하고, CLI에 플래그가 없으면 무시하지 않고 거절한다.
 
 ## 0.14.0
 

@@ -9,6 +9,7 @@ import {run} from '../scripts/fusion-state.mjs';
 import {consult} from '../scripts/executor-bridge.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {config,selectExecutor} from '../scripts/executor-config.mjs';
+import {adapter} from '../scripts/adapters/index.mjs';
 import {measure} from '../scripts/metrics.mjs';
 
 // 위임 리뷰가 켜진 작업. pool로 구현 일꾼 명단, review로 리뷰 설정을 덮어쓴다.
@@ -109,20 +110,36 @@ test('Codex reviews and advises but never implements; config is validated',t=>{
  const f=fixture(t,{initialize:false});
  assert.throws(()=>selectExecutor(config(f.root),'sol'),/only reviews/);
  for(const bad of [{review:{by:'robot'}},{review:{reviewers:['gpt']}},{review:{reviewers:[]}},{executors:{sol:{reasoning_effort:'turbo'}}}]){
-  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify(bad));assert.throws(()=>config(f.root),/Invalid/,JSON.stringify(bad));
+  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify(bad));assert.throws(()=>config(f.root),/Invalid|EFFORT_UNSUPPORTED/,JSON.stringify(bad));
  }
  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sol:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
  assert.equal(config(f.root).executors.sol.model,'gpt-6.1-sol');
 });
-test('reasoning_effort is refused for workers whose CLI would silently ignore it',t=>{
+test('reasoning_effort reaches every worker CLI with its own flag, and bad values are refused',async t=>{
  const f=fixture(t,{initialize:false});
- for(const name of ['sonnet','haiku','grok','antigravity']){
-  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{[name]:{reasoning_effort:'high'}}}));
-  assert.throws(()=>config(f.root),new RegExp('EFFORT_UNSUPPORTED.*'+name),name);
+ const cfg=v=>fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify(v));
+ cfg({executors:{sonnet:{reasoning_effort:'minimal'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: sonnet/,'Claude Code has no minimal');
+ cfg({executors:{luna:{reasoning_effort:'max'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: luna/,'Codex has no max');
+ cfg({executors:{grok:{reasoning_effort:'turbo'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: grok/);
+ cfg({executors:{sonnet:{reasoning_effort:'max'},haiku:{reasoning_effort:'low'},grok:{reasoning_effort:'high'},antigravity:{reasoning_effort:'xhigh'},luna:{reasoning_effort:'minimal'}}});
+ const c=config(f.root);
+ const flag={sonnet:['--effort','max'],haiku:['--effort','low'],grok:['--reasoning-effort','high'],antigravity:['--effort','xhigh']};
+ for(const [name,[option,value]] of Object.entries(flag)){
+  const a=adapter(name),cli=a.probe(c.executors[name]);
+  const brief={task_id:'T',round:1,repo_root:f.root,objective:'o',scope:{paths:['a.txt'],allowed_expansion:'ask-lead'},constraints:[],success_criteria:['AC1'],allowed_actions:['read','edit']};
+  const d=a.dispatch(brief,{token:'x',owner:name},{session:a.newSession()??null,resume:false,probe:cli,promptFile:path.join(f.temp,'p.txt'),options:c.executors[name]});
+  assert.equal(d.cli.args[d.cli.args.indexOf(option)+1],value,name);
  }
- fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{luna:{reasoning_effort:'low'},sol:{reasoning_effort:'high'}}}));
- assert.doesNotThrow(()=>config(f.root));
 });
+
+test('a worker CLI without an effort flag is refused instead of silently ignoring the setting',t=>{
+ const f=fixture(t,{initialize:false});
+ const cli=process.env.HF_CLAUDE_BIN;fs.writeFileSync(cli,fs.readFileSync(cli,'utf8').replace(' --effort',''));
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sonnet:{reasoning_effort:'high'}}}));
+ assert.throws(()=>adapter('sonnet').probe(config(f.root).executors.sonnet),/ADAPTER_UNAVAILABLE.*--effort/);
+ assert.doesNotThrow(()=>adapter('sonnet').probe({}),'without the setting the flag is not required');
+});
+
 test('Codex model and reasoning effort reach the CLI; Codex can sit on a committee',async t=>{
  const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sol:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
  run(f.root,'init',{...f.brief,executor:'grok'});

@@ -46,7 +46,7 @@ const finish=(request,id)=>{
 `;
 const FAKE_GROK=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE grok for protocol tests');process.exit(0);}
-if(args.includes('--help')){console.log('--prompt-file --output-format --session-id --resume --cwd --max-turns --allow --deny');process.exit(0);}
+if(args.includes('--help')){console.log('--prompt-file --output-format --session-id --resume --cwd --max-turns --allow --deny --reasoning-effort');process.exit(0);}
 fs.writeFileSync(HERE+'/fake-grok-args.json',JSON.stringify(args));
 const request=JSON.parse(fs.readFileSync(args[args.indexOf('--prompt-file')+1],'utf8'));
 if(mode==='hang'){setInterval(()=>{},1000);}else{
@@ -65,7 +65,7 @@ if(mode==='hang'){setInterval(()=>{},1000);}else{
 `;
 const FAKE_AGY=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE agy for protocol tests');process.exit(0);}
-if(args.includes('--help')){console.error('Usage of agy.EXE:\\n  --add-dir\\n  --conversation\\n  --json-schema\\n  --mode\\n  --output-format\\n  -p\\n  --print\\n  --print-timeout\\n  --sandbox');process.exit(2);}
+if(args.includes('--help')){console.error('Usage of agy.EXE:\\n  --add-dir\\n  --conversation\\n  --json-schema\\n  --mode\\n  --output-format\\n  -p\\n  --print\\n  --print-timeout\\n  --sandbox\\n  --effort');process.exit(2);}
 fs.writeFileSync(HERE+'/fake-agy-args.json',JSON.stringify(args));
 const request=JSON.parse(args[args.indexOf('-p')+1]);
 const prior=args.includes('--conversation')?args[args.indexOf('--conversation')+1]:null;
@@ -89,7 +89,7 @@ console.log(JSON.stringify(finish(request,null)));
 `;
 const FAKE_CLAUDE=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE claude for protocol tests');process.exit(0);}
-if(args.includes('--help')){console.log('--model --output-format --json-schema --resume --session-id --safe-mode --tools --allowedTools --disallowedTools --permission-mode --max-turns');process.exit(0);}
+if(args.includes('--help')){console.log('--model --output-format --json-schema --resume --session-id --safe-mode --tools --allowedTools --disallowedTools --permission-mode --max-turns --effort');process.exit(0);}
 fs.writeFileSync(HERE+'/fake-claude-args.json',JSON.stringify(args));
 const request=JSON.parse(fs.readFileSync(0,'utf8'));
 const resume=args.includes('--resume'),id=args[args.indexOf(resume?'--resume':'--session-id')+1];

@@ -67,4 +67,13 @@
 
 Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model claude-haiku-5-5`로 부른다. 세션과 시도 예산은 Sonnet과 따로다.
 
-`executors.<이름>.reasoning_effort`(`minimal`, `low`, `medium`, `high`, `xhigh`)는 지금 Codex 일꾼(`sol`, `luna`)에만 적용된다(`codex exec -c model_reasoning_effort=…`). Claude Code(Sonnet·Haiku), Grok, Antigravity에 적으면 CLI가 무시하므로 `EFFORT_UNSUPPORTED` 설정 오류로 막는다.
+`executors.<이름>.reasoning_effort`: 일꾼의 추론 강도. 일꾼 CLI마다 플래그와 받는 값이 다르다.
+
+| 일꾼 | CLI 플래그 | 값 |
+|---|---|---|
+| Sonnet, Haiku (Claude Code) | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` |
+| Antigravity (agy) | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` |
+| Grok | `--reasoning-effort` | `low`, `medium`, `high`, `xhigh`, `max` (도움말에 값 목록이 없어 Claude와 같게 둠) |
+| Luna, Sol (Codex) | `-c model_reasoning_effort=…` | `minimal`, `low`, `medium`, `high`, `xhigh` |
+
+목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
