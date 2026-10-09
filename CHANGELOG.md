@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- 기본 추론 강도: Sonnet high, Haiku max, Antigravity high, Grok xhigh, Luna xhigh, Sol medium. 설정으로 덮어쓰고 `null`이면 플래그를 넘기지 않는다.
 - 추론 강도(`reasoning_effort`)를 모든 일꾼에 적용: Claude Code(Sonnet·Haiku)와 agy는 `--effort`, Grok은 `--reasoning-effort`, Codex는 `model_reasoning_effort`. 일꾼마다 받는 값만 허용(`EFFORT_UNSUPPORTED`)하고, CLI에 플래그가 없으면 무시하지 않고 거절한다.
 
 ## 0.14.0

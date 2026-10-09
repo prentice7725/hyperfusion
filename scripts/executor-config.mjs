@@ -16,6 +16,8 @@ export const CONSULT_CAP=4;
 // 추론 강도(reasoning_effort)로 받는 값. CLI마다 다르다(각 CLI --help 기준).
 // Codex: codex exec -c model_reasoning_effort=…, Claude Code·agy: --effort, Grok: --reasoning-effort(값 목록은 도움말에 없어 Claude와 같게 둔다).
 const HIGH=['low','medium','high','xhigh','max'];
+// 기본 추론 강도. 설정에 reasoning_effort가 없으면 이 값을 쓰고, null이면 플래그를 넘기지 않는다(CLI 기본값).
+export const DEFAULT_EFFORT={sonnet:'high',haiku:'max',antigravity:'high',grok:'xhigh',luna:'xhigh',sol:'medium'};
 export const EFFORT_LEVELS={sol:['minimal','low','medium','high','xhigh'],luna:['minimal','low','medium','high','xhigh'],sonnet:HIGH,haiku:HIGH,antigravity:HIGH,grok:HIGH};
 export const TASK_KINDS=['code','ui','image-asset','tests','refactor','docs'];
 export const DIFFICULTIES=['low','medium','high'];
@@ -64,6 +66,7 @@ export function config(root) {
  if(['sol','astra'].includes(v.lead))throw Error('Invalid HyperFusion configuration: Codex lead config belongs to the main branch; this branch is Opus-led');
  v.lead??='opus';v.lead_model??='claude-opus-5-5';v.lead_takeover??=true;v.external??=structuredClone(DEFAULT_CONFIG.external);
  v.executors??={};v.executors.antigravity??={sandbox:true};
+ for(const [k,e] of Object.entries(DEFAULT_EFFORT)){v.executors[k]??={};if(v.executors[k].reasoning_effort===undefined)v.executors[k].reasoning_effort=e;else if(v.executors[k].reasoning_effort===null)delete v.executors[k].reasoning_effort;}
  v.routing={...structuredClone(DEFAULT_CONFIG.routing),...(v.routing??{})};
  v.review={...structuredClone(DEFAULT_CONFIG.review),...(v.review??{})};
  const ext=v.external;

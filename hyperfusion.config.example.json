@@ -14,14 +14,16 @@
   },
   "executors": {
     "antigravity": {
-      "sandbox": true
+      "sandbox": true,
+      "reasoning_effort": "high"
     },
     "sol": {
       "model": "gpt-6.1-sol",
-      "reasoning_effort": "high"
+      "reasoning_effort": "medium"
     },
     "luna": {
-      "model": "gpt-6-luna"
+      "model": "gpt-6-luna",
+      "reasoning_effort": "xhigh"
     },
     "haiku": {
       "model": "claude-haiku-5-5",
@@ -31,7 +33,14 @@
         "refactor",
         "ui",
         "docs"
-      ]
+      ],
+      "reasoning_effort": "max"
+    },
+    "sonnet": {
+      "reasoning_effort": "high"
+    },
+    "grok": {
+      "reasoning_effort": "xhigh"
     }
   },
   "routing": {

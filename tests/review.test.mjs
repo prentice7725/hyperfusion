@@ -140,6 +140,15 @@ test('a worker CLI without an effort flag is refused instead of silently ignorin
  assert.doesNotThrow(()=>adapter('sonnet').probe({}),'without the setting the flag is not required');
 });
 
+test('default reasoning effort per worker, overridable and switchable off with null',t=>{
+ const f=fixture(t,{initialize:false});
+ const effort=c=>Object.fromEntries(['sonnet','haiku','antigravity','grok','luna','sol'].map(k=>[k,c.executors[k]?.reasoning_effort]));
+ assert.deepEqual(effort(config(f.root)),{sonnet:'high',haiku:'max',antigravity:'high',grok:'xhigh',luna:'xhigh',sol:'medium'});
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sonnet:{reasoning_effort:'low'},grok:{reasoning_effort:null}}}));
+ const c=config(f.root);assert.equal(c.executors.sonnet.reasoning_effort,'low');assert.equal(c.executors.grok.reasoning_effort,undefined,'null means: pass no flag');
+ assert.equal(c.executors.haiku.reasoning_effort,'max','untouched workers keep the default');
+});
+
 test('Codex model and reasoning effort reach the CLI; Codex can sit on a committee',async t=>{
  const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sol:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
  run(f.root,'init',{...f.brief,executor:'grok'});
