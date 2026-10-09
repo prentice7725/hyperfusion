@@ -684,7 +684,8 @@ function acceptanceBaseline(c,brief) {
   }
   if(dirty.length||after.digest!==before.digest)throw Error(`ACCEPTANCE_DIRTY: running acceptance_commands on the untouched tree changed it (${dirty.join(', ')||'git status or index'}); make the commands side-effect free, restore the tree, then retry`);
   if(results.some(r=>r.status==='not_run'||r.code==='PROCESS_TABLE_UNAVAILABLE'||r.code==='PROCESS_TABLE_TIMEOUT')){
-    throw Error('ACCEPTANCE_BASELINE_UNVERIFIED: acceptance commands could not be supervised or started; restore process inventory access and retry');
+    throw Error('ACCEPTANCE_BASELINE_UNVERIFIED: acceptance commands could not be supervised or started ('
+      +results.map(r=>r.inventory_error??r.code??r.error??r.status).join(', ')+'); restore process inventory access and retry');
   }
   const green=results.every(r=>r.status==='pass');
   if(green&&!brief.acceptance_baseline_green){

@@ -7,6 +7,9 @@ const command=(file,args)=>new Promise((resolve,reject)=>{
  const child=execFile(file,args,{encoding:'utf8',windowsHide:true,timeout:isWin?30000:10000,maxBuffer:8*1024*1024},(e,out)=>{
   if(e){if(e.killed)e.code='PROCESS_TABLE_TIMEOUT';reject(e);}else resolve({out,pid:child.pid});
  });
+ // The inventory query has no input. Windows PowerShell can wait on an open
+ // redirected stdin even with -NonInteractive when launched from a pipe-fed helper.
+ child.stdin.end();
 });
 
 export async function processTable() {

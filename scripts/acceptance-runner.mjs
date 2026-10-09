@@ -11,7 +11,8 @@ const empty=(command,code)=>({command,status:'not_run',code,exit_code:null,signa
 async function execute(root,command,timeout_ms,deadline_ms,readTable) {
  const started=Date.now();let baseline;
  try{baseline=await readTable();}
- catch{return {...empty(command,'PROCESS_TABLE_UNAVAILABLE'),error:'Process inventory unavailable; command not started'};}
+ catch(e){return {...empty(command,'PROCESS_TABLE_UNAVAILABLE'),error:'Process inventory unavailable; command not started',
+  inventory_error:e.code??'PROCESS_TABLE_UNAVAILABLE'};}
  const remaining=deadline_ms===null?Infinity:deadline_ms-Date.now();
  if(remaining<=0)return empty(command,'BUDGET_EXCEEDED');
  const timeout=Math.min(timeout_ms,remaining,2147483647);
