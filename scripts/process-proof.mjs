@@ -20,11 +20,16 @@ async function table() {
  });
 }
 
+// Windows keeps a dead parent's PID in ParentProcessId and reuses PIDs quickly, so an unrelated older
+// process can look like our child. A real child cannot be created before its parent.
+const born=p=>{const t=Date.parse(p?.created);return Number.isFinite(t)?t:null;};
+const olderThanParent=(child,parent)=>{const c=born(child),p=born(parent);return c!==null&&p!==null&&c<p;};
 export function descendants(rows,pid,tracked=new Map()) {
  const ids=new Set([pid]);
  for(const p of rows)if(tracked.get(p.pid)===p.created)ids.add(p.pid);
+ const byPid=new Map(rows.map(p=>[p.pid,p]));
  let changed=true;
- while(changed){changed=false;for(const p of rows)if(ids.has(p.parent)&&!ids.has(p.pid)){ids.add(p.pid);changed=true;}}
+ while(changed){changed=false;for(const p of rows)if(ids.has(p.parent)&&!ids.has(p.pid)&&!olderThanParent(p,byPid.get(p.parent))){ids.add(p.pid);changed=true;}}
  return rows.filter(p=>ids.has(p.pid));
 }
 

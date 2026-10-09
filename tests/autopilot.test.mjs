@@ -59,7 +59,7 @@ test('budget exhaustion stops before launching',async t=>{
 });
 test('worker scope violations require recovery and retain the lease',async t=>{
  const f=setup(t);f.mode('tamper');const out=await autopilot(f.root);
- assert.equal(out.phase,'RECOVERY_REQUIRED');assert.ok(f.state().writer);
+ assert.equal(out.phase,'RECOVERY_REQUIRED',JSON.stringify(out));assert.ok(f.state().writer);
 });
 test('rejected acceptance retries with controller feedback up to attempt cap',async t=>{
  const f=setup(t,{acceptance_commands:['node -e "process.exit(1)"']});
@@ -127,4 +127,8 @@ test('autopilot refuses acceptance commands that were never proven to fail',asyn
  run(f.root,'init',{...f.brief,executor:'grok',acceptance_commands:['node -e "process.exit(0)"'],acceptance_baseline_green:'refactor'});
  const out=await autopilot(f.root);
  assert.equal(out.reason,'AUTOPILOT_ACCEPTANCE_NOT_RED');assert.equal(f.state().iteration,0);
+});
+test('an older process whose parent PID was reused is not counted as a descendant',()=>{
+ const rows=[{pid:100,parent:1,created:'2026-10-09T04:00:10Z'},{pid:200,parent:100,created:'2026-10-09T03:00:00Z'},{pid:300,parent:100,created:'2026-10-09T04:00:11Z'}];
+ assert.deepEqual(descendants(rows,100).map(p=>p.pid),[100,300]);
 });
