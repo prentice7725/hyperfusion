@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `reasoning_effort`를 실제로 넘기지 않는 일꾼(Sonnet·Haiku·Grok·Antigravity)에 적으면 조용히 무시하지 않고 `EFFORT_UNSUPPORTED` 설정 오류로 막는다. 지금 적용되는 건 Codex(Sol·Luna)뿐이다.
+
 ## 0.14.0
 
 - Haiku 일꾼 추가(`haiku`, `claude-haiku-5-5`). Sonnet과 같은 Claude Code CLI를 모델만 바꿔 부르며 세션·예산은 따로다. 쉬운 코드와 문서 배치표의 두 번째 자리에서 시작하고, 자리는 실적으로 정해진다.

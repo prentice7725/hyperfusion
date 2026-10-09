@@ -114,6 +114,15 @@ test('Codex reviews and advises but never implements; config is validated',t=>{
  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sol:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
  assert.equal(config(f.root).executors.sol.model,'gpt-6.1-sol');
 });
+test('reasoning_effort is refused for workers whose CLI would silently ignore it',t=>{
+ const f=fixture(t,{initialize:false});
+ for(const name of ['sonnet','haiku','grok','antigravity']){
+  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{[name]:{reasoning_effort:'high'}}}));
+  assert.throws(()=>config(f.root),new RegExp('EFFORT_UNSUPPORTED.*'+name),name);
+ }
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{luna:{reasoning_effort:'low'},sol:{reasoning_effort:'high'}}}));
+ assert.doesNotThrow(()=>config(f.root));
+});
 test('Codex model and reasoning effort reach the CLI; Codex can sit on a committee',async t=>{
  const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sol:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
  run(f.root,'init',{...f.brief,executor:'grok'});

@@ -66,3 +66,5 @@
 `executors.<이름>.caps`: 그 일꾼이 맡을 수 있는 작업 능력(`code`, `tests`, `refactor`, `ui`, `docs`, `image-gen`). 생략하면 기본값을 쓴다. `executors.<이름>.model`: 같은 CLI로 부를 모델. 새 모델은 이 두 줄로 붙인다([routing.md](routing.md#능력caps으로-거르기)). `routing.newcomer_every`(기본 4, 0이면 끔)는 실적 없는 일꾼에게 가끔 첫 기회를 주는 주기다.
 
 Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model claude-haiku-5-5`로 부른다. 세션과 시도 예산은 Sonnet과 따로다.
+
+`executors.<이름>.reasoning_effort`(`minimal`, `low`, `medium`, `high`, `xhigh`)는 지금 Codex 일꾼(`sol`, `luna`)에만 적용된다(`codex exec -c model_reasoning_effort=…`). Claude Code(Sonnet·Haiku), Grok, Antigravity에 적으면 CLI가 무시하므로 `EFFORT_UNSUPPORTED` 설정 오류로 막는다.
