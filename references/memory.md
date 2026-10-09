@@ -3,7 +3,7 @@
 [AnchorMind](https://github.com/jinho-von-choi/memento-mcp)의 설계를 벤치마킹해 HyperFusion 안에 직접 구현한 **에이전트 공유 장기 작업기억**이다. 외부 서버나 DB는 쓰지 않는다. 정본도 아니다.
 
 ```
-Google Drive SOT ── 최종 권위 (설계 정본)
+정본(SOT, Single Source of Truth) ── 최종 권위. 기획서·설계 문서가 있는 곳(예: Google Drive 폴더)과 Git HEAD
 Git ─────────────── 실제 구현
 Notion ──────────── 관제 / 상태
 ──────────────────────────────
@@ -12,7 +12,7 @@ HyperFusion 기억 ── "지난번에 왜 이렇게 했지?" "그 에러 해�
 Grok / Antigravity / Sonnet
 ```
 
-행동 규칙(SOURCE FIRST, 실패한 게이트를 넘지 않는다, Drive SOT 우선 등)은 계속 CLAUDE.md, AGENTS.md, 스킬, 훅에 둔다. 기억에는 사실과 경험만 넣는다.
+행동 규칙(SOURCE FIRST, 실패한 게이트를 넘지 않는다, 정본 문서 우선 등)은 계속 CLAUDE.md, AGENTS.md, 스킬, 훅에 둔다. 기억에는 사실과 경험만 넣는다.
 
 ## 들여온 설계
 

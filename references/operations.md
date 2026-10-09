@@ -38,6 +38,8 @@ Git 저장소 밖의 파일(스크래치 패드의 입력 JSON 등)은 막지 �
 
 brief에 `acceptance_commands`를 넣으면 컨트롤러가 명령을 직접 실행한다.
 
+**red-first.** 명령이 처음 정해질 때(init 또는 첫 begin) 일꾼이 손대기 전의 트리에서 한 번 돌려 **실패하는지 확인한다.** 처음부터 통과하는 수용 테스트는 맞는 결과와 엉터리 결과를 가르지 못한다(테스트 필터가 아무것도 잡지 않거나 이미 통과하는 테스트를 가리킨 경우). 그래서 모두 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 작업을 시작하지 않는다. 리팩터처럼 처음부터 통과해야 정상인 작업은 `acceptance_baseline_green`에 이유를 적는다. 결과는 `acceptance-baseline-*.json`과 상태의 `acceptance_baseline`(`red`, `green-acknowledged`, `unchecked`)에 남는다. 기준 실행이 트리를 바꾸면 `ACCEPTANCE_DIRTY`로 거절한다. 라운드가 시작된 뒤 명령을 바꾸면 손대지 않은 트리가 없으므로 `unchecked`로만 기록한다.
+
 | 시점 | 동작 |
 |---|---|
 | finish 직후(결과가 complete일 때) | 실행 후 `acceptance-N-finish.json`에 종료 코드, 소요 시간, 출력 SHA-256과 끝부분 4KB를 남긴다. 실패하면 리뷰 없이 실패 출력을 붙여 같은 일꾼에게 REDO로 돌린다(같은 실패 반복 시 일반 반려처럼 교체). 리드 takeover 라운드는 기록만 하고 리드가 판정한다 |
@@ -100,6 +102,8 @@ npm run test:live
 `redaction-<라운드 또는 상담>.json`에는 종류별 개수만 기록한다. 원본 dispatch·brief·결과·envelope는 로컬 감사 기록으로 보존되므로 제어 디렉터리의 접근 권한도 관리해야 한다. 패턴 필터는 모든 비밀을 판별하는 DLP가 아니다. CLI가 Read/Grep 등의 도구로 저장소 파일을 직접 읽거나 세션에 이미 남아 있는 내용에는 이 필터가 적용되지 않는다. 회사 코드 전체의 외부 전송을 막아야 한다면 파일 접근·격리·벤더 정책을 별도로 적용해야 한다.
 
 ## 오토파일럿
+
+오토파일럿은 `acceptance_baseline`이 `red`인 작업만 진행한다. `green-acknowledged`나 `unchecked`면 `AUTOPILOT_ACCEPTANCE_NOT_RED`로 멈춘다(실질적인 관문이 수용 테스트이기 때문이다).
 
 리드가 범위·수용 기준·`acceptance_commands`를 정해 init한 작업에서 실행한다. `review.auto_apply:true`가 필수이며, 리뷰 설정이 lead여도 이 명령을 호출하면 다른 모델에게 리뷰를 위임한다. 독립 리뷰어가 설치되지 않았거나 판정을 적용할 수 없으면 리드에게 제어를 반환한다.
 

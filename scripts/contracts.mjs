@@ -38,7 +38,8 @@ export function brief(v) {
   &&v.acceptance_commands.every(x=>str(x)&&x.length<=500&&!CONTROL.test(x))),'Invalid acceptance_commands (1-10 single-line commands)');
  requireThat(v.acceptance_timeout_ms===undefined||(Number.isSafeInteger(v.acceptance_timeout_ms)&&v.acceptance_timeout_ms>0&&v.acceptance_timeout_ms<=3600000),'Invalid acceptance_timeout_ms');
  requireThat(v.acceptance_artifacts===undefined||(strs(v.acceptance_artifacts)&&v.acceptance_artifacts.length<=20&&v.acceptance_artifacts.every(g=>reportedPath(g.replace(/\*\*?|\?/g,'x'))&&!/^(?:\*\*\/)*\*{1,2}$/.test(g))),'Invalid acceptance_artifacts (repository-relative globs, not "**")');
- requireThat(v.acceptance_commands!==undefined||(v.acceptance_timeout_ms===undefined&&v.acceptance_artifacts===undefined),'acceptance options need acceptance_commands');
+ requireThat(v.acceptance_baseline_green===undefined||(str(v.acceptance_baseline_green)&&v.acceptance_baseline_green.length<=300),'acceptance_baseline_green must be a short reason (why the commands already pass before any change)');
+ requireThat(v.acceptance_commands!==undefined||(v.acceptance_timeout_ms===undefined&&v.acceptance_artifacts===undefined&&v.acceptance_baseline_green===undefined),'acceptance options need acceptance_commands');
  checkPrior(v.prior_experience);
  // 일꾼에게 열어 줄 Bash 규칙은 작업을 시작하기 전에 거른다(디스패치 때 한 번 더 확인한다).
  checkBashRules(v.executor_bash_rules);
@@ -86,9 +87,17 @@ export function consultResult(v,task_id,consult_id,member,mode) {
  requireThat(Array.isArray(v.findings)&&v.findings.every(f=>f&&reportedPath(f.file)&&Number.isInteger(f.line)&&f.line>=0&&['blocker','major','minor','nit'].includes(f.severity)&&str(f.issue)&&typeof f.suggestion==='string'),'Invalid consult findings');
  return v;
 }
+// 반려 사유를 비교할 열쇠. AC1 같은 수용 기준 ID가 있으면 그 ID만 본다(표현이 바뀌어도 같은 사유).
+// ID가 없으면 대소문자·문장부호·공백을 걸러낸 문장으로 비교한다.
+export function criterionKeys(text) {
+ const ids=String(text).match(/\bAC\d+\b/gi);
+ if(ids)return [...new Set(ids.map(x=>x.toUpperCase()))];
+ return [String(text).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim()];
+}
+const keysOf=list=>new Set(list.flatMap(criterionKeys));
 export function escalation(reviews,resultFailures=0,flags={}) {
  const last=reviews.slice(-2);
- const repeated=last.length===2&&last[0].blocking_criteria.some(c=>last[1].blocking_criteria.includes(c));
+ const repeated=last.length===2&&[...keysOf(last[0].blocking_criteria)].some(k=>keysOf(last[1].blocking_criteria).has(k));
  const score=(flags.three_subsystems?2:0)+(flags.unexplained_failure?2:0)+(flags.complex_state?2:0)+(flags.eight_files?1:0)+(flags.large_diff?1:0)+(flags.toolchain?1:0);
  const hard=repeated||resultFailures>=2||flags.repeated_regression===true||flags.complex_state===true||flags.strategy_blocked===true;
  return {hard,score,recommendation:hard?'review_strategy_or_alternative':score>=3?'inspect_capability':'resume_current'};

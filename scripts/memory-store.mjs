@@ -7,7 +7,7 @@ import {acquireLock} from './lock.mjs';
 
 // 에이전트 공유 작업기억 저장소. AnchorMind의 설계(fragment, workspace 격리, 중복 병합, 모순 탐지,
 // importance 감쇠, TTL, 연상 확산, 출처·신뢰 표시)를 의존성 없이 로컬 파일로 구현한다.
-// 정본(Drive SOT, Git)이 아니다. 여기 있는 건 "지난번에 겪은 일"이다.
+// 정본(SOT: 기획·설계 문서, Git)이 아니다. 여기 있는 건 "지난번에 겪은 일"이다.
 
 // 종류별 반감기(일). 오래 안 쓰인 기억은 점수가 내려가 검색 순위에서 밀린다. anchor는 감쇠하지 않는다.
 export const HALF_LIFE={error:120,procedure:180,decision:365,preference:365,episode:60,fact:90,relation:180};

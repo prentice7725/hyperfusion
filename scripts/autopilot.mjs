@@ -10,6 +10,8 @@ import {isMain} from './platform.mjs';
 import {readInput,printError,errorRecord} from './cli.mjs';
 import {SCHEMA_VERSION} from './versions.mjs';
 
+// 정지 확인이 실패하면 이유와 남은 프로세스를 메시지에 남긴다(리드와 CI 로그에서 바로 보이게).
+const proofText=q=>q?`${q.reason}${q.remaining?.length?`; remaining ${JSON.stringify(q.remaining.slice(0,5))}`:''}${q.checks?`; checks ${q.checks}`:''}`:'missing evidence';
 const STOPS=new Set(['VERIFY','DECISION_REQUIRED','BLOCKED','TAKEOVER_REQUIRED','RECOVERY_REQUIRED','CLOSE','ARCHIVED']);
 const failure=(code,message)=>Object.assign(Error(message),{code});
 
@@ -58,6 +60,10 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
     const brief=read(path.join(dir,s.iteration?`brief-${s.iteration}.json`:'initial-brief.json'));
     if(!brief.acceptance_commands?.length)throw failure('AUTOPILOT_ACCEPTANCE_REQUIRED','Add lead-approved acceptance_commands before running autopilot');
     if(s.configuration.review.auto_apply!==true)throw failure('AUTOPILOT_REVIEW_REQUIRED','Autopilot requires review.auto_apply:true');
+    // 오토파일럿의 실질적 관문은 수용 테스트다. 처음부터 통과하는 테스트로는 엉터리 결과도 통과하므로, 기준 트리에서 실패가 확인된(red) 명령만 받는다.
+    const baseline=s.acceptance_baseline;
+    if(baseline?baseline.status!=='red':(s.phase!=='PLAN'||brief.acceptance_baseline_green))
+     throw failure('AUTOPILOT_ACCEPTANCE_NOT_RED',`Autopilot needs acceptance_commands proven to fail on the untouched tree (baseline: ${baseline?.status??'not checked'}); the lead must review this task`);
     if(['PLAN','REDO','ALTERNATIVE_REQUIRED'].includes(s.phase)){
      const input={...brief};delete input.executor;
      if(s.phase!=='PLAN')input.lead_feedback='@review';
@@ -67,7 +73,7 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
      if(s.owner==='lead')return stop('TAKEOVER_REQUIRED');
      if(fs.existsSync(path.join(dir,`launch-${s.iteration}.json`)))throw failure('AUTOPILOT_EXISTING_LAUNCH','A launch marker already exists; inspect quiescence and settle or recover manually');
      const result=await execute(root,{proveQuiescence:true,signal});event('execute',state());
-     if(result.quiescence?.quiescent!==true)throw failure('AUTOPILOT_QUIESCENCE_REQUIRED',`Supervisor could not confirm process-tree quiescence (${result.quiescence?.reason??'missing evidence'}); retain the writer lease`);
+     if(result.quiescence?.quiescent!==true)throw failure('AUTOPILOT_QUIESCENCE_REQUIRED',`Supervisor could not confirm process-tree quiescence (${proofText(result.quiescence)}); retain the writer lease`);
      settle('finish',{token:s.writer.token,quiescent:true});continue;
     }
     if(s.phase==='REVIEW'){
@@ -80,7 +86,7 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
      check();
      const result=await consult(root,descriptor.consult_id,{proveQuiescence:true,signal});event('consult',state());
      // Failed reviewers may be replaced within controller caps, but only after verified shutdown.
-     if(result.members.some(m=>m.quiescence?.quiescent!==true))throw failure('AUTOPILOT_QUIESCENCE_REQUIRED','Reviewer process-tree quiescence was not confirmed; retain consultation evidence');
+     if(result.members.some(m=>m.quiescence?.quiescent!==true))throw failure('AUTOPILOT_QUIESCENCE_REQUIRED',`Reviewer process-tree quiescence was not confirmed (${result.members.filter(m=>m.quiescence?.quiescent!==true).map(m=>`${m.executor}: ${proofText(m.quiescence)}`).join('; ')}); retain consultation evidence`);
      settle('consult-finish',{quiescent:true});continue;
     }
     throw failure('INVALID_PHASE','Autopilot cannot advance '+s.phase);
