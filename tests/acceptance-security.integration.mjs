@@ -1,4 +1,6 @@
 import test from 'node:test';
+// Run after the parallel suite (npm test). These tests deliberately create real
+// orphans: another acceptance supervisor must fail closed if it observes one.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
