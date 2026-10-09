@@ -38,7 +38,7 @@ export function descendants(rows,pid,tracked=new Map()) {
 // A process that has just exited can stay in the Windows process table for a moment
 // (open handles, its conhost.exe child). Re-check a few times before reporting survivors;
 // survivors after the last check still fail closed.
-const SETTLE=isWin?{tries:8,delayMs:500}:{tries:3,delayMs:200};
+const SETTLE=isWin?{tries:20,delayMs:500}:{tries:3,delayMs:200};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 export function watchProcessTree({readTable=table,pollMs=1000,settle=SETTLE}={}) {
  const tracked=new Map();let pid=null,timer=null,pending=Promise.resolve(),error=null,querying=false,stopped=false;

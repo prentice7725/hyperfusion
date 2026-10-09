@@ -41,7 +41,7 @@ test('exclusive runner lock prevents concurrent autopilots',async t=>{
 });
 test('step cap preserves a launched result and writer lease for manual settlement',async t=>{
  const f=setup(t);const out=await autopilot(f.root,{max_steps:2});
- assert.equal(out.reason,'AUTOPILOT_STEP_LIMIT');assert.equal(out.phase,'EXECUTING');assert.ok(f.state().writer);
+ assert.equal(out.reason,'AUTOPILOT_STEP_LIMIT');assert.equal(out.phase,'EXECUTING',JSON.stringify(out));assert.ok(f.state().writer);
 });
 test('aborted autopilot does not begin a round',async t=>{
  const f=setup(t),controller=new AbortController();controller.abort();
@@ -50,12 +50,12 @@ test('aborted autopilot does not begin a round',async t=>{
 test('interrupting a running worker stops supervision and retains the lease',async t=>{
  const f=setup(t),controller=new AbortController();f.mode('hang');
  const timer=setTimeout(()=>controller.abort(),1500);t.after(()=>clearTimeout(timer));
- const out=await autopilot(f.root,{signal:controller.signal});assert.equal(out.reason,'AUTOPILOT_INTERRUPTED');assert.equal(out.phase,'EXECUTING');assert.ok(f.state().writer);
+ const out=await autopilot(f.root,{signal:controller.signal});assert.equal(out.reason,'AUTOPILOT_INTERRUPTED');assert.equal(out.phase,'EXECUTING',JSON.stringify(out));assert.ok(f.state().writer);
  assert.ok(!fs.existsSync(path.join(f.control,'tasks',f.brief.task_id,'result-1.json')));
 });
 test('budget exhaustion stops before launching',async t=>{
  const f=setup(t,{limits:{max_wall_ms:1}});await new Promise(r=>setTimeout(r,5));
- const out=await autopilot(f.root);assert.equal(out.reason,'BUDGET_EXCEEDED');assert.equal(out.phase,'BLOCKED');assert.equal(f.state().iteration,0);
+ const out=await autopilot(f.root);assert.equal(out.reason,'BUDGET_EXCEEDED');assert.equal(out.phase,'BLOCKED',JSON.stringify(out));assert.equal(f.state().iteration,0);
 });
 test('worker scope violations require recovery and retain the lease',async t=>{
  const f=setup(t);f.mode('tamper');const out=await autopilot(f.root);
@@ -64,7 +64,7 @@ test('worker scope violations require recovery and retain the lease',async t=>{
 test('rejected acceptance retries with controller feedback up to attempt cap',async t=>{
  const f=setup(t,{acceptance_commands:['node -e "process.exit(1)"']});
  const s=f.state();s.configuration.external.available=['grok'];s.routing.candidates=['grok'];s.active_executor='grok';atomic(path.join(f.control,'state.json'),s);
- const out=await autopilot(f.root);assert.equal(out.phase,'TAKEOVER_REQUIRED');assert.equal(f.state().attempts.grok,3);
+ const out=await autopilot(f.root);assert.equal(out.phase,'TAKEOVER_REQUIRED',JSON.stringify(out));assert.equal(f.state().attempts.grok,3);
  const brief=read(path.join(f.control,'tasks',f.brief.task_id,'brief-2.json'));assert.ok(Array.isArray(brief.lead_feedback));assert.ok(JSON.stringify(brief.lead_feedback).includes('process.exit(1)'));
 });
 test('process evidence tracks descendant identities without treating a reused PID as a tracked child',()=>{
@@ -89,22 +89,22 @@ test('slow process-table observations do not accumulate a polling backlog',async
 });
 test('independent rejection is forwarded to the next round without changing acceptance commands',async t=>{
  const f=setup(t);f.mode('review-redo');const out=await autopilot(f.root,{max_steps:7});
- assert.equal(out.phase,'EXECUTING');assert.equal(f.state().iteration,2);
+ assert.equal(out.phase,'EXECUTING',JSON.stringify(out));assert.equal(f.state().iteration,2);
  const brief=read(path.join(f.control,'tasks',f.brief.task_id,'brief-2.json'));assert.deepEqual(brief.acceptance_commands,f.brief.acceptance_commands);
  assert.ok(brief.lead_feedback.some(x=>x.file==='a.txt'&&x.comment.includes('AC1')));
 });
 test('independent reviewer decision stops for the lead',async t=>{
  const f=setup(t),cli=process.env.HF_CODEX_BIN;
  fs.writeFileSync(cli,fs.readFileSync(cli,'utf8').replace("console.log(JSON.stringify(finish(request,null)));","const r=finish(request,null);r.recommended_verdict='decision';r.blocking_criteria=['choose design'];console.log(JSON.stringify(r));"));
- const out=await autopilot(f.root);assert.equal(out.phase,'DECISION_REQUIRED');assert.equal(f.state().iteration,1);
+ const out=await autopilot(f.root);assert.equal(out.phase,'DECISION_REQUIRED',JSON.stringify(out));assert.equal(f.state().iteration,1);
 });
 test('failed reviewer with proven shutdown is replaced within the existing cap',async t=>{
  const f=setup(t);f.mode('codex-crash');const out=await autopilot(f.root);
- assert.equal(out.phase,'VERIFY');assert.equal(f.state().review_runs[1],2);assert.deepEqual(f.state().review_failed[1],['sol']);assert.equal(f.state().reviews.at(-1).reviewed_by,'sonnet');
+ assert.equal(out.phase,'VERIFY',JSON.stringify(out));assert.equal(f.state().review_runs[1],2);assert.deepEqual(f.state().review_failed[1],['sol']);assert.equal(f.state().reviews.at(-1).reviewed_by,'sonnet');
 });
 test('repeated reviewer failure stops at the controller cap without a pending launch',async t=>{
  const f=setup(t),s=f.state();s.configuration.review.reviewers=['sol','luna'];atomic(path.join(f.control,'state.json'),s);f.mode('codex-crash');
- const out=await autopilot(f.root);assert.equal(out.phase,'REVIEW');assert.equal(f.state().review_runs[1],2);assert.equal(f.state().open_consult,null);assert.match(out.error.message,/cap/);
+ const out=await autopilot(f.root);assert.equal(out.phase,'REVIEW',JSON.stringify(out));assert.equal(f.state().review_runs[1],2);assert.equal(f.state().open_consult,null);assert.match(out.error.message,/cap/);
 });
 test('ignored executable input changes stop before delegated review',async t=>{
  const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'.gitignore'),'.env\nnode_modules/\n');f.git('add','.gitignore');f.git('commit','-m','ignore');
