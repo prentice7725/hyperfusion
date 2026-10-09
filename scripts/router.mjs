@@ -4,7 +4,7 @@ import path from 'node:path';
 import {isMain} from './platform.mjs';
 import {read} from './artifact.mjs';
 import {adapter} from './adapters/index.mjs';
-import {config,EXECUTORS,IMAGE_EXECUTORS} from './executor-config.mjs';
+import {config,EXECUTORS,KIND_NEEDS,canDo} from './executor-config.mjs';
 import {controlPath} from './control-dir.mjs';
 
 // 작업 종류·난이도로 배치표 규칙을 고르고, 과거 실적과 설치 상태로 순서를 조정한다.
@@ -47,8 +47,9 @@ export function route(root,c,brief,{probe=true}={}) {
  const notes=[`rule: ${rule.kind??'*'}/${rule.difficulty?.join('|')??'*'} → ${rule.executors.join(' > ')}${rule.why?' ('+rule.why+')':''}`];
  // 배치표에 없지만 고용된 일꾼은 맨 뒤 예비 인력으로 둔다.
  let order=[...rule.executors.filter(e=>c.external.available.includes(e)),...c.external.available.filter(e=>!rule.executors.includes(e))];
- // 이미지 생성 기능이 없는 일꾼은 예비 인력으로도 이미지 작업에 넣지 않는다.
- if(brief.task_kind==='image-asset')order=order.filter(e=>IMAGE_EXECUTORS.includes(e));
+ // 능력으로 거른다. 필요한 능력이 없는 일꾼은 예비 인력으로도 넣지 않는다(예: 이미지 생성 못 하는 일꾼은 이미지 작업 제외).
+ const unable=order.filter(e=>!canDo(c,e,brief.task_kind));
+ if(unable.length){order=order.filter(e=>!unable.includes(e));notes.push(`lacks ${KIND_NEEDS[brief.task_kind]}: ${unable.join(', ')}`);}
  const stats=c.routing.learn?history(root,brief.task_kind,{difficulty:brief.difficulty,halfLifeDays:c.routing.half_life_days}):{};
  const demoted=order.filter(e=>{const s=stats[e];return s&&s.weighted_tasks>=c.routing.min_samples&&s.weighted_score/s.weighted_tasks<c.routing.demote_below;});
  if(demoted.length){order=[...order.filter(e=>!demoted.includes(e)),...demoted];notes.push('demoted by track record: '+demoted.map(e=>`${e} ${stats[e].passed}/${stats[e].tasks}`).join(', '));}
@@ -60,6 +61,17 @@ export function route(root,c,brief,{probe=true}={}) {
   const bench=demoted.filter(e=>candidates.includes(e));
   const explore=bench[Math.floor((stats.sample_count+1)/every-1)%bench.length];
   if(explore){candidates.splice(candidates.indexOf(explore),1);candidates.unshift(explore);notes.push('exploration first pick: '+explore);}
+ }
+ // 신입 우대(cold start): 실적이 쌓이지 않은 일꾼은 배치표 뒤에 있으면 영영 기회를 못 받는다.
+ // 실적 있는 일꾼이 있을 때, newcomer_every번째 작업마다 표본이 가장 적은 신입을 먼저 시켜 본다. 실패하면 평소처럼 교체된다.
+ const fresh=c.routing.newcomer_every;
+ if(c.routing.learn&&fresh>0&&!notes.some(n=>n.startsWith('exploration'))&&(stats.sample_count+1)%fresh===0){
+  const seen=e=>stats[e]?.tasks??0;
+  const newcomers=candidates.filter(e=>seen(e)<c.routing.min_samples);
+  if(newcomers.length&&newcomers.length<candidates.length&&!newcomers.includes(candidates[0])){
+   const pick=newcomers.reduce((a,b)=>seen(b)<seen(a)?b:a);
+   candidates.splice(candidates.indexOf(pick),1);candidates.unshift(pick);notes.push('newcomer trial first pick: '+pick);
+  }
  }
  if(Object.keys(unavailable).length)notes.push('skipped (not installed or unsupported): '+Object.keys(unavailable).join(', '));
  if(!candidates.length)throw Error('ADAPTER_UNAVAILABLE: no routed executor is installed: '+JSON.stringify(unavailable));

@@ -35,6 +35,7 @@ const finish=(request,id)=>{
  PLANT[mode]?.();
  const result={...request.result_template,summary:'Fake transport result; no live model'};
  if(mode==='edit'){fs.writeFileSync('a.txt','fixed');result.files_changed=['a.txt'];}
+ if(mode==='smoke'){fs.writeFileSync('hf-smoke.txt','ok\\n');result.files_changed=['hf-smoke.txt'];}
  if(mode==='tamper')result.files_changed=['stray.txt'];
  if(mode==='lazy'){result.status='blocked';result.unresolved=['did not bother'];}
  // 위임 리뷰 모드: 기본은 pass, review-redo면 AC1 반려와 파일·줄 지적을 낸다.

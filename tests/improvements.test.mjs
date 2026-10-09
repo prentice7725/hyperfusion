@@ -115,7 +115,8 @@ test('routing separates difficulty, decays old failures, and lets demoted worker
  const f=fixture(t,{initialize:false}),dir=controlPath(f.root,'metrics');fs.mkdirSync(dir,{recursive:true});
  const write=(id,difficulty,ended_at)=>fs.writeFileSync(path.join(dir,id+'.json'),JSON.stringify({task_kind:'code',difficulty,ended_at,initial_executor:'sonnet',review_outcomes:[{owner:'sonnet',verdict:'redo'}]}));
  for(let i=0;i<3;i++)write('old'+i,'high','2020-01-01T00:00:00Z');
- const c=config(f.root);assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'},{probe:false}).executor,'sonnet');
+ // 이 테스트는 감쇠와 재탐색만 본다(신입 우대는 따로 테스트한다).
+ const c=config(f.root);c.routing.newcomer_every=0;assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'},{probe:false}).executor,'sonnet');
  for(let i=0;i<3;i++)write('new'+i,'low',new Date().toISOString());
  assert.equal(history(f.root,'code',{difficulty:'high'}).sonnet.tasks,3);
  assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'},{probe:false}).executor,'sonnet');

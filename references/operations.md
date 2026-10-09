@@ -93,6 +93,11 @@ npm run test:live
 
 임시 저장소에서 파일 하나를 실제 모델로 고치고 finish·review·verify까지 확인한다. HF_LIVE가 1일 때만 실행하며 기본 테스트와 CI에서는 건너뛴다. 지정한 CLI의 설치·인증과 모델 호출 비용이 필요하다. HF_LIVE_EXECUTOR는 grok·antigravity·sonnet·luna 중 하나다.
 
+
+### doctor 계약 스모크
+
+`node setup-doctor.mjs REPO --smoke`는 설치된 일꾼마다, `--smoke=grok,haiku`는 지정한 일꾼만, **임시 저장소에서** 아주 작은 작업 하나(`hf-smoke.txt`를 `ok`로 바꾸기)를 실제로 시킨다. CLI 플래그, 출력 형식, 결과 계약, 실제 파일 변경, finish 검증까지 지금 설치된 CLI 버전으로 통과하는지 본다. 깨지면 `smoke` 검사가 실패하고 어느 일꾼이 어느 단계(`init`, `begin`, `execute`, `finish`, `output`)에서 깨졌는지 나온다. 실제 모델을 부르므로 비용이 들고, 대상 저장소와 그 제어 폴더는 건드리지 않는다. CLI 업데이트 뒤 아침에 한 번 돌리면 누가 고장 났는지 바로 나온다. Sol은 구현하지 않으므로 대상이 아니다.
+
 ## 외부 전송 마스킹
 
 브리지가 원본 dispatch를 재검증한 다음, 모델로 보내기 직전에 공통 마스킹을 적용한다. 구현과 상담·리뷰 모두 적용되며 stdin, Grok prompt 파일, Antigravity `-p` 인자를 처리한다. 이메일, IPv4/IPv6, 알려진 API 키·JWT·Bearer 토큰·PEM 개인키, 비밀번호·키·비밀값 할당을 `[REDACTED:종류]`로 바꾼다. brief, diff, 이전 결과, prior_experience에 포함된 JSON과 다시 인코딩된 JSON도 처리한다. 원본 객체는 바꾸지 않는다.

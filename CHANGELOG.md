@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.14.0
+
+- Haiku 일꾼 추가(`haiku`, `claude-haiku-5-5`). Sonnet과 같은 Claude Code CLI를 모델만 바꿔 부르며 세션·예산은 따로다. 쉬운 코드와 문서 배치표의 두 번째 자리에서 시작하고, 자리는 실적으로 정해진다.
+- 능력 기반 배치: 일꾼마다 능력(`caps`)을 두고 작업 종류에 필요한 능력으로 후보를 거른다. 설정 `executors.<이름>.caps`로 덮어쓰며, 새 모델은 모델과 능력 한 줄로 붙는다. 이름으로 박혀 있던 이미지 일꾼 목록을 능력으로 바꿨다.
+- 신입 우대(cold start): 실적 없는 일꾼에게 `routing.newcomer_every`(기본 4)번째 작업마다 첫 기회를 준다.
+- doctor 계약 스모크: `setup-doctor.mjs --smoke[=이름,…]`가 일꾼마다 임시 저장소에서 작은 작업을 실제로 시켜 CLI·출력·결과 계약을 확인한다.
+
+
 ## 0.13.0
 
 - red-first: 수용 명령이 처음 정해질 때 손대지 않은 트리에서 실패하는지 확인한다. 처음부터 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 거절하고, 이유가 있으면 `acceptance_baseline_green`. 오토파일럿은 red로 확인된 작업만 진행한다.

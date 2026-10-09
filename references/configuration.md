@@ -35,7 +35,7 @@
 
 ## 리뷰 주체
 
-`"review": {"by": "lead" | "delegate", "reviewers": ["sol","sonnet","antigravity","grok","luna"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. Codex 팀원 설정은 `executors.sol` / `executors.luna`의 `model`과 `reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 기본 모델은 sol `gpt-6.1-sol`, luna `gpt-6-luna`이다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
+`"review": {"by": "lead" | "delegate", "reviewers": ["sol","sonnet","antigravity","grok","luna","haiku"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. Codex 팀원 설정은 `executors.sol` / `executors.luna`의 `model`과 `reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 기본 모델은 sol `gpt-6.1-sol`, luna `gpt-6-luna`이다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
 
 ## 기억 계층
 
@@ -60,3 +60,9 @@
 ## 제어 폴더 위치
 
 상태·brief·스냅샷·lease·지표는 작업 폴더 밖 `~/.hyperfusion/state/<저장소 이름>-<경로 해시>/`에 저장된다(`HF_STATE_DIR`로 부모 폴더 변경). 일꾼의 편집 도구가 닿지 못해야 범위 검사가 의미가 있기 때문이다. 예전 버전이 만든 `<저장소>/.fusion/`은 `node fusion-state.mjs migrate REPO`로 옮긴다(해시 검증 후 원본 삭제). 옮기기 전에는 새 작업이 `LEGACY_CONTROL_DIR`로 거절된다. 위치는 `node control-dir.mjs path REPO`로 확인한다.
+
+## 일꾼 능력과 모델
+
+`executors.<이름>.caps`: 그 일꾼이 맡을 수 있는 작업 능력(`code`, `tests`, `refactor`, `ui`, `docs`, `image-gen`). 생략하면 기본값을 쓴다. `executors.<이름>.model`: 같은 CLI로 부를 모델. 새 모델은 이 두 줄로 붙인다([routing.md](routing.md#능력caps으로-거르기)). `routing.newcomer_every`(기본 4, 0이면 끔)는 실적 없는 일꾼에게 가끔 첫 기회를 주는 주기다.
+
+Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model claude-haiku-5-5`로 부른다. 세션과 시도 예산은 Sonnet과 따로다.

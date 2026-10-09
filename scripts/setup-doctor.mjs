@@ -10,6 +10,7 @@ import {repoId} from './control-dir.mjs';
 import {status as projectStatus} from './project.mjs';
 import {errorRecord} from './cli.mjs';
 import {SCHEMA_VERSION} from './versions.mjs';
+import {smoke} from './smoke.mjs';
 
 // 실행 전 점검. 일꾼 CLI는 모두 프로브해서 교체 가능한 인력을 미리 파악한다.
 const checks=[];
@@ -20,7 +21,9 @@ const probeMember=name=>{
 };
 const check=(name,fn)=>{try{checks.push({name,ok:true,detail:fn()});}catch(e){checks.push({name,ok:false,detail:e.message,error:errorRecord(e)});}};
 check('node',()=>{if(Number(process.versions.node.split('.')[0])<20)throw Error('Node 20+ required');return process.version;});
-const flags=process.argv.slice(3);
+// 옵션: --executor NAME, --smoke[=NAME,NAME] (설치된 일꾼에게 작은 작업을 실제로 시킨다. 비용이 든다)
+const argv=process.argv.slice(3),flags=[];let smokeWanted=null;
+for(const a of argv){if(a==='--smoke')smokeWanted='installed';else if(a.startsWith('--smoke='))smokeWanted=a.slice(8).split(',').filter(Boolean);else flags.push(a);}
 let selected,c;
 check('executor',()=>{c=config(process.argv[2]??process.cwd());if(flags.length&&(flags.length!==2||flags[0]!=='--executor'))throw Error('Use --executor NAME');selected=selectExecutor(c,flags[1]);return selected==='auto'?'auto (router picks per task)':selected;});
 const bench=[];
@@ -74,5 +77,16 @@ if(root&&!isLegacy(root)){
  try{ensureControl(root);probe_file=controlPath(root,'doctor',`probes-${Date.now()}-${process.pid}.json`);atomic(probe_file,{at:new Date().toISOString(),probes:probeEvidence});}
  catch(e){warnings.push('probe evidence not saved: '+e.message);}
 }
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,bench,reviewers,memory,project,probe_file,review:c?.review??null,roster:{lead:`${c?.lead_model??'Claude Opus'} (host)`,workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
+// 어댑터 계약 스모크. 아침에 한 번 돌리면 밤사이 CLI 업데이트로 누가 고장 났는지 바로 나온다.
+let smoke_results=null;
+if(smokeWanted&&c){
+ const installed=[...bench.filter(b=>b.ok).map(b=>b.name),...checks.filter(x=>x.ok&&x.name.endsWith('-cli')).map(x=>x.name.slice(0,-4))];
+ const names=smokeWanted==='installed'?installed:smokeWanted;
+ check('smoke-targets',()=>{const bad=names.filter(n=>!EXECUTORS.includes(n));if(bad.length)throw Error('Unknown or non-implementing workers: '+bad.join(', '));if(!names.length)throw Error('No installed worker to smoke');return names.join(', ');});
+ if(names.every(n=>EXECUTORS.includes(n))&&names.length){
+  smoke_results=await smoke(names);
+  check('smoke',()=>{const broken=smoke_results.filter(r=>!r.ok);if(broken.length)throw Error('Contract broken: '+broken.map(r=>`${r.executor} at ${r.stage}: ${r.error}`).join(' | '));return smoke_results.map(r=>`${r.executor} ok ${Math.round(r.ms/1000)}s`).join(', ');});
+ }
+}
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,smoke:smoke_results,bench,reviewers,memory,project,probe_file,review:c?.review??null,roster:{lead:`${c?.lead_model??'Claude Opus'} (host)`,workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;
