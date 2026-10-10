@@ -1,6 +1,6 @@
 # HyperFusion
 
-v0.3 External-First와 범용 감시는 **명시적 옵트인**입니다. [v0.3 설정 예제](hyperfusion.v03.config.example.json)와 [운영·역할·사용량 안내](references/universal-supervisor.md)를 참고하세요. 신규 프로필은 자동 구현을 Grok/AGY/Luna에 맡기고, 작성자별 필수 검수 뒤 호스트 최종 판정을 기다립니다. 기존 classic 설정·작업은 자동 변경하지 않습니다.
+> **버전 표기.** 패키지 릴리스는 `0.15.0`(`package.json`)이고, **v0.3**은 그 위에 얹은 새 운영 프로필(External-First + 범용 감시)의 이름이다. 아직 릴리스되지 않은 변경은 [CHANGELOG](CHANGELOG.md)의 Unreleased에 있다. 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자이며 정본 상수는 `scripts/versions.mjs`다.
 
 한국어 | [日本語](README.ja.md)
 
@@ -41,6 +41,17 @@ v0.3 External-First와 범용 감시는 **명시적 옵트인**입니다. [v0.3 
 - **독립 worktree와 작업 상한.** 작업마다 상태와 writer lease를 격리해 병렬 실행하고, 보고된 비용과 경과 시간에 상한을 둔다. 결과는 각각 검수한 뒤 통합한다. → [병렬 실행·상한](references/operations.md)
 - **알림.** `HF_NOTIFY_URL`(예: ntfy)로 일꾼 완료나 리드 판단이 필요할 때 휴대폰 푸시를 받는다. 본문은 상태만 담는다.
 - **Linux·macOS·Windows.**
+
+## v0.3: External-First와 범용 감시 (옵트인)
+
+`hyperfusion.v03.config.example.json`을 대상 저장소의 `hyperfusion.config.json`으로 복사해 명시적으로 켠다. 기존 classic 설정·진행 중 작업은 자동으로 바뀌지 않는다. 자세한 내용은 [universal-supervisor](references/universal-supervisor.md), 구현 현황은 [v03-implementation-status](references/v03-implementation-status.md).
+
+- **External-First 배치.** 자동 구현은 Grok·Antigravity·Luna가 맡는다. Sonnet(중요/재배정 라운드)과 Sol(APEX 라운드)은 라운드별 grant가 있을 때만 구현하며, 자동 폴백·신입 우대는 이 둘을 고르지 않는다.
+- **작성자별 필수 리뷰.** Grok/AGY 일반 → Sol, Luna → Sonnet, 중요 작업 → Sol + Sonnet 이중 PASS. 필수 결과는 `LEAD_DECISION_REQUIRED`에서 멈추고, `auto_apply`·`review {adopt}`·autopilot도 호스트 리드의 최종 판정 게이트를 건너뛰지 못한다.
+- **범용 로컬 감시.** 모든 implement/review/consult 호출을 같은 supervisor가 관측한다(`status --monitor`, `monitor --once|--watch`). 무신호는 QUIET 경고일 뿐이며 진행률·성공을 만들어 내지 않는다. 호출 모델은 따로 부르지 않는다.
+- **사용량 계측.** 구현·검수·상담·실패 호출과 APEX Sol을 포함해 기록하고, 미측정은 `null`로 둔다. 쿼터는 `scripts/quota-policy.mjs`로 운영자 관측을 기록한다.
+- **기본 추론 강도.** Sonnet high, Haiku max, Antigravity high, Grok xhigh, Luna xhigh, Sol medium. 설정 `reasoning_effort`로 덮어쓰고 `null`이면 플래그를 넘기지 않는다.
+- 호스트가 실제 Opus인지는 인증할 수 없으므로 `authority.model_verified:false`로 기록한다.
 
 ## 보안
 
@@ -90,7 +101,7 @@ Claude Code에서 Opus 5.5를 고르고:
 npm test
 ```
 
-자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 20·24에서 실행하도록 구성돼 있다. 재감사 후속 수정과 남은 한계는 [수정 결과 보고서](references/reaudit-v0.10.0.md)에 정리했다.
+자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 20·24에서 실행하도록 구성돼 있다. 재감사 후속 수정과 남은 한계는 [수정 결과 보고서](references/reaudit-v0.10.0.md)에 정리했다. Windows에서는 테스트 파일을 순차 실행하고(다른 OS는 병렬도 2), 실제 고아 프로세스를 만드는 회귀 테스트는 병렬 테스트 뒤에 따로 돌려 프로세스 목록 간섭을 피한다.
 
 **테스트의 `grok`/`agy`/`claude`/`codex`는 대역 CLI다.** 실제 모델 호출, 인증, 이미지 생성은 이 저장소의 테스트로 검증되지 않았다. 설치된 CLI에 필요한 플래그가 없으면 실행 전에 `ADAPTER_UNAVAILABLE`로 거절한다. CLI 플래그는 [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), [Claude Code](https://code.claude.com/docs/en/headless) 문서를 기준으로 했다.
 

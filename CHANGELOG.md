@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.15.0
 
 - v0.3 명시적 External-First 프로필, 작성자별 필수/이중 리뷰, 라운드별 Sonnet·APEX Sol grant 및 호스트 최종 판정 게이트.
 - 모든 implement/review/consult의 공통 로컬 감시: QUIET 주기 갱신, UTF-8/NDJSON 재동기화, identity별 재시작 복구, bounded 알림·중복 기록, 종료 관측 보존 정책. 진행률·성공을 생성하지 않는다.
