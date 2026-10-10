@@ -110,13 +110,39 @@ export function hasOption(help,option) {
  return new RegExp(`(^|[^\\w-])${escaped}(?![\\w-])`,'m').test(help);
 }
 
-// 스키마 강제가 없는 CLI는 최종 텍스트에서 결과 JSON을 꺼낸다. 마지막 ```json 블록 또는 본문 전체만 인정한다.
+// 스키마 강제가 없는 CLI는 최종 텍스트에서 결과 JSON을 꺼낸다. 본문 전체, 마지막 ```json 블록,
+// 또는 텍스트 끝에서 끝나는 JSON 객체만 인정한다.
 export function extractResult(text) {
  if(typeof text!=='string'||!text.trim())throw Error('Executor returned no final text');
  try{return JSON.parse(text.trim());}catch{}
  const blocks=[...text.matchAll(/```json\s*\n([\s\S]*?)```/g)];
- if(!blocks.length)throw Error('Executor final text has no result JSON');
- try{return JSON.parse(blocks.at(-1)[1]);}catch{throw Error('Executor result JSON is malformed');}
+ if(blocks.length){try{return JSON.parse(blocks.at(-1)[1]);}catch{throw Error('Executor result JSON is malformed');}}
+ // Grok은 중간 설명과 최종 JSON을 구분 없이 이어 붙여 낼 때가 있다("...untouched.{"task_id":...}").
+ // 텍스트 끝에서 끝나는 가장 바깥 JSON 객체만 받는다. 설명만 있는 답은 계속 거절한다.
+ const tail=trailingObject(text);
+ if(tail===undefined)throw Error('Executor final text has no result JSON');
+ return tail;
+}
+function trailingObject(text) {
+ const s=text.trimEnd();
+ if(!s.endsWith('}'))return undefined;
+ for(let start=s.indexOf('{');start!==-1;start=s.indexOf('{',start+1)){
+  if(objectEnd(s,start)!==s.length-1)continue;
+  try{const v=JSON.parse(s.slice(start));if(v&&typeof v==='object'&&!Array.isArray(v))return v;}catch{}
+ }
+ return undefined;
+}
+// start의 '{'와 짝이 맞는 '}' 위치. 문자열 안의 괄호와 이스케이프는 건너뛴다.
+function objectEnd(s,start) {
+ let depth=0,inString=false;
+ for(let i=start;i<s.length;i++){
+  const ch=s[i];
+  if(inString){if(ch==='\\')i++;else if(ch==='"')inString=false;continue;}
+  if(ch==='"')inString=true;
+  else if(ch==='{')depth++;
+  else if(ch==='}'&&--depth===0)return i;
+ }
+ return -1;
 }
 
 // 일꾼의 편집 도구가 고치면 안 되는 곳: .git(훅, 설정), 예전 .fusion, 제어 폴더. 중첩된 폴더도 막는다.
