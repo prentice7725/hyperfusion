@@ -39,6 +39,18 @@
 2. 반환된 명령(브리지 `--consult <id>`)을 한 번 실행하고, `consult-finish REPO {"quiescent":true}`를 호출한다.
 3. `auto_apply: true`(기본)면 리뷰어의 판정(pass/redo/alternative/decision), 반려 사유, 파일·줄 지적이 그대로 적용된다. `false`면 `pending_review`로 남는다. 리드가 `review {"adopt":true}`로 채택하거나 자기 판정을 내린다.
 
+### 위험 경로
+
+설정 `review.risk_paths`(기본: auth, migrations, `*.sql`, security, `.github/workflows`)에 맞는 파일을 라운드가 바꾸면 리드가 직접 확인한다. classic은 위임 리뷰의 pass를 `pending_review`(`reason:"risk_paths"`)로 남기고, adaptive는 그 라운드의 리뷰 계획을 중요 작업으로 올리며(`review-plan-N.json`의 `risk`, 패킷의 `risk_paths`) APPROVE에 `diff_reviewed`·`tests_checked`·`changed_scope`를 요구한다. 판정은 컨트롤러 기록(`validation-N.json`의 변경 파일)으로만 한다.
+
+### 반려 근거
+
+LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. 그래서 위임 리뷰의 `redo`·`alternative`는 **줄 위치가 있는(line ≥ 1) blocker 또는 major 지적**이 하나 이상 있어야 그대로 적용한다.
+
+- classic: 근거 없는 반려는 `auto_apply:true`여도 적용하지 않고 `pending_review`(`evidence:false`)로 남긴다. 리드가 `review {"adopt":true}`로 그대로 적용하거나 자기 판정을 낸다.
+- adaptive: 기록에 `evidence:false`가 붙고 패킷의 `unsupported_rejections`에 남는다. 근거 없는 반려뿐이면 추천이 비어 있다. 리드는 REDO하거나, 직접 diff를 읽고 `overrule_reason`, `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적어 APPROVE한다(`overruled_reviews`, 뒤집힌 자리는 `lead_filled_seats`). 근거가 있는 반려는 뒤집지 못한다.
+- 일꾼이 미완료로 보고해 컨트롤러가 바꾼 반려와 수용 테스트 실패 반려는 그 자체가 근거다.
+
 ## 옵트인 Adaptive Review (`review.strategy: "lead-gated-adaptive"`)
 
 `strategy`가 없으면 위 위임 리뷰가 그대로다. 실패한 리뷰어의 다음 후보, `auto_apply`, 라운드당 재시도 상한도 바뀌지 않는다. `strategy`가 켜지면 `auto_apply`와 `review {"adopt":true}`는 판정을 적용하지 않는다.

@@ -165,3 +165,18 @@ test('doctor checks reviewers when review is delegated',t=>{
  const j=JSON.parse(out.stdout);
  assert.equal(j.checks.find(c=>c.name==='reviewers').ok,true);assert.ok(j.reviewers.some(r=>r.name==='sol'&&r.ok));
 });
+test('a delegated rejection without a located blocker is not auto-applied',async t=>{
+ const f=delegated(t);f.begin();f.finish();
+ f.mode('review-vague');const {out}=await delegate(f);
+ assert.equal(out.review.status,'pending');assert.equal(out.review.reason,'rejection_without_evidence');
+ assert.equal(f.state().phase,'REVIEW');assert.equal(f.state().reviews.length,0);
+ assert.equal(f.state().pending_review.evidence,false);
+ assert.equal(f.review('pass').phase,'VERIFY');
+});
+test('a delegated pass on a risk path waits for the lead even with auto_apply',async t=>{
+ const f=delegated(t,{review:{risk_paths:['a.txt']}});f.mode('edit');f.begin();await f.bridge();f.mode('ok');
+ const {out}=await delegate(f);
+ assert.equal(out.review.status,'pending');assert.equal(out.review.reason,'risk_paths');assert.deepEqual(out.review.risk_paths,['a.txt']);
+ assert.equal(f.state().phase,'REVIEW');
+ assert.equal(run(f.root,'review',{adopt:true}).phase,'VERIFY');
+});

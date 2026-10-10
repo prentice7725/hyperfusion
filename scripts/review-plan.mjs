@@ -17,12 +17,13 @@ export const REVIEW_EFFORT={sol:'medium',sonnet:'high'};
 const FAMILY={sonnet:'anthropic',haiku:'anthropic',lead:'anthropic',sol:'openai',luna:'openai',grok:'xai',antigravity:'google'};
 export const sameFamily=(a,b)=>!!FAMILY[a]&&FAMILY[a]===FAMILY[b];
 
-export function planReview(owner,{criticality='standard',strategy='external_primary'}={}) {
+export function planReview(owner,{criticality='standard',strategy='external_primary'}={},{risk=[]}={}) {
  if(!OWNERS.includes(owner))throw Error('ADAPTIVE_REVIEW: unknown round owner '+owner);
  if(!CRITICALITIES.includes(criticality))throw Error('ADAPTIVE_REVIEW: task_criticality must be standard, important, or apex');
  if(!ASSIGNMENT_STRATEGIES.includes(strategy))throw Error('ADAPTIVE_REVIEW: assignment_strategy is not enabled');
  // 이중 리뷰는 Grok/AGY에 대해서만 Sol+Sonnet이다. Luna/Haiku의 독립성 규칙을 숫자 맞추기로 깨지 않는다.
- const raised=criticality==='important'||criticality==='apex'||strategy==='dual_review';
+ // 위험 경로(risk_paths)를 건드린 라운드는 기록된 등급과 상관없이 중요 작업처럼 리뷰한다. 등급 기록은 바꾸지 않는다.
+ const raised=criticality==='important'||criticality==='apex'||strategy==='dual_review'||risk.length>0;
  const dual=raised&&(owner==='grok'||owner==='antigravity');
  let reviewers;
  if(dual)reviewers=['sol','sonnet'];
@@ -33,7 +34,7 @@ export function planReview(owner,{criticality='standard',strategy='external_prim
  if(owner==='luna'&&reviewers.includes('sol'))throw Error('ADAPTIVE_REVIEW: Sol cannot independently review Luna');
  if(owner==='haiku'&&reviewers.includes('sonnet'))throw Error('ADAPTIVE_REVIEW: Sonnet cannot replace Sol for a Haiku round');
  if(owner==='sonnet'&&reviewers.includes('sonnet'))throw Error('ADAPTIVE_REVIEW: Sonnet cannot review its own round');
- return {owner,criticality,strategy,reviewers,effort:reviewEffort(reviewers)};
+ return {owner,criticality,strategy,reviewers,effort:reviewEffort(reviewers),risk:[...risk]};
 }
 
 export function reviewEffort(reviewers) {
@@ -183,6 +184,7 @@ export function explicitImplementation(state,owner) {
 
 export function samePlan(recorded,current) {
  if(!recorded||!current)return false;
+ if(JSON.stringify(recorded.risk??[])!==JSON.stringify(current.risk??[]))return false;
  const reviewers=recorded.reviewers??[];
  return recorded.owner===current.owner&&recorded.criticality===current.criticality&&recorded.strategy===current.strategy
   &&recorded.revision===current.revision&&JSON.stringify(recorded.effort)===JSON.stringify(current.effort)

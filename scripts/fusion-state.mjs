@@ -21,7 +21,7 @@ import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
 import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
 import {ensureControl,isLegacy,migrate,controlRoot,controlPath,acquireLock} from './control-dir.mjs';
-import {ignoredManifest,ignoredChanges,runCommands,failureFeedback} from './acceptance.mjs';
+import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex} from './acceptance.mjs';
 import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation} from './review-plan.mjs';
 
@@ -323,6 +323,16 @@ function status(c,input={}) {
   };
 }
 
+// 이번 라운드 변경 파일 중 위험 경로(review.risk_paths)에 맞는 것. 컨트롤러 기록(validation)으로만 계산한다.
+// init 때 고정된 설정을 쓰므로 일꾼이 저장소 설정을 고쳐도 바뀌지 않는다.
+function roundRisk(c) {
+  const s=c.s,globs=s.configuration.review?.risk_paths??[];
+  if(!globs.length||!s.iteration)return [];
+  const changed=c.optional(`validation-${s.iteration}.json`)?.changed??[];
+  const res=globs.map(globRegex);
+  return changed.filter(f=>res.some(re=>re.test(f))).sort();
+}
+
 // ── 상담(advisor / committee)과 위임 리뷰 ────────────────────────────
 
 function consult(c,input) {
@@ -352,7 +362,7 @@ function consult(c,input) {
   if(adaptive){
     const recorded=c.optional('assignment.json');
     if(!sameAssignment(recorded,s.assignment))throw Error('ADAPTIVE_REVIEW: assignment does not match the controller record');
-    adaptivePlan=planReview(s.owner,s.assignment);
+    adaptivePlan=planReview(s.owner,s.assignment,{risk:roundRisk(c)});
     if(adaptivePlan.reviewers.length===1&&adaptivePlan.reviewers[0]==='lead'){
       throw Error('ADAPTIVE_REVIEW: this round requires a direct lead review; delegated reviewers are refused');
     }
@@ -441,7 +451,7 @@ function consult(c,input) {
   const base=snapshot(c.root);
   let storedPlan=null;
   if(adaptive){
-    storedPlan={version:1,task_id:s.task_id,round:n,owner:s.owner,criticality:adaptivePlan.criticality,strategy:adaptivePlan.strategy,reviewers:[...adaptivePlan.reviewers],effort:adaptivePlan.effort,revision:s.assignment.revision,baseline_digest:base.digest};
+    storedPlan={version:1,task_id:s.task_id,round:n,owner:s.owner,criticality:adaptivePlan.criticality,strategy:adaptivePlan.strategy,reviewers:[...adaptivePlan.reviewers],effort:adaptivePlan.effort,risk:adaptivePlan.risk,revision:s.assignment.revision,baseline_digest:base.digest};
     const prior=c.optional(`review-plan-${n}.json`);
     if(prior){
       if(!samePlan(prior,storedPlan)||prior.baseline_digest!==base.digest)throw Error('ADAPTIVE_REVIEW: frozen review plan does not match this round snapshot');
@@ -516,11 +526,13 @@ function applyAdaptiveReview(c,open,results) {
     if(!result)return {executor,ok:false,verdict:null,digest:open.digest,consult_id:open.id};
     let verdict=result.recommended_verdict;
     let blocking=Array.isArray(result.blocking_criteria)?result.blocking_criteria:[];
+    let evidence=contract.rejectionEvidence(verdict,result.findings);
     if(verdict==='pass'&&raw.status!=='complete'){
       verdict='redo';
       blocking=['worker reported '+raw.status];
+      evidence=true;
     }
-    return {executor,ok:true,verdict,blocking_criteria:blocking,summary:result.summary,confidence:result.confidence,findings:result.findings??[],digest:open.digest,consult_id:open.id,
+    return {executor,ok:true,verdict,evidence,blocking_criteria:blocking,summary:result.summary,confidence:result.confidence,findings:result.findings??[],digest:open.digest,consult_id:open.id,
       ...((plan.substitutes??[]).includes(executor)?{substitute:true,substitution_reason:plan.substitution_reason}:{})};
   });
   const records=[...kept,...fresh];
@@ -538,6 +550,12 @@ function applyAdaptiveReview(c,open,results) {
     recommendation={pass:'APPROVE',redo:'REDO',alternative:'REASSIGN_OTHER',decision:'ESCALATE'}[decision.verdict]??null;
     pass_forbidden=decision.verdict!=='pass';
     note=pass_forbidden?'the panel is not a unanimous pass; APPROVE is refused':'unanimous pass on the round digest; a lead-decision is required and APPROVE does not CLOSE';
+  }
+  // 위치가 있는 blocker·major 지적이 없는 반려는 추천으로 올리지 않는다. 리드가 읽고 REDO하거나 직접 리뷰 후 overrule한다.
+  const unsupported=records.filter(r=>r.ok&&r.evidence===false).map(r=>r.executor);
+  if(unsupported.length){
+    if(records.filter(r=>r.ok&&r.verdict!=='pass').every(r=>r.evidence===false))recommendation=null;
+    note+=`; rejection without file:line blocker/major evidence from ${unsupported.join(', ')} is advisory: read it, then REDO or overrule after your own diff review`;
   }
   return openLeadGate(c,{recommendation,pass_forbidden,reviewers:listed,panel_status:decision.status,verdict:decision.status==='unanimous'?decision.verdict:null,consult_id:open.id,note});
 }
@@ -565,7 +583,7 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
   const s=c.s,n=s.iteration;
   const dispatch=c.optional(`dispatch-${n}.json`),brief=c.optional(`brief-${n}.json`),validation=c.optional(`validation-${n}.json`);
   const runs=collectRunUsage(c.root,s).filter(r=>r.round===n||consult_id&&r.tag.startsWith(`consult-${consult_id}-`));
-  const plan=planReview(s.owner,s.assignment);
+  const plan=planReview(s.owner,s.assignment,{risk:roundRisk(c)});
   const coverage=reviewCoverage(plan,s.review_results?.[n]??[],s.post_digest);
   const repeated=repeatedCriteria(s,panelBlocking(s.review_results?.[n]??[]));
   if(repeated.length&&recommendation==='REDO'&&swapTargets(c,s).length){
@@ -581,7 +599,7 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
     base_commit:s.base_commit,baseline_digest:s.post_digest,changed_files:validation?.changed??[],
     acceptance:acceptance?{status:acceptance.status,quiescent:acceptance.quiescent===true,file:`acceptance-${n}-finish.json`}:{status:'not_recorded'},
     criteria:(brief?.success_criteria??[]).slice(0,36).map(text=>String(text).slice(0,180)),panel_status,
-    review_gaps:coverage.gaps,repeated_criteria:repeated,planned_reviewers:plan.reviewers,substitutes:coverage.substitutes,same_family_reviewers:coverage.same_family,
+    review_gaps:coverage.gaps,repeated_criteria:repeated,risk_paths:plan.risk,unsupported_rejections:(s.review_results?.[n]??[]).filter(r=>r.ok&&r.evidence===false).map(r=>r.executor),planned_reviewers:plan.reviewers,substitutes:coverage.substitutes,same_family_reviewers:coverage.same_family,
     quota:quotaReport(c.root),usage:runs.map(r=>({executor:r.executor,role:r.role,tokens:r.tokens,cost_usd:r.cost_usd,file:r.file})),
     decision_authority:{source:'host-controller',observed_model:s.lead_model??null,model_verified:false},
     recommendation,pass_forbidden,note,consult_id,reviewers,evidence:[...new Set(evidence)]};
@@ -612,11 +630,25 @@ function applyDelegatedReview(c,open,member,result) {
     verdict='redo';
     blocking=['worker reported '+raw.status];
   }
+  const evidence=blocking!==result.blocking_criteria||contract.rejectionEvidence(verdict,result.findings);
   const delegated={
     verdict,rationale:result.summary,blocking_criteria:blocking,
     commands_run:['delegated read-only review by '+member.executor],independent_diff_review:true,
     reviewed_by:member.executor,consult_id:open.id,confidence:result.confidence,findings:result.findings
   };
+  // 위험 경로를 건드린 라운드의 pass는 auto_apply여도 리드가 직접 확인한다.
+  const risk=roundRisk(c);
+  if(verdict==='pass'&&risk.length){
+    s.pending_review={...delegated,risk_paths:risk};
+    return {status:'pending',reason:'risk_paths',risk_paths:risk,
+      next_action:'read the diff of the risky files yourself; review {"adopt":true} to apply the pass, or give your own verdict'};
+  }
+  // 위치가 있는 blocker·major 지적이 없는 반려는 auto_apply여도 바로 적용하지 않고 리드에게 넘긴다.
+  if(!evidence){
+    s.pending_review={...delegated,evidence:false};
+    return {status:'pending',reason:'rejection_without_evidence',
+      next_action:'read the findings; review {"adopt":true} to apply the rejection anyway, or give your own verdict'};
+  }
   if(!s.configuration.review.auto_apply){
     s.pending_review=delegated;
     return {status:'pending',next_action:'review with {"adopt":true} or your own verdict'};
@@ -842,7 +874,7 @@ function finish(c,input) {
   // 수용 실패는 컨트롤러 재지시다. 모델 pass는 여기로 오지 않는다. Sol처럼 리뷰어가 리드뿐이면 위임 없이 게이트로 올린다.
   if(s.configuration.review?.strategy==='lead-gated-adaptive'){
     if(!sameAssignment(c.optional('assignment.json'),s.assignment))throw Error('ADAPTIVE_REVIEW: assignment does not match the controller record');
-    const plan=planReview(s.owner,s.assignment);
+    const plan=planReview(s.owner,s.assignment,{risk:roundRisk(c)});
     if(plan.reviewers.length===1&&plan.reviewers[0]==='lead'){
       openLeadGate(c,{recommendation:null,pass_forbidden:false,reviewers:[],panel_status:'direct',verdict:null,consult_id:null,
         note:'direct lead review is required; delegated reviewers are refused'});
@@ -1175,10 +1207,10 @@ function leadDecision(c,input) {
     c.save();
     throw Error('Tree drift before lead decision');
   }
-  const plan=planReview(s.owner,s.assignment);
+  const plan=planReview(s.owner,s.assignment,{risk:roundRisk(c)});
   const direct=plan.reviewers.length===1&&plan.reviewers[0]==='lead';
   const records=s.review_results?.[s.iteration]??[];
-  let grant=null,next_executor=null,required_reviewer=null,phase,lead_filled=null,keep_owner=null;
+  let grant=null,next_executor=null,required_reviewer=null,phase,lead_filled=null,keep_owner=null,overruled=null;
   if(normalized==='APPROVE'){
     if(input.contract_change===true)throw Error('LEAD_DECISION: APPROVE is refused when the contract changed');
     const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
@@ -1189,13 +1221,24 @@ function leadDecision(c,input) {
       if(!namedEvidence(input.changed_scope))throw Error('LEAD_DECISION: APPROVE requires changed_scope naming the change that was read');
     } else {
       // 끝낸 리뷰어 중 하나라도 pass가 아니면 승인하지 않는다. 자리가 비었으면(한도·장애) 리드가 직접 diff를 읽고 채울 수 있다.
+      // 근거 없는 반려(evidence:false)만은 리드가 직접 diff를 읽고 overrule_reason을 남겨 뒤집을 수 있다. 뒤집힌 자리는 리드가 채운 것으로 센다.
       const finished=records.filter(r=>r.ok);
-      const coverage=reviewCoverage(plan,records,s.post_digest);
-      if(finished.some(r=>r.verdict!=='pass'||r.digest!==s.post_digest)){
-        throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest');
+      const leadReviewed=s.owner!=='lead'&&input.diff_reviewed===true&&namedEvidence(input.tests_checked)&&namedEvidence(input.changed_scope);
+      const against=finished.filter(r=>r.verdict!=='pass'||r.digest!==s.post_digest);
+      if(against.length){
+        const reason=typeof input.overrule_reason==='string'?input.overrule_reason.trim():'';
+        const overrulable=against.every(r=>r.evidence===false&&r.digest===s.post_digest);
+        if(!(overrulable&&reason&&leadReviewed)){
+          throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest'
+            +(overrulable?'; a rejection without file:line evidence can be overruled with overrule_reason, diff_reviewed, tests_checked and changed_scope':''));
+        }
+        overruled={executors:against.map(r=>r.executor),reason};
       }
+      // 위험 경로를 건드린 라운드는 리뷰가 모두 pass여도 리드가 직접 diff를 읽어야 승인한다.
+      if(plan.risk.length&&!leadReviewed)throw Error('LEAD_DECISION: round touches risk paths ('+plan.risk.slice(0,5).join(', ')+'); APPROVE requires diff_reviewed, tests_checked and changed_scope');
+      const coverage=reviewCoverage(plan,records.filter(r=>!overruled?.executors.includes(r.executor)),s.post_digest);
       if(!coverage.covered){
-        const direct_fill=s.owner!=='lead'&&input.diff_reviewed===true&&namedEvidence(input.tests_checked)&&namedEvidence(input.changed_scope);
+        const direct_fill=leadReviewed;
         if(!direct_fill)throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest; '
           +'for a missing reviewer ('+coverage.gaps.join(', ')+') delegate-review a substitute or name diff_reviewed, tests_checked and changed_scope');
         lead_filled=coverage.gaps;
@@ -1246,7 +1289,8 @@ function leadDecision(c,input) {
     ...(input.changed_scope!==undefined?{changed_scope:input.changed_scope}:{}),
     ...(grant?{implement_grant_revision:grant.revision}:{}),
     ...(lead_filled?{lead_filled_seats:lead_filled}:{}),
-    ...(keep_owner?{keep_owner_reason:keep_owner}:{})
+    ...(keep_owner?{keep_owner_reason:keep_owner}:{}),
+    ...(overruled?{overruled_reviews:overruled}:{})
   };
   const file=`lead-decision-${s.iteration}.json`;
   if(grant){
