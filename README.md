@@ -47,7 +47,7 @@
 `hyperfusion.v03.config.example.json`을 대상 저장소의 `hyperfusion.config.json`으로 복사해 명시적으로 켠다. 기존 classic 설정·진행 중 작업은 자동으로 바뀌지 않는다. 자세한 내용은 [universal-supervisor](references/universal-supervisor.md), 구현 현황은 [v03-implementation-status](references/v03-implementation-status.md).
 
 - **External-First 배치.** 자동 구현은 Grok·Antigravity·Luna가 맡는다. Sonnet(중요/재배정 라운드)과 Sol(APEX 라운드)은 라운드별 grant가 있을 때만 구현하며, 자동 폴백·신입 우대는 이 둘을 고르지 않는다.
-- **작성자별 필수 리뷰.** Grok/AGY 일반 → Sol, Luna → Sonnet, 중요 작업 → Sol + Sonnet 이중 PASS. 필수 결과는 `LEAD_DECISION_REQUIRED`에서 멈추고, `auto_apply`·`review {adopt}`·autopilot도 호스트 리드의 최종 판정 게이트를 건너뛰지 못한다.
+- **작성자별 리뷰.** 원칙은 하나, 구현한 모델은 자기 라운드를 리뷰하지 않는다. 기본은 Grok/AGY 일반 → Sol, Luna → Sonnet, 중요 작업 → Sol + Sonnet 이중 PASS. 리뷰어가 한도·장애로 막히면 리드가 사유를 적고 다른 모델로 바꿔 끼우고, 남은 리뷰어가 없으면 리드가 직접 diff를 읽고 채운다. 결과는 `LEAD_DECISION_REQUIRED`에서 멈추고, `auto_apply`·`review {adopt}`·autopilot도 호스트 리드의 최종 판정 게이트를 건너뛰지 못한다.
 - **범용 로컬 감시.** 모든 implement/review/consult 호출을 같은 supervisor가 관측한다(`status --monitor`, `monitor --once|--watch`). 무신호는 QUIET 경고일 뿐이며 진행률·성공을 만들어 내지 않는다. 호출 모델은 따로 부르지 않는다.
 - **사용량 계측.** 구현·검수·상담·실패 호출과 APEX Sol을 포함해 기록하고, 미측정은 `null`로 둔다. 쿼터는 `scripts/quota-policy.mjs`로 운영자 관측을 기록한다.
 - **기본 추론 강도.** Sonnet high, Haiku max, Antigravity high, Grok xhigh, Luna xhigh, Sol medium. 설정 `reasoning_effort`로 덮어쓰고 `null`이면 플래그를 넘기지 않는다.

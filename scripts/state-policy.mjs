@@ -4,14 +4,15 @@ export const ACTION_PHASES={
  finish:['EXECUTING'],review:['REVIEW'],'lead-decision':['LEAD_DECISION_REQUIRED'],
  decide:['DECISION_REQUIRED'],verify:['VERIFY'],
  consult:['PLAN','REVIEW','REDO','ALTERNATIVE_REQUIRED','DECISION_REQUIRED'],
- 'delegate-review':['REVIEW'],
+ // 게이트의 재위임은 리뷰어가 끝내지 못한 라운드만 컨트롤러가 받는다.
+ 'delegate-review':['REVIEW','LEAD_DECISION_REQUIRED'],
  'grant-implement':['PLAN','REDO','ALTERNATIVE_REQUIRED','REVIEW','DECISION_REQUIRED'],
- 'consult-finish':['PLAN','REVIEW','REDO','ALTERNATIVE_REQUIRED','DECISION_REQUIRED'],
+ 'consult-finish':['PLAN','REVIEW','REDO','ALTERNATIVE_REQUIRED','DECISION_REQUIRED','LEAD_DECISION_REQUIRED'],
  recover:['PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED','EXECUTING','RECOVERY_REQUIRED','REVIEW','LEAD_DECISION_REQUIRED']
 };
 export const PHASES=[...new Set([...Object.values(ACTION_PHASES).flat(),...TERMINAL_PHASES])];
 export function assertAction(phase,action,input={}) {
- const allowed=action==='consult'&&input.mode==='review'?['REVIEW']:ACTION_PHASES[action];
+ const allowed=action==='consult'&&input.mode==='review'?ACTION_PHASES['delegate-review']:ACTION_PHASES[action];
  if(allowed&&!allowed.includes(phase)){
   const error=Error(`Invalid phase ${phase} for ${action}`);error.code='INVALID_PHASE';throw error;
  }

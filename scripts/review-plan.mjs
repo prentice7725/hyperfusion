@@ -1,5 +1,7 @@
 // 라운드 작성자 기준의 리뷰 계획. 모델 호출은 하지 않는다.
-// 저장소 설정이나 워커 JSON이 필수 리뷰어를 줄이거나 바꿔치기할 수 없다.
+// 최소 원칙은 하나다: 라운드를 구현한 모델은 그 라운드를 리뷰하지 않는다.
+// 계획은 기본 리뷰어와 자리 수를 정한다. 한도·장애로 기본 리뷰어가 못 하면 리드가 사유를 적고 다른 모델로 바꿔 끼운다.
+// 저장소 설정이나 워커 JSON은 자리 수를 줄이거나 리뷰어를 바꾸지 못한다. 최종 판정은 언제나 리드다.
 
 import {EXECUTORS,externalFirst,DIFFICULTY_EFFORT,automaticImplementer} from './executor-config.mjs';
 
@@ -9,6 +11,11 @@ const OWNERS=['grok','antigravity','haiku','luna','sonnet','sol','lead'];
 
 // 이름을 받아 적기만 하면 승인된 것처럼 보이므로 아직 거절한다.
 const LATER=['explicit_repair'];
+// 기본 리뷰어의 강도. 바꿔 낀 리뷰어도 같은 값을 쓰고, 표에 없으면 설정값을 쓴다.
+export const REVIEW_EFFORT={sol:'medium',sonnet:'high'};
+// 같은 회사 모델끼리의 리뷰는 허용하되 교차 검증이 약하다는 표시를 남긴다.
+const FAMILY={sonnet:'anthropic',haiku:'anthropic',lead:'anthropic',sol:'openai',luna:'openai',grok:'xai',antigravity:'google'};
+export const sameFamily=(a,b)=>!!FAMILY[a]&&FAMILY[a]===FAMILY[b];
 
 export function planReview(owner,{criticality='standard',strategy='external_primary'}={}) {
  if(!OWNERS.includes(owner))throw Error('ADAPTIVE_REVIEW: unknown round owner '+owner);
@@ -26,10 +33,44 @@ export function planReview(owner,{criticality='standard',strategy='external_prim
  if(owner==='luna'&&reviewers.includes('sol'))throw Error('ADAPTIVE_REVIEW: Sol cannot independently review Luna');
  if(owner==='haiku'&&reviewers.includes('sonnet'))throw Error('ADAPTIVE_REVIEW: Sonnet cannot replace Sol for a Haiku round');
  if(owner==='sonnet'&&reviewers.includes('sonnet'))throw Error('ADAPTIVE_REVIEW: Sonnet cannot review its own round');
- const effort={};
- if(reviewers.includes('sol'))effort.sol='medium';
- if(reviewers.includes('sonnet'))effort.sonnet='high';
- return {owner,criticality,strategy,reviewers,effort};
+ return {owner,criticality,strategy,reviewers,effort:reviewEffort(reviewers)};
+}
+
+export function reviewEffort(reviewers) {
+ return Object.fromEntries(reviewers.filter(e=>REVIEW_EFFORT[e]).map(e=>[e,REVIEW_EFFORT[e]]));
+}
+
+// 이번 위임에서 채울 자리와 리뷰어. 이미 끝난 리뷰(kept)는 다시 돌리지 않는다. 실패한 리뷰어는 기본값에서 빠지고, 다시 쓰려면 이름을 적는다.
+// 기본 리뷰어가 아닌 모델을 넣으면 substitution_reason이 필요하다. 작성자 자신과 리드는 위임 리뷰어가 될 수 없다.
+export function panelSeats(plan,{asked,kept=[],failed=[],reason}={}) {
+ const owner=plan.owner;
+ const seats=plan.reviewers.length-kept.length;
+ if(seats<=0)throw Error('ADAPTIVE_REVIEW: mandatory review already finished for this round');
+ const defaults=plan.reviewers.filter(e=>!kept.includes(e)&&!failed.includes(e));
+ const picks=asked===undefined?defaults:asked;
+ if(!Array.isArray(picks)||picks.some(e=>typeof e!=='string'))throw Error('ADAPTIVE_REVIEW: executors must be a list of reviewer names');
+ if(picks.length!==seats){
+  const avoid=[owner,...kept].filter((e,i,a)=>a.indexOf(e)===i).join(', ');
+  throw Error(`ADAPTIVE_REVIEW: ${seats} reviewer(s) needed; name executors other than ${avoid}${failed.length?' (failed: '+failed.join(', ')+')':''} with substitution_reason`);
+ }
+ if(new Set(picks).size!==picks.length)throw Error('ADAPTIVE_REVIEW: reviewers must be distinct');
+ if(picks.includes(owner))throw Error('ADAPTIVE_REVIEW: self-review is refused; '+owner+' implemented this round');
+ if(picks.includes('lead'))throw Error('ADAPTIVE_REVIEW: the lead is not a delegated reviewer; use lead-decision');
+ const reused=picks.filter(e=>kept.includes(e));
+ if(reused.length)throw Error('ADAPTIVE_REVIEW: already reviewed this round: '+reused.join(', '));
+ const substitutes=picks.filter(e=>!plan.reviewers.includes(e));
+ const why=typeof reason==='string'?reason.trim():'';
+ if(substitutes.length&&!why)throw Error('ADAPTIVE_REVIEW: substitution_reason is required to replace the planned reviewer ('+plan.reviewers.join(', ')+')');
+ return {reviewers:picks,effort:reviewEffort(picks),substitutes,substitution_reason:substitutes.length?why:null,kept:[...kept]};
+}
+
+// 계획한 자리 수만큼 작성자와 다른 모델이 같은 digest에서 pass했는지. 이름이 아니라 자리로 센다.
+export function reviewCoverage(plan,records,digest) {
+ const passed=[...new Set((records??[]).filter(r=>r?.ok&&r.verdict==='pass'&&r.digest===digest&&r.executor!==plan.owner).map(r=>r.executor))];
+ const substitutes=passed.filter(e=>!plan.reviewers.includes(e));
+ const gaps=plan.reviewers.filter(e=>e!=='lead'&&!passed.includes(e)).slice(substitutes.length);
+ const same_family=passed.filter(e=>sameFamily(e,plan.owner));
+ return {covered:gaps.length===0&&passed.length>=plan.reviewers.filter(e=>e!=='lead').length,passed,substitutes,gaps,same_family};
 }
 
 // 컨트롤러가 init에서만 남기는 배정. 브리프나 저장소 설정으로 다시 읽지 않는다.

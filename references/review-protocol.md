@@ -43,16 +43,25 @@
 
 `strategy`가 없으면 위 위임 리뷰가 그대로다. 실패한 리뷰어의 다음 후보, `auto_apply`, 라운드당 재시도 상한도 바뀌지 않는다. `strategy`가 켜지면 `auto_apply`와 `review {"adopt":true}`는 판정을 적용하지 않는다.
 
-`strategy`를 켜면 리뷰어는 설정의 `reviewers` 순서가 아니라 **그 라운드의 실제 작성자**로 정해진다. 배정은 init의 `task_criticality`(`standard|important|apex`)와 `assignment_strategy`(`external_primary|dual_review`)로 컨트롤러 기록 `assignment.json`에 고정된다. 저장소 설정, 브리프, 워커 JSON으로 필수 리뷰어를 줄이거나 바꿀 수 없다.
+최소 원칙은 하나다: **라운드를 구현한 모델은 그 라운드를 리뷰하지 않는다.** 나머지는 상황(한도, 장애)에 맞춰 바꾸고, 최종 판정은 리드가 한다.
+
+`strategy`를 켜면 기본 리뷰어와 자리 수는 설정의 `reviewers` 순서가 아니라 **그 라운드의 실제 작성자**로 정해진다. 배정은 init의 `task_criticality`(`standard|important|apex`)와 `assignment_strategy`(`external_primary|dual_review`)로 컨트롤러 기록 `assignment.json`에 고정된다. 저장소 설정, 브리프, 워커 JSON으로 자리 수를 줄이거나 리뷰어를 바꿀 수 없다. 바꾸는 건 리드의 `delegate-review`뿐이며 사유가 남는다.
 
 | 라운드 작성자 | 리뷰어 |
 |---|---|
 | grok, antigravity, haiku, sonnet, lead | sol. 추론 강도 medium |
 | grok, antigravity가 important, apex, 또는 `dual_review` | sol medium과 sonnet high. 둘 다 같은 baseline digest에서 pass해야 한다 |
-| luna | sonnet high. sol로 바꾸지 않는다 |
+| luna | sonnet high |
 | sol | 위임 리뷰어 없음. 라운드가 끝나면 `LEAD_DECISION_REQUIRED`에서 리드가 diff, 관련 테스트, 변경 범위를 확인하고 `lead-decision`을 남긴다 |
 
-합의되지 않은 판정은 pass로 합치지 않는다. 필수 리뷰어가 실패하면 다른 모델로 넘기지 않는다. 리드의 `review` 판정으로 빠진 독립 리뷰를 대신할 수 없다.
+합의되지 않은 판정은 pass로 합치지 않는다. 리드의 `review` 명령으로 빠진 리뷰를 대신하지 않는다.
+
+**리뷰어 교체.** 기본 리뷰어가 한도·장애로 끝내지 못하면 패널은 `reviewer_failed`로 게이트에 오른다. 리드는 그 게이트에서 `delegate-review`를 다시 부른다.
+
+- 끝난 리뷰는 남고 빈 자리만 채운다. 실패한 리뷰어는 기본값에서 빠지며, 한도가 풀렸으면 이름을 적어 다시 쓸 수 있다.
+- 기본 리뷰어가 아닌 모델은 `executors`와 `substitution_reason`으로 넣는다. 작성자 자신과 `lead`는 거절한다. 같은 회사 모델(예: Haiku 라운드를 Sonnet이)도 허용하지만 패킷의 `same_family_reviewers`에 남는다.
+- 라운드당 위임 리뷰 상한(2회)은 그대로다. 판정이 난 패널(누구도 실패하지 않은 라운드)은 다시 위임하지 않는다.
+- 남은 리뷰어가 없으면 리드가 `lead-decision`에서 `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적고 빈 자리를 직접 채워 APPROVE한다(`lead_filled_seats`). 끝낸 리뷰어 중 pass가 아닌 판정이 있으면 승인되지 않는다.
 
 ## 옵트인 구현 역할 (Sonnet / Sol)
 
