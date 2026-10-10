@@ -1,6 +1,6 @@
 # HyperFusion
 
-v0.3 External-Firstと共通監視は明示的なオプトインです。[設定例](hyperfusion.v03.config.example.json)と[運用・役割・使用量の説明](references/universal-supervisor.md)を参照してください。新しいプロファイルではGrok/AGY/Lunaを自動実装に使い、作者ごとの必須レビュー後にホストの最終判断を待ちます。既存のclassic設定と実行中のタスクは自動変更しません。
+> **バージョン表記。** パッケージのリリースは`0.15.0`（`package.json`）で、**v0.3**はその上に載せた新しい運用プロファイル（External-First＋共通監視）の名前です。未リリースの変更は[CHANGELOG](CHANGELOG.md)のUnreleasedにあります。保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子で、正本の定数は`scripts/versions.mjs`です。
 
 [한국어](README.md) | 日本語
 
@@ -41,6 +41,17 @@ v0.3 External-Firstと共通監視は明示的なオプトインです。[設定
 - **独立worktreeと作業上限。** 作業ごとに状態とwriter leaseを分離して並列実行し、報告された費用と経過時間に上限を設けます。結果は個別に検収してから統合します。→ [並列実行・上限（韓国語）](references/operations.md)
 - **通知。** `HF_NOTIFY_URL`（例：ntfy）で、ワーカーの完了やリードの判断が必要な時にスマホへプッシュ通知を受け取れます。本文は状態だけです。
 - **Linux・macOS・Windows対応。**
+
+## v0.3: External-Firstと共通監視（オプトイン）
+
+`hyperfusion.v03.config.example.json`を対象リポジトリの`hyperfusion.config.json`にコピーして明示的に有効化します。既存のclassic設定と実行中のタスクは自動変更されません。詳細は[universal-supervisor](references/universal-supervisor.md)（韓国語）、実装状況は[v03-implementation-status](references/v03-implementation-status.md)（韓国語）を参照してください。
+
+- **External-First配置。** 自動実装はGrok・Antigravity・Lunaが担当します。Sonnet（重要/再割り当てラウンド）とSol（APEXラウンド）はラウンドごとのgrantがある場合のみ実装し、自動フォールバックや新人優遇はこの2つを選びません。
+- **作者別の必須レビュー。** Grok/AGYの通常作業→Sol、Luna→Sonnet、重要作業→Sol＋Sonnetの二重PASS。必須結果は`LEAD_DECISION_REQUIRED`で止まり、`auto_apply`・`review {adopt}`・オートパイロットでもホストリードの最終判断ゲートは飛ばせません。
+- **共通ローカル監視。** すべてのimplement/review/consult呼び出しを同じsupervisorが観測します（`status --monitor`、`monitor --once|--watch`）。無信号はQUIET警告にとどまり、進捗や成功を生成しません。監視でモデルは呼びません。
+- **使用量の計測。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で運用者の観測を記録します。
+- **既定の推論強度。** Sonnet high、Haiku max、Antigravity high、Grok xhigh、Luna xhigh、Sol medium。設定`reasoning_effort`で上書きでき、`null`ならフラグを渡しません。
+- ホストが本当にOpusかは認証できないため、`authority.model_verified:false`として記録します。
 
 ## セキュリティ
 
@@ -90,7 +101,7 @@ Claude CodeでOpus 5.5を選び：
 npm test
 ```
 
-自動テストが、状態機械、ワーカーアダプタ、配置、レビュー委任、記憶層、プロジェクトの流れ、セキュリティ、マスキングとオートパイロットを確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 20・24で実行する構成です。再監査後の修正と残る制約は[修正結果の報告書（韓国語）](references/reaudit-v0.10.0.md)にまとめています。
+自動テストが、状態機械、ワーカーアダプタ、配置、レビュー委任、記憶層、プロジェクトの流れ、セキュリティ、マスキングとオートパイロットを確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 20・24で実行する構成です。再監査後の修正と残る制約は[修正結果の報告書（韓国語）](references/reaudit-v0.10.0.md)にまとめています。 Windowsではテストファイルを順次実行し（他のOSは並列度2）、実際に孤児プロセスを作る回帰テストは並列テストの後に別途実行して、プロセス一覧の干渉を避けます。
 
 **テストの`grok`/`agy`/`claude`/`codex`は代役のCLIです。** 実際のモデル呼び出し、認証、画像生成は、このリポジトリのテストでは検証されていません。インストール済みCLIに必要なフラグがない場合は、実行前に`ADAPTER_UNAVAILABLE`で拒否します。CLIフラグは[Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)、[Antigravity CLI](https://antigravity.google/docs/cli/headless)、[Claude Code](https://code.claude.com/docs/en/headless)のドキュメントを基準にしています。
 

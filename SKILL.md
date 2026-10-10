@@ -2,7 +2,7 @@
 name: hyperfusion
 description: Orchestration skill where Claude Opus 5.5 leads (plans, routes, rejects, verifies) and never writes code; implementation and tests go to workers picked per task (Grok Build CLI, Antigravity CLI, Claude Code Sonnet, Codex Luna), and reviews can go to Sol (Codex). Single writer, auditable rounds, concrete orders on every rejection, worker swap on repeated mistakes. Use when asked to have HyperFusion, Grok, Antigravity, agy or Sonnet do coding or image-asset work.
 ---
-# HyperFusion v0.14.0
+# HyperFusion v0.15.0
 
 For an explicitly selected v0.3 profile, read [universal-supervisor.md](references/universal-supervisor.md) and use [hyperfusion.v03.config.example.json](hyperfusion.v03.config.example.json). Its owner-aware mandatory reviews and lead-decision gate override the classic worker/review policy below. Sonnet implements only a granted important/reassigned round; Sol implements only a granted APEX round. Automated fallback cannot select either. Monitoring calls no model; never infer success or progress from output. Existing classic tasks are not migrated. The host lead's model is unverified unless observed; never claim actual Opus review from a model-name string.
 
