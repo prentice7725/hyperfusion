@@ -39,6 +39,10 @@
 2. 반환된 명령(브리지 `--consult <id>`)을 한 번 실행하고, `consult-finish REPO {"quiescent":true}`를 호출한다.
 3. `auto_apply: true`(기본)면 리뷰어의 판정(pass/redo/alternative/decision), 반려 사유, 파일·줄 지적이 그대로 적용된다. `false`면 `pending_review`로 남는다. 리드가 `review {"adopt":true}`로 채택하거나 자기 판정을 내린다.
 
+### 위험 경로
+
+설정 `review.risk_paths`(기본: auth, migrations, `*.sql`, security, `.github/workflows`)에 맞는 파일을 라운드가 바꾸면 리드가 직접 확인한다. classic은 위임 리뷰의 pass를 `pending_review`(`reason:"risk_paths"`)로 남기고, adaptive는 그 라운드의 리뷰 계획을 중요 작업으로 올리며(`review-plan-N.json`의 `risk`, 패킷의 `risk_paths`) APPROVE에 `diff_reviewed`·`tests_checked`·`changed_scope`를 요구한다. 판정은 컨트롤러 기록(`validation-N.json`의 변경 파일)으로만 한다.
+
 ### 반려 근거
 
 LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. 그래서 위임 리뷰의 `redo`·`alternative`는 **줄 위치가 있는(line ≥ 1) blocker 또는 major 지적**이 하나 이상 있어야 그대로 적용한다.

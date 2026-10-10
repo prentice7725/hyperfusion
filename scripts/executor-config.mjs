@@ -73,12 +73,17 @@ export function automaticImplementer(c,name) {
  if((externalFirst(c)||c?.review?.strategy==='lead-gated-adaptive')&&GRANT_ONLY.includes(name))return false;
  return !(claudeReserve(c)&&name==='haiku');
 }
+// 바뀌면 리드가 직접 확인해야 하는 경로. 라운드의 변경 파일이 하나라도 맞으면 그 라운드는 중요 작업처럼 리뷰한다.
+// 설정 review.risk_paths로 바꾸고, []이면 끈다.
+export const RISK_PATHS=['**/auth/**','**/migrations/**','**/*.sql','**/security/**','.github/workflows/**'];
+const validGlob=g=>typeof g==='string'&&g.length>0&&g.length<=200&&!g.startsWith('/')&&!g.includes('\\')&&!g.split('/').includes('..')&&!/^(?:\*\*\/)*\*{1,2}$/.test(g);
+
 export const DEFAULT_CONFIG={lead:'opus',lead_model:'claude-opus-5-5',lead_takeover:true,
  external:{default:'auto',available:['grok','antigravity','sonnet','haiku','luna']},
  executors:{antigravity:{sandbox:true}},
  routing:{rules:DEFAULT_RULES,learn:true,min_samples:3,demote_below:0.4,half_life_days:90,explore_every:10,newcomer_every:4},
  // 리뷰 주체. lead는 Opus가 직접, delegate는 다른 모델(기본 Codex 우선)이 읽기 전용으로 판정하고 그 판정을 적용한다.
- review:{by:'lead',reviewers:['sol','sonnet','antigravity','grok','luna','haiku'],auto_apply:true}};
+ review:{by:'lead',reviewers:['sol','sonnet','antigravity','grok','luna','haiku'],auto_apply:true,risk_paths:RISK_PATHS}};
 
 // 규칙은 선호 순서일 뿐이고 능력이 없는 일꾼은 router가 거른다. 사용자가 직접 쓴 규칙에 능력 없는 일꾼을 적으면 실수로 보고 거절한다
 // (예: 이미지 작업에 Sonnet). 기본 규칙은 능력을 좁혀도 고칠 필요가 없도록 거르기만 한다.
@@ -112,7 +117,8 @@ export function config(root) {
    &&(o.model===undefined||(typeof o.model==='string'&&/^[\w.:/-]{1,80}$/.test(o.model)))&&(o.reasoning_effort===undefined||typeof o.reasoning_effort==='string')&&validCaps(o.caps))
   &&['lead','delegate'].includes(v.review.by)&&Array.isArray(v.review.reviewers)&&v.review.reviewers.length>0&&v.review.reviewers.every(x=>REVIEWERS.includes(x))&&new Set(v.review.reviewers).size===v.review.reviewers.length&&typeof v.review.auto_apply==='boolean'
   &&(v.review.strategy===undefined||v.review.strategy==='lead-gated-adaptive')
-  &&Object.keys(v.review).every(k=>['by','reviewers','auto_apply','strategy'].includes(k))
+  &&Array.isArray(v.review.risk_paths)&&v.review.risk_paths.length<=50&&v.review.risk_paths.every(validGlob)
+  &&Object.keys(v.review).every(k=>['by','reviewers','auto_apply','strategy','risk_paths'].includes(k))
   &&Number.isInteger(v.routing.min_samples)&&v.routing.min_samples>0&&typeof v.routing.demote_below==='number'&&v.routing.demote_below>=0&&v.routing.demote_below<=1
   &&Number.isFinite(v.routing.half_life_days)&&v.routing.half_life_days>0&&Number.isInteger(v.routing.explore_every)&&v.routing.explore_every>=0&&Number.isInteger(v.routing.newcomer_every)&&v.routing.newcomer_every>=0;
  if(!ok)throw Error('Invalid HyperFusion configuration');
