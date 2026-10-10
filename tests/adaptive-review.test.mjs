@@ -279,3 +279,30 @@ test('a second rejection on the same AC recommends another worker and REDO needs
  assert.equal(kept.phase,'REDO');
  assert.equal(kept.lead_decision.keep_owner_reason,'only grok has the repo context');
 });
+
+test('a rejection without file:line evidence is advisory and the lead may overrule it after its own review',async t=>{
+ const f=adaptive(t,{reason:'vague'});
+ f.begin();f.finish();f.mode('review-vague');
+ const out=(await delegate(f)).out.review;
+ assert.equal(out.verdict,'redo');
+ assert.equal(out.recommendation,null);
+ const packet=read(task(f,'lead-packet-1.json'));
+ assert.deepEqual(packet.unsupported_rejections,['sol']);
+ assert.match(packet.note,/advisory/);
+ assert.equal(f.state().review_results[1][0].evidence,false);
+ assert.throws(()=>decide(f),/overrule_reason/);
+ assert.throws(()=>decide(f,{overrule_reason:'read it; AC1 is met'}),/overrule_reason/);
+ const approved=decide(f,{overrule_reason:'read it; AC1 is met',diff_reviewed:true,tests_checked:['tests/a.test.mjs'],changed_scope:['a.txt']});
+ assert.equal(approved.phase,'VERIFY');
+ assert.deepEqual(approved.lead_decision.overruled_reviews,{executors:['sol'],reason:'read it; AC1 is met'});
+ assert.deepEqual(approved.lead_decision.lead_filled_seats,['sol']);
+});
+
+test('a rejection with a located blocker cannot be overruled',async t=>{
+ const f=adaptive(t,{reason:'real'});
+ f.begin();f.finish();f.mode('review-redo');
+ await delegate(f);
+ assert.equal(f.state().review_results[1][0].evidence,true);
+ assert.deepEqual(read(task(f,'lead-packet-1.json')).unsupported_rejections,[]);
+ assert.throws(()=>decide(f,{overrule_reason:'disagree',diff_reviewed:true,tests_checked:['t'],changed_scope:['a.txt']}),/every mandatory review passed on the round digest$/);
+});
