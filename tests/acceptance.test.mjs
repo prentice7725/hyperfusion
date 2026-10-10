@@ -160,3 +160,42 @@ test('acceptance commands changed after work started are marked unchecked',async
  f.begin({acceptance_commands:[CHECK,'node -e "process.exit(0)"']});
  assert.equal(f.state().acceptance_baseline.status,'unchecked');
 });
+
+// ── AC 추적표와 PR 초안 ─────────────────────────────────────────────
+
+test('acceptance_map is validated against success_criteria and acceptance_commands',t=>{
+ const f=fixture(t,{initialize:false});
+ const b=extra=>()=>contract.brief({...f.brief,success_criteria:['AC1: a.txt is fixed','AC2: docs updated'],acceptance_commands:['npm test'],...extra});
+ assert.doesNotThrow(b({acceptance_map:{AC1:['npm test']}}));
+ assert.throws(b({acceptance_map:{AC3:['npm test']}}),/not named in success_criteria/);
+ assert.throws(b({acceptance_map:{AC1:['npm run other']}}),/copied exactly/);
+ assert.throws(b({acceptance_map:{ac1:['npm test']}}),/look like AC1/);
+ assert.throws(b({acceptance_map:[]}),/map AC IDs/);
+ assert.throws(()=>contract.brief({...f.brief,acceptance_map:{AC1:['npm test']}}),/needs acceptance_commands/);
+});
+
+test('a failing mapped command is rejected by AC ID, and CLOSE writes the AC table and a PR draft',async t=>{
+ const f=fixture(t);
+ f.brief.success_criteria=['AC1: a.txt is fixed','AC2: nothing else changes'];
+ f.brief.acceptance_commands=[CHECK];
+ f.brief.acceptance_map={AC1:[CHECK]};
+ f.begin();await f.bridge();
+ assert.deepEqual(f.state().reviews.at(-1).blocking_criteria,['AC1 Acceptance: '+CHECK]);
+ f.mode('edit');f.begin({lead_feedback:'@review'});await f.bridge();
+ f.review('pass');
+ const s=run(f.root,'verify',{acceptance_satisfied:true});
+ assert.equal(s.phase,'CLOSE');
+ assert.deepEqual(s.ac_table,[{id:'AC1',status:'PASS'},{id:'AC2',status:'REVIEWED'}]);
+ assert.deepEqual(art(f,'verification.json').ac_table.map(r=>r.commands.length),[1,0]);
+ const draft=fs.readFileSync(s.pr_draft,'utf8');
+ assert.match(draft,/^# Fix a bounded issue/);
+ assert.match(draft,/\| AC1 \| AC1: a\.txt is fixed \| PASS \|/);
+ assert.match(draft,/\| AC2 \| AC2: nothing else changes \| REVIEWED \| - \|/);
+ assert.match(draft,/`a\.txt`/);
+ assert.match(draft,/커밋과 푸시는 하지 않았다/);
+ assert.equal(path.dirname(s.pr_draft),path.join(f.control,'tasks',f.brief.task_id));
+ assert.equal(f.git('status','--porcelain').includes('pr-draft'),false);
+ const r=run(f.root,'report',{});
+ assert.equal(r.pr_draft,s.pr_draft);
+ assert.equal(r.ac_table.length,2);
+});
