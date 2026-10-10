@@ -61,6 +61,7 @@
 - 끝난 리뷰는 남고 빈 자리만 채운다. 실패한 리뷰어는 기본값에서 빠지며, 한도가 풀렸으면 이름을 적어 다시 쓸 수 있다.
 - 기본 리뷰어가 아닌 모델은 `executors`와 `substitution_reason`으로 넣는다. 작성자 자신과 `lead`는 거절한다. 같은 회사 모델(예: Haiku 라운드를 Sonnet이)도 허용하지만 패킷의 `same_family_reviewers`에 남는다.
 - 라운드당 위임 리뷰 상한(2회)은 그대로다. 판정이 난 패널(누구도 실패하지 않은 라운드)은 다시 위임하지 않는다.
+- 같은 일꾼이 직전 반려와 같은 수용 기준(AC ID)으로 또 반려되면 패킷의 `repeated_criteria`에 남고 추천이 `REASSIGN_OTHER`로 바뀐다. 그래도 같은 일꾼에게 `REDO`하려면 `keep_owner_reason`을 적는다. APEX(Sol) 라운드와 넘길 일꾼이 없을 때는 적용하지 않는다.
 - 남은 리뷰어가 없으면 리드가 `lead-decision`에서 `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적고 빈 자리를 직접 채워 APPROVE한다(`lead_filled_seats`). 끝낸 리뷰어 중 pass가 아닌 판정이 있으면 승인되지 않는다.
 
 ## 옵트인 구현 역할 (Sonnet / Sol)

@@ -542,6 +542,17 @@ function applyAdaptiveReview(c,open,results) {
   return openLeadGate(c,{recommendation,pass_forbidden,reviewers:listed,panel_status:decision.status,verdict:decision.status==='unanimous'?decision.verdict:null,consult_id:open.id,note});
 }
 
+// classic의 자동 교체 규칙과 같은 판정: 같은 일꾼이 직전 반려와 같은 수용 기준(AC ID)으로 또 반려되면 교체 대상이다.
+function repeatedCriteria(s,blocking) {
+  const prev=s.reviews.filter(r=>r.owner===s.owner&&r.verdict!=='pass').at(-1);
+  if(!prev||!blocking.length)return [];
+  const before=new Set((prev.blocking_criteria??[]).flatMap(contract.criterionKeys));
+  return [...new Set(blocking.flatMap(contract.criterionKeys))].filter(k=>before.has(k));
+}
+const panelBlocking=records=>[...new Set(records.filter(r=>r.ok&&r.verdict!=='pass').flatMap(r=>r.blocking_criteria??[]).filter(x=>typeof x==='string'&&x.trim()))];
+// APEX는 Sol에 남는다. 그 밖에는 REASSIGN_OTHER로 넘길 수 있는 일꾼이 있을 때만 교체를 권한다.
+const swapTargets=(c,s)=>s.owner==='sol'?[]:['grok','antigravity','haiku','luna'].filter(x=>x!==s.owner&&c.pool().includes(x)&&c.canWork(x));
+
 // 증거 파일의 위치만 넘긴다. diff 본문이나 모델 호출은 넣지 않는다.
 function leadEvidence(c,consult_id) {
   const n=c.s.iteration;
@@ -556,6 +567,11 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
   const runs=collectRunUsage(c.root,s).filter(r=>r.round===n||consult_id&&r.tag.startsWith(`consult-${consult_id}-`));
   const plan=planReview(s.owner,s.assignment);
   const coverage=reviewCoverage(plan,s.review_results?.[n]??[],s.post_digest);
+  const repeated=repeatedCriteria(s,panelBlocking(s.review_results?.[n]??[]));
+  if(repeated.length&&recommendation==='REDO'&&swapTargets(c,s).length){
+    recommendation='REASSIGN_OTHER';
+    note+=`; ${s.owner} was rejected again on ${repeated.join(', ')}, so another worker is recommended`;
+  }
   const evidence=leadEvidence(c,consult_id);
   const acceptance=c.optional(`acceptance-${n}-finish.json`);
   if(acceptance)evidence.push(`acceptance-${n}-finish.json`);
@@ -565,7 +581,7 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
     base_commit:s.base_commit,baseline_digest:s.post_digest,changed_files:validation?.changed??[],
     acceptance:acceptance?{status:acceptance.status,quiescent:acceptance.quiescent===true,file:`acceptance-${n}-finish.json`}:{status:'not_recorded'},
     criteria:(brief?.success_criteria??[]).slice(0,36).map(text=>String(text).slice(0,180)),panel_status,
-    review_gaps:coverage.gaps,planned_reviewers:plan.reviewers,substitutes:coverage.substitutes,same_family_reviewers:coverage.same_family,
+    review_gaps:coverage.gaps,repeated_criteria:repeated,planned_reviewers:plan.reviewers,substitutes:coverage.substitutes,same_family_reviewers:coverage.same_family,
     quota:quotaReport(c.root),usage:runs.map(r=>({executor:r.executor,role:r.role,tokens:r.tokens,cost_usd:r.cost_usd,file:r.file})),
     decision_authority:{source:'host-controller',observed_model:s.lead_model??null,model_verified:false},
     recommendation,pass_forbidden,note,consult_id,reviewers,evidence:[...new Set(evidence)]};
@@ -1162,7 +1178,7 @@ function leadDecision(c,input) {
   const plan=planReview(s.owner,s.assignment);
   const direct=plan.reviewers.length===1&&plan.reviewers[0]==='lead';
   const records=s.review_results?.[s.iteration]??[];
-  let grant=null,next_executor=null,required_reviewer=null,phase,lead_filled=null;
+  let grant=null,next_executor=null,required_reviewer=null,phase,lead_filled=null,keep_owner=null;
   if(normalized==='APPROVE'){
     if(input.contract_change===true)throw Error('LEAD_DECISION: APPROVE is refused when the contract changed');
     const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
@@ -1187,6 +1203,12 @@ function leadDecision(c,input) {
     }
     phase='VERIFY';
   } else if(normalized==='REDO'){
+    // 같은 실수를 세 번 시키지 않는다. 그래도 같은 일꾼에게 맡기려면 리드가 이유를 남긴다.
+    const repeated=repeatedCriteria(s,panelBlocking(records));
+    if(repeated.length&&swapTargets(c,s).length){
+      keep_owner=typeof input.keep_owner_reason==='string'?input.keep_owner_reason.trim():'';
+      if(!keep_owner)throw Error(`LEAD_DECISION: ${s.owner} was rejected again on ${repeated.join(', ')}; REASSIGN_OTHER (${swapTargets(c,s).join(', ')}) or give keep_owner_reason to REDO`);
+    }
     if(s.owner==='sol'){
       if(s.assignment?.strategy!=='sol_apex'||s.assignment?.criticality!=='apex')throw Error('ROLE_GATE: Sol implements only an APEX round');
       grant=nextGrant(s,'sol','sol_apex','apex',rationale);
@@ -1223,7 +1245,8 @@ function leadDecision(c,input) {
     ...(input.tests_checked!==undefined?{tests_checked:input.tests_checked}:{}),
     ...(input.changed_scope!==undefined?{changed_scope:input.changed_scope}:{}),
     ...(grant?{implement_grant_revision:grant.revision}:{}),
-    ...(lead_filled?{lead_filled_seats:lead_filled}:{})
+    ...(lead_filled?{lead_filled_seats:lead_filled}:{}),
+    ...(keep_owner?{keep_owner_reason:keep_owner}:{})
   };
   const file=`lead-decision-${s.iteration}.json`;
   if(grant){

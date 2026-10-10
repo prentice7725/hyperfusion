@@ -260,3 +260,22 @@ test('a reviewer redo cannot be outvoted by a substitute or a lead fill',async t
  assert.throws(()=>decide(f,{diff_reviewed:true,tests_checked:['t'],changed_scope:['a.txt']}),/every mandatory review/);
  assert.throws(()=>run(f.root,'delegate-review',{executors:['haiku'],substitution_reason:'second opinion'}),/no mandatory reviewer failed/);
 });
+
+test('a second rejection on the same AC recommends another worker and REDO needs a reason',async t=>{
+ const f=adaptive(t,{reason:'repeat'});
+ f.begin();f.finish();f.mode('review-redo');
+ const first=await delegate(f);
+ assert.equal(first.out.review.recommendation,'REDO');
+ assert.deepEqual(read(task(f,'lead-packet-1.json')).repeated_criteria,[]);
+ decide(f,{decision:'REDO',rationale:'AC1 fails'});
+ f.mode('ok');f.begin();f.finish();f.mode('review-redo');
+ const second=await delegate(f);
+ assert.equal(second.out.review.recommendation,'REASSIGN_OTHER');
+ const packet=read(task(f,'lead-packet-2.json'));
+ assert.deepEqual(packet.repeated_criteria,['AC1']);
+ assert.match(packet.note,/rejected again on AC1/);
+ assert.throws(()=>decide(f,{decision:'REDO',rationale:'AC1 again'}),/keep_owner_reason/);
+ const kept=decide(f,{decision:'REDO',rationale:'AC1 again',keep_owner_reason:'only grok has the repo context'});
+ assert.equal(kept.phase,'REDO');
+ assert.equal(kept.lead_decision.keep_owner_reason,'only grok has the repo context');
+});
