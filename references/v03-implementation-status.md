@@ -19,7 +19,7 @@ v0.3은 [설정 예제](../hyperfusion.v03.config.example.json)의 `external-fir
 
 전체 `npm test`의 첫 단계는 358개 중 356 PASS, 1 FAIL, 1 SKIP였다(약 19분 42초). SKIP은 opt-in 실 CLI 검사다. FAIL은 `worker_rounds`에 Sol 키를 모든 classic 작업에도 추가한 호환성 오류였다. 실제 Sol 구현 호출이 있는 작업에만 해당 키를 추가하도록 수정한 뒤, 실패한 기존 테스트와 Sol/vendor 계측 회귀 3개가 모두 PASS했다. 전체 npm 명령을 수정 후 다시 실행하지 않았으므로 최초 실행의 실패를 숨기거나 전체 npm PASS로 표시하지 않는다.
 
-첫 단계 실패로 npm의 `&&` 후반이 생략되어 `node --test tests/acceptance-security.integration.mjs`를 별도로 실행했고 9개가 모두 PASS했다. Windows에서 프로세스 조회가 과도하게 겹치지 않도록 파일 동시 실행을 2로 제한했으며, 기존 보안 integration 실행은 유지했다.
+첫 단계 실패로 npm의 `&&` 후반이 생략되어 `node --test tests/acceptance-security.integration.mjs`를 별도로 실행했고 9개가 모두 PASS했다. 당시 파일 동시 실행을 2로 제한했으며, 후속 CI 안정화에서 Windows는 순차 실행으로 변경했다. 기존 보안 integration 실행은 유지했다.
 
 직접 수정 전후의 핵심 통합 회귀 검사 51개가 통과했다. 추가 계측·쿼터 검사 9개, 모니터 검사 18개, quota TTL/탐색 경계 검사 2개도 통과했다. 이 실행들은 일부 테스트가 중복되므로 합쳐서 독립 테스트 수로 보고하지 않는다. 상태 문서 생성 검증과 `git diff --check`도 통과했다.
 
@@ -36,3 +36,9 @@ v0.3은 [설정 예제](../hyperfusion.v03.config.example.json)의 `external-fir
 - Phase 5는 [후속 설계](app-handoff-design.md)만 작성했다. 앱 연결·외부 전송·라이선스 검증 또는 소스 재사용은 수행하지 않았다.
 
 위 항목은 로컬 mock PASS와 구분해야 한다. 이후 사용자가 작업 브랜치의 커밋·push를 명시적으로 요청했다. main 병합·release·배포는 이번 요청에 포함되지 않는다.
+
+## PR #13 후속 CI 안정화
+
+`fc0113a`의 [첫 CI 실행](https://github.com/prentice7725/hyperfusion/actions/runs/38050381143)은 Windows/Linux × Node 20/24 모두 PASS했다. [다음 실행](https://github.com/prentice7725/hyperfusion/actions/runs/38050729920)은 Windows/Node 24의 `stale passing acceptance evidence is not forwarded to another reviewer`에서 baseline 종료 증명이 실패했으며 다른 세 환경은 PASS했다. 앞의 미검증 목록은 로컬 구현 종료 시점의 기록이다. CI 확인은 실모델 smoke나 Opus 신원 확인을 대신하지 않는다.
+
+Windows CIM의 호스트 전체 프로세스 목록을 공유하는 병렬 테스트를 격리하기 위해 Windows 파일 실행을 순차화했다. 다른 OS는 동시 실행 2개를 유지한다. 제품의 orphan·quiescence 조건과 보안 integration은 그대로이며, autopilot 초기화 실패에는 baseline 원본 증거를 assertion에 포함해 원인을 숨기지 않는다. 수정 후 CI 결과는 PR checks에서 확인한다.

@@ -49,4 +49,4 @@ metrics는 implementation, review, consult 및 실패 launch를 tag별 한 호�
 
 ## 검증과 제한
 
-`npm test`는 Windows 프로세스 조회 과부하를 줄이도록 파일 동시 실행을 2로 제한한다. 테스트 내용·독립성·acceptance security integration은 유지한다. CI는 Windows/Linux × Node20/24다. 로컬 PASS는 실제 CI 또는 인증·실모델 smoke PASS와 같지 않다. live smoke는 별도 옵트인 때만 수행한다. main 병합·release·배포는 별도 허가 없이는 실행하지 않는다.
+`npm test`는 Windows에서 파일을 순차 실행하고 다른 OS에서는 파일 동시 실행을 2로 제한한다. Windows CIM의 호스트 전체 프로세스 목록을 공유하는 병렬 테스트가 서로의 orphan 검사에 영향을 주지 않도록 격리한다. 제품의 종료 증명·fail-closed 조건과 테스트 내용은 유지한다. acceptance security integration은 첫 검사가 통과한 뒤 별도로 실행한다. CI는 Windows/Linux × Node20/24다. 로컬 PASS는 실제 CI 또는 인증·실모델 smoke PASS와 같지 않다. live smoke는 별도 옵트인 때만 수행한다. main 병합·release·배포는 별도 허가 없이는 실행하지 않는다.

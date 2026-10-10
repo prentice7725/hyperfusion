@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test --test-concurrency=2 && node --test tests/acceptance-security.integration.mjs",
+    "test": "node scripts/run-tests.mjs",
     "test:acceptance-security": "node --test tests/acceptance-security.integration.mjs",
     "smoke": "bash tests/smoke.sh",
     "docs:states": "node scripts/generate-state-docs.mjs",
