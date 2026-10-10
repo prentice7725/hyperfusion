@@ -6,11 +6,12 @@ import {validateLimits} from './budgets.mjs';
 
 // 리드는 Claude Opus 5.5 하나로 고정. 구현 일꾼은 Grok, Antigravity, Sonnet·Haiku(Claude Code), Luna(Codex).
 export const EXECUTORS=['grok','antigravity','sonnet','haiku','luna'];
-// 리뷰·상담만 하는 인력까지 포함한 명단. Sol(Codex)은 쓰기 lease를 받지 않는다.
+// 리뷰·상담까지 포함한 명단. Sol은 이 구현 명단에 넣지 않는다. APEX 구현은 라운드 승인으로만 연다.
 export const REVIEWERS=['sol',...EXECUTORS];
 // 위임 리뷰는 라운드당 이 횟수까지(리뷰어가 실패하면 한 번 더). 상담 예산과 별도다.
 export const REVIEW_RUNS_PER_ROUND=2;
 export const CAP={grok:3,antigravity:3,sonnet:3,haiku:3,luna:3,lead:1};
+export const APEX_ROUND_CAP=3;
 // 상담(advisor 1명, committee 2명) 위원 실행 총량. 구현 예산과 별도다.
 export const CONSULT_CAP=4;
 // 추론 강도(reasoning_effort)로 받는 값. CLI마다 다르다(각 CLI --help 기준).
@@ -46,6 +47,32 @@ export const DEFAULT_RULES=[
  {kind:'docs',executors:['antigravity','haiku','grok','sonnet'],why:'문서는 가벼운 일꾼부터'},
  {executors:['sonnet','grok','antigravity'],why:'분류 없는 작업의 기본 순서'}
 ];
+// External-First 배치표: Sonnet·Sol은 자동 구현 후보가 아니다. Haiku는 claude_reserve가 꺼졌을 때만 뒤에 붙는다.
+export const EXTERNAL_FIRST_RULES=[
+ {kind:'image-asset',executors:['grok','luna'],why:'검증된 image-gen 능력이 있는 외부 일꾼'},
+ {kind:'code',executors:['grok','antigravity','luna'],why:'External-First: 코드는 Grok부터'},
+ {kind:'tests',executors:['grok','antigravity','luna'],why:'External-First: 테스트는 Grok부터'},
+ {kind:'refactor',executors:['grok','antigravity','luna'],why:'External-First: 리팩터는 Grok부터'},
+ {kind:'ui',executors:['antigravity','grok','luna'],why:'External-First: UI는 Antigravity부터'},
+ {kind:'docs',executors:['antigravity','grok','luna'],why:'External-First: 문서는 Antigravity부터'},
+ {executors:['grok','antigravity','luna'],why:'External-First 기본 순서'}
+];
+export const ROUTING_POLICIES=['classic','external-first'];
+// 승인 없이는 자동 구현자가 될 수 없는 일꾼. 승인은 lead-gated-adaptive의 컨트롤러 grant뿐이다.
+export const GRANT_ONLY=['sonnet','sol'];
+// 난이도별 시작 강도(작업지시서 v0.3 §5). 운영자가 reasoning_effort를 직접 적은 일꾼에는 적용하지 않는다.
+export const DIFFICULTY_EFFORT={grok:{low:'low',medium:'high',high:'xhigh'},antigravity:{low:'low',medium:'medium',high:'high'}};
+// 설정에 policy가 없으면 adaptive 리뷰 전략일 때만 External-First다. 둘 다 없으면 이전 동작 그대로.
+export const routingPolicy=c=>c?.routing?.policy??(c?.review?.strategy==='lead-gated-adaptive'?'external-first':'classic');
+export const externalFirst=c=>routingPolicy(c)==='external-first';
+// External-First에서 claude_reserve는 기본 true: Haiku를 자동으로 고르지 않는다(명시 지정은 허용, 기록됨).
+export const claudeReserve=c=>externalFirst(c)&&c?.routing?.claude_reserve!==false;
+// The same eligibility applies before routing, fallback and lease acquisition.
+export function automaticImplementer(c,name) {
+ if(!EXECUTORS.includes(name))return false;
+ if((externalFirst(c)||c?.review?.strategy==='lead-gated-adaptive')&&GRANT_ONLY.includes(name))return false;
+ return !(claudeReserve(c)&&name==='haiku');
+}
 export const DEFAULT_CONFIG={lead:'opus',lead_model:'claude-opus-5-5',lead_takeover:true,
  external:{default:'auto',available:['grok','antigravity','sonnet','haiku','luna']},
  executors:{antigravity:{sandbox:true}},
@@ -66,9 +93,17 @@ export function config(root) {
  if(['sol','astra'].includes(v.lead))throw Error('Invalid HyperFusion configuration: Codex lead config belongs to the main branch; this branch is Opus-led');
  v.lead??='opus';v.lead_model??='claude-opus-5-5';v.lead_takeover??=true;v.external??=structuredClone(DEFAULT_CONFIG.external);
  v.executors??={};v.executors.antigravity??={sandbox:true};
- for(const [k,e] of Object.entries(DEFAULT_EFFORT)){v.executors[k]??={};if(v.executors[k].reasoning_effort===undefined)v.executors[k].reasoning_effort=e;else if(v.executors[k].reasoning_effort===null)delete v.executors[k].reasoning_effort;}
+ // 운영자가 직접 적은 강도인지 기록한다. 파일에 같은 키가 있어도 컨트롤러가 다시 계산해 덮어쓴다.
+ const effortSource={};
+ for(const [k,e] of Object.entries(DEFAULT_EFFORT)){v.executors[k]??={};if(v.executors[k].reasoning_effort===undefined){v.executors[k].reasoning_effort=e;effortSource[k]='default';}else if(v.executors[k].reasoning_effort===null){delete v.executors[k].reasoning_effort;effortSource[k]='cli-default';}else effortSource[k]='config';}
+ v.effort_source=effortSource;
  v.routing={...structuredClone(DEFAULT_CONFIG.routing),...(v.routing??{})};
  v.review={...structuredClone(DEFAULT_CONFIG.review),...(v.review??{})};
+ if(v.review.strategy==='lead-gated-adaptive'&&v.routing.policy==='classic')throw Error('Adaptive review requires external-first routing');
+ if(v.routing.policy!==undefined&&!ROUTING_POLICIES.includes(v.routing.policy))throw Error('Invalid HyperFusion configuration: routing.policy must be classic or external-first');
+ if(v.routing.claude_reserve!==undefined&&typeof v.routing.claude_reserve!=='boolean')throw Error('Invalid HyperFusion configuration: routing.claude_reserve must be boolean');
+ // 사용자가 규칙을 쓰지 않았으면 External-First 배치표로 바꾼다. 사용자가 쓴 규칙의 Sonnet/Sol은 router가 거른다.
+ if(!userRules&&externalFirst(v))v.routing.rules=structuredClone(EXTERNAL_FIRST_RULES);
  const ext=v.external;
  const ok=v.lead==='opus'&&typeof v.lead_model==='string'&&/^claude-opus-[\w.-]{1,60}$/.test(v.lead_model)&&typeof v.lead_takeover==='boolean'&&ext&&Array.isArray(ext.available)&&ext.available.length&&ext.available.every(x=>EXECUTORS.includes(x))
   &&(ext.default==='auto'||ext.available.includes(ext.default))&&typeof (v.executors.antigravity.sandbox??true)==='boolean'
@@ -76,6 +111,8 @@ export function config(root) {
   &&Object.entries(v.executors).every(([k,o])=>REVIEWERS.includes(k)&&o&&typeof o==='object'&&(o.timeout_ms===undefined||(Number.isSafeInteger(o.timeout_ms)&&o.timeout_ms>0))
    &&(o.model===undefined||(typeof o.model==='string'&&/^[\w.:/-]{1,80}$/.test(o.model)))&&(o.reasoning_effort===undefined||typeof o.reasoning_effort==='string')&&validCaps(o.caps))
   &&['lead','delegate'].includes(v.review.by)&&Array.isArray(v.review.reviewers)&&v.review.reviewers.length>0&&v.review.reviewers.every(x=>REVIEWERS.includes(x))&&new Set(v.review.reviewers).size===v.review.reviewers.length&&typeof v.review.auto_apply==='boolean'
+  &&(v.review.strategy===undefined||v.review.strategy==='lead-gated-adaptive')
+  &&Object.keys(v.review).every(k=>['by','reviewers','auto_apply','strategy'].includes(k))
   &&Number.isInteger(v.routing.min_samples)&&v.routing.min_samples>0&&typeof v.routing.demote_below==='number'&&v.routing.demote_below>=0&&v.routing.demote_below<=1
   &&Number.isFinite(v.routing.half_life_days)&&v.routing.half_life_days>0&&Number.isInteger(v.routing.explore_every)&&v.routing.explore_every>=0&&Number.isInteger(v.routing.newcomer_every)&&v.routing.newcomer_every>=0;
  if(!ok)throw Error('Invalid HyperFusion configuration');

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isMain,resolveExecutable} from './platform.mjs';
-import {config,selectExecutor,CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND} from './executor-config.mjs';
+import {config,selectExecutor,CAP,APEX_ROUND_CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND,automaticImplementer} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
 import {atomic,immutable,read,repo,snapshot,changes,git,SAFE_DIFF} from './artifact.mjs';
@@ -17,9 +17,13 @@ import {readInput,printError} from './cli.mjs';
 import {SCHEMA_VERSION,ARCHITECTURE,VERSION} from './versions.mjs';
 import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
+import {collectRunUsage} from './usage-accounting.mjs';
+import {quotaReport} from './quota-policy.mjs';
 import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
-import {ensureControl,isLegacy,migrate,controlRoot,acquireLock} from './control-dir.mjs';
+import {ensureControl,isLegacy,migrate,controlRoot,controlPath,acquireLock} from './control-dir.mjs';
 import {ignoredManifest,ignoredChanges,runCommands,failureFeedback} from './acceptance.mjs';
+import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
+import {planReview,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation} from './review-plan.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 // 상담 위원에게 직접 넣어 주는 diff의 최대 길이.
@@ -56,7 +60,8 @@ function openControl(root) {
 
   // 일꾼 예산과 교체 순서
   c.pool=()=>c.s.configuration.external.available;
-  c.budget=owner=>c.s.attempts[owner]<CAP[owner];
+  c.budget=owner=>owner==='sol'?(c.s.apex_rounds??0)<APEX_ROUND_CAP:c.s.attempts[owner]<CAP[owner];
+  // 옵트인 작업의 Sonnet/Sol은 승인 없는 자동 후보가 아니다. 예산이 남아도 구현 라운드를 열지 않는다.
 
   // 배치 판단은 실행 파일 존재만 확인한다. 도움말 프로브의 일시적 실패로 예산을 버리지 않는다.
   const installMemo=new Map();
@@ -73,7 +78,14 @@ function openControl(root) {
     return installMemo.get(name);
   };
   // 예산이 남아 있고 설치도 돼 있어서 실제로 일을 시킬 수 있는 일꾼.
-  c.canWork=name=>c.budget(name)&&!c.installError(name);
+  c.canWork=name=>{
+    if(c.s?.configuration?.review?.strategy==='lead-gated-adaptive'&&(name==='sonnet'||name==='sol')){
+      const grant=c.s.implement_grant;
+      return !!(c.budget(name)&&grant&&grant.executor===name&&grant.role==='implement'&&grant.round==null&&grant.set_by==='controller'&&!c.installError(name));
+    }
+    if(!automaticImplementer(c.s.configuration,name)&&!(name==='haiku'&&explicitImplementation(c.s,name)))return false;
+    return c.budget(name)&&!c.installError(name);
+  };
   c.unavailable=()=>Object.fromEntries(c.pool().map(e=>[e,c.installError(e)]).filter(([,message])=>message));
   c.idleWorkers=()=>c.pool().filter(c.canWork);
   // 일꾼이 하나라도 남아 있으면 리드 takeover는 금지.
@@ -154,7 +166,7 @@ function finalizeTask(c,outcome) {
 }
 
 // 리드가 판단해야 하는 단계로 넘어갈 때 알린다.
-const NEEDS_LEAD=['BLOCKED','TAKEOVER_REQUIRED','DECISION_REQUIRED'];
+const NEEDS_LEAD=['BLOCKED','TAKEOVER_REQUIRED','DECISION_REQUIRED','LEAD_DECISION_REQUIRED'];
 
 function afterTransition(c,before) {
   const s=c.s;
@@ -197,13 +209,22 @@ function init(c,input) {
     projectTask={...planned,milestone:milestone.id,project:project.name};
   }
 
-  const requested=selectExecutor(configuration,input.executor);
+  const adaptive=configuration.review?.strategy==='lead-gated-adaptive';
+  // Sol은 일반 구현 명단에 없다. APEX 승인 작업에서만 init이 이 이름을 받는다.
+  const requested=adaptive&&input.executor==='sol'?'sol':selectExecutor(configuration,input.executor);
   // 예전 버전의 기록이 작업 폴더 안(.fusion)에 있으면 새 작업을 시작하지 않는다. 일꾼이 그 폴더를 고칠 수 있기 때문이다.
   if(isLegacy(c.root)){
     throw Error(`LEGACY_CONTROL_DIR: records are inside the workspace (${controlRoot(c.root)}), where workers can edit them. Run: node fusion-state.mjs migrate REPO`);
   }
   // 끝난 작업(완료, 막힘, 보관) 뒤에는 새 작업을 시작할 수 있다. 막힌 작업의 기록은 그대로 남는다.
   if(c.s&&!TERMINAL_PHASES.includes(c.s.phase))throw Error('Existing unfinished task; inspect/recover');
+  const assignment=takeAssignment(configuration,input);
+  const grant=initialGrant(assignment);
+  if(grant?.executor==='sol'&&requested!=='sol'&&requested!=='auto')throw Error('ROLE_GATE: sol_apex starts with Sol');
+  if(grant?.executor==='sonnet'&&requested!=='sonnet'&&requested!=='auto')throw Error('ROLE_GATE: sonnet_implementation starts with Sonnet');
+  if(adaptive&&requested==='sonnet'&&grant?.executor!=='sonnet')throw Error('ROLE_GATE: Sonnet needs an unconsumed controller implement grant');
+  if(adaptive&&requested==='sol'&&grant?.executor!=='sol')throw Error('ROLE_GATE: Sol implements only an APEX round');
+  if(requested==='sonnet'&&!grant&&!automaticImplementer(configuration,requested))throw Error('ROLE_GATE: Sonnet requires adaptive controller authorization');
   input=contract.brief(input);
   const limits=validateLimits({...configuration.limits,...validateLimits(input.limits)});
   if(c.writerHeld())throw Error('Existing writer; recover first');
@@ -222,6 +243,15 @@ function init(c,input) {
     };
   }
 
+  if(grant){
+    const rest=routing.candidates.filter(e=>e!==grant.executor&&e!=='sonnet'&&e!=='sol');
+    routing={...routing,mode:'authorized',executor:grant.executor,candidates:[grant.executor,...rest],reason:`controller implement grant for ${grant.executor}; ${routing.reason}`};
+  } else if(adaptive){
+    const candidates=routing.candidates.filter(e=>e!=='sonnet'&&e!=='sol');
+    const executor=candidates.includes(routing.executor)?routing.executor:candidates[0];
+    if(!executor)throw Error('ADAPTER_UNAVAILABLE: no routed executor is installed');
+    routing={...routing,executor,candidates,reason:routing.executor==='sonnet'||routing.executor==='sol'?`${routing.reason}; sonnet and sol are not automatic implementers`:routing.reason};
+  }
   const executor=routing.executor;
   const base=snapshot(c.root);
   c.s={
@@ -230,6 +260,8 @@ function init(c,input) {
     attempts:Object.fromEntries([...EXECUTORS,'lead'].map(e=>[e,0])),
     sessions:Object.fromEntries(EXECUTORS.map(e=>[e,null])),
     task_id:input.task_id,phase:'PLAN',
+    ...(assignment?{assignment}:{}),
+    ...(grant?{implement_grant:grant}:{}),
     lead:configuration.lead,lead_target_model:configuration.lead_model,lead_model:null,
     iteration:0,base_commit:base.head,baseline_dirty:!!base.status,
     writer:null,reviews:[],escalations:[],result_failures:0,started_at:new Date().toISOString(),
@@ -238,6 +270,8 @@ function init(c,input) {
   if(acceptanceBaseline(c,input)===false)return c.s;
   c.art('initial-brief.json',input);
   c.art('baseline.json',base);
+  if(assignment)c.art('assignment.json',assignment);
+  if(grant)c.art(`implement-grant-${grant.revision}.json`,grant);
   c.save();
 
   if(projectTask){
@@ -273,6 +307,9 @@ function archive(c,input) {
 function status(c,input={}) {
   const s=c.s;
   const remaining=Object.fromEntries(Object.keys(CAP).map(k=>[k,CAP[k]-s.attempts[k]]));
+  if(input.summary===true&&input.monitor===true)throw Error('status summary and monitor are separate views');
+  // 감시는 작업 단계와 별개다. 성공을 선언하지 않고, summary 계약에도 필드를 넣지 않는다.
+  if(input.monitor===true)return {task_id:s.task_id,monitors:readRoundMonitors(c.taskdir()),declares_success:false};
   if(input.summary===true)return {task_id:s.task_id,phase:s.phase,owner:s.owner,remaining,next_action:nextAction(s.phase,!!s.open_consult),
     ...(s.acceptance?{acceptance:{round:s.acceptance.round,stage:s.acceptance.stage,status:s.acceptance.status}}:{})};
   return {
@@ -303,7 +340,31 @@ function consult(c,input) {
   }
   if(typeof input.question!=='string'||!input.question.trim())throw Error('Consult requires a concrete question');
   if(input.focus!==undefined&&!(Array.isArray(input.focus)&&input.focus.every(x=>typeof x==='string')))throw Error('Invalid focus');
-  const size=mode==='committee'?2:1;
+  const adaptive=mode==='review'&&s.configuration.review.strategy==='lead-gated-adaptive';
+  let adaptivePlan=null;
+  let size=mode==='committee'?2:1;
+  const explicit=input.executors!==undefined;
+  let picks;
+  if(adaptive){
+    const recorded=c.optional('assignment.json');
+    if(!sameAssignment(recorded,s.assignment))throw Error('ADAPTIVE_REVIEW: assignment does not match the controller record');
+    adaptivePlan=planReview(s.owner,s.assignment);
+    if(adaptivePlan.reviewers.length===1&&adaptivePlan.reviewers[0]==='lead'){
+      throw Error('ADAPTIVE_REVIEW: this round requires a direct lead review; delegated reviewers are refused');
+    }
+    if(explicit){
+      const asked=[...input.executors];
+      const same=asked.length===adaptivePlan.reviewers.length&&adaptivePlan.reviewers.every(e=>asked.includes(e));
+      if(!same)throw Error('ADAPTIVE_REVIEW: reviewer list must match the controller plan for '+s.owner);
+    }
+    if(adaptivePlan.reviewers.includes(s.owner))throw Error('ADAPTIVE_REVIEW: self-review is refused');
+    const failed=s.review_failed?.[s.iteration]??[];
+    if(failed.some(e=>adaptivePlan.reviewers.includes(e))||s.review_results?.[s.iteration]?.length){
+      throw Error('ADAPTIVE_REVIEW: mandatory review already failed or finished; no substitute reviewer');
+    }
+    picks=adaptivePlan.reviewers;
+    size=picks.length;
+  }
   if(mode!=='review'&&(s.consult_runs??0)+size>CONSULT_CAP){
     throw Error(`Consult cap reached (${CONSULT_CAP} member runs per task)`);
   }
@@ -316,9 +377,8 @@ function consult(c,input) {
     }
     return e;
   };
-  const explicit=input.executors!==undefined;
-  let picks;
-  if(explicit){
+  // adaptive는 위에서 필수 리뷰어를 정했다. 설정 목록으로 빼거나 순서를 바꾸지 않는다.
+  if(!adaptive&&explicit){
     if(!Array.isArray(input.executors)||input.executors.length!==size||new Set(input.executors).size!==size){
       throw Error(`${mode} needs ${size} distinct executor(s)`);
     }
@@ -327,10 +387,10 @@ function consult(c,input) {
     if(mode==='review'&&picks.includes(s.owner)){
       throw Error(`${s.owner} implemented round ${s.iteration}; pick a different reviewer`);
     }
-  } else if(mode==='review'){
+  } else if(!adaptive&&mode==='review'){
     const failed=s.review_failed?.[s.iteration]??[];
     picks=s.configuration.review.reviewers.filter(e=>e!==s.owner&&!failed.includes(e));
-  } else {
+  } else if(!adaptive){
     // 기본: 방금 일한 일꾼은 뒤로. 자기 작업을 자기가 검사하지 않게 하고, 위원회는 서로 다른 모델로 꾸린다.
     const order=[...new Set([...s.routing.candidates,...c.pool()])].filter(e=>c.pool().includes(e));
     picks=[...order.filter(e=>e!==s.owner),...order.filter(e=>e===s.owner)];
@@ -341,7 +401,7 @@ function consult(c,input) {
     if(members.length===size)break;
     let cli;
     try{cli=adapter(e).probe(s.configuration.executors[e]??{});}
-    catch(err){if(explicit)throw err;continue;}
+    catch(err){if(explicit||adaptive)throw err;continue;}
     members.push({member:'m'+(members.length+1),executor:e,cli});
   }
   if(members.length<size){
@@ -374,12 +434,20 @@ function consult(c,input) {
     const d=a.dispatch(brief,{token:'consult',owner:m.executor},{
       session:a.newSession(),resume:false,probe:m.cli,
       promptFile:path.join(c.taskdir(),`prompt-consult-${id}-${m.member}.txt`),
-      options:s.configuration.executors[m.executor]??{}
+      options:{...(s.configuration.executors[m.executor]??{}),...(adaptivePlan?.effort?.[m.executor]?{reasoning_effort:adaptivePlan.effort[m.executor]}:{})}
     });
     return [m.member,{transport:'executor-cli',kind:'consult',executor:m.executor,...d,task_id:s.task_id,consult_id:id,member:m.member}];
   });
 
   const base=snapshot(c.root);
+  let storedPlan=null;
+  if(adaptive){
+    storedPlan={version:1,task_id:s.task_id,round:n,owner:s.owner,criticality:adaptivePlan.criticality,strategy:adaptivePlan.strategy,reviewers:[...adaptivePlan.reviewers],effort:adaptivePlan.effort,revision:s.assignment.revision,baseline_digest:base.digest};
+    const prior=c.optional(`review-plan-${n}.json`);
+    if(prior){
+      if(!samePlan(prior,storedPlan)||prior.baseline_digest!==base.digest)throw Error('ADAPTIVE_REVIEW: frozen review plan does not match this round snapshot');
+    }else c.art(`review-plan-${n}.json`,storedPlan);
+  }
   const roster=members.map(({member,executor})=>({member,executor}));
   c.art(`consult-${id}-base.json`,base);
   for(const [member,request] of requests)c.art(`consult-${id}-${member}.json`,request);
@@ -388,7 +456,7 @@ function consult(c,input) {
   if(mode==='review')s.review_runs={...(s.review_runs??{}),[n]:(s.review_runs?.[n]??0)+1};
   else s.consult_runs=(s.consult_runs??0)+size;
   s.hint=null;
-  s.open_consult={id,mode,members:roster,digest:base.digest,started_at:new Date().toISOString()};
+  s.open_consult={id,mode,members:roster,digest:base.digest,started_at:new Date().toISOString(),...(storedPlan?{adaptive:true,plan:storedPlan}:{})};
   c.save();
   return {
     consult_id:id,mode,members:roster,command:process.execPath,args:[BRIDGE,c.root,'--consult',id],
@@ -428,9 +496,78 @@ function consultFinish(c,input) {
   }
 
   let applied=null;
-  if(open.mode==='review'&&!violated)applied=applyDelegatedReview(c,open,members[0],results[0]);
+  if(open.mode==='review'&&!violated)applied=open.adaptive?applyAdaptiveReview(c,open,results):applyDelegatedReview(c,open,members[0],results[0]);
   c.save();
   return {...record,results,phase:s.phase,...(applied?{review:applied}:{})};
+}
+
+// 옵트인 리뷰. 합의·불일치·누락 모두 리드 게이트에서 멈춘다. auto_apply와 adopt는 이 판정을 적용하지 않는다.
+function applyAdaptiveReview(c,open,results) {
+  const s=c.s;
+  const plan=open.plan;
+  const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
+  const byExecutor=new Map(results.filter(Boolean).map(r=>[r.executor,r]));
+  const records=plan.reviewers.map(executor=>{
+    const result=byExecutor.get(executor);
+    if(!result)return {executor,ok:false,verdict:null,digest:open.digest,consult_id:open.id};
+    let verdict=result.recommended_verdict;
+    let blocking=Array.isArray(result.blocking_criteria)?result.blocking_criteria:[];
+    if(verdict==='pass'&&raw.status!=='complete'){
+      verdict='redo';
+      blocking=['worker reported '+raw.status];
+    }
+    return {executor,ok:true,verdict,blocking_criteria:blocking,summary:result.summary,confidence:result.confidence,findings:result.findings??[],digest:open.digest,consult_id:open.id};
+  });
+  s.review_results={...(s.review_results??{}),[s.iteration]:records};
+  const decision=aggregateVerdicts(records);
+  const listed=records.map(r=>({executor:r.executor,verdict:r.verdict,digest:r.digest}));
+  let recommendation=null,pass_forbidden=true,note;
+  if(decision.status==='reviewer_failed'){
+    const missing=records.filter(r=>!r.ok).map(r=>r.executor);
+    s.review_failed={...(s.review_failed??{}),[s.iteration]:[...new Set([...(s.review_failed?.[s.iteration]??[]),...missing])]};
+    note='mandatory reviewer did not finish; no substitute reviewer; APPROVE is refused';
+  } else if(decision.status!=='unanimous'||records.some(r=>r.digest!==s.post_digest)){
+    note='mandatory reviews disagree or the digest does not match the round; a pass is not synthesized';
+  } else {
+    recommendation={pass:'APPROVE',redo:'REDO',alternative:'REASSIGN_OTHER',decision:'ESCALATE'}[decision.verdict]??null;
+    pass_forbidden=decision.verdict!=='pass';
+    note=pass_forbidden?'the panel is not a unanimous pass; APPROVE is refused':'unanimous pass on the round digest; a lead-decision is required and APPROVE does not CLOSE';
+  }
+  return openLeadGate(c,{recommendation,pass_forbidden,reviewers:listed,panel_status:decision.status,verdict:decision.status==='unanimous'?decision.verdict:null,consult_id:open.id,note});
+}
+
+// 증거 파일의 위치만 넘긴다. diff 본문이나 모델 호출은 넣지 않는다.
+function leadEvidence(c,consult_id) {
+  const n=c.s.iteration;
+  const names=[`validation-${n}.json`,`raw-result-${n}.json`,`post-${n}.json`,`brief-${n}.json`,`review-plan-${n}.json`,`assignment.json`,`usage-${n}.json`];
+  if(consult_id)names.push(`consult-${consult_id}-base.json`,`consult-${consult_id}-finish.json`);
+  return names.filter(name=>fs.existsSync(path.join(c.taskdir(),name)));
+}
+
+function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,verdict,consult_id,note}) {
+  const s=c.s,n=s.iteration;
+  const dispatch=c.optional(`dispatch-${n}.json`),brief=c.optional(`brief-${n}.json`),validation=c.optional(`validation-${n}.json`);
+  const runs=collectRunUsage(c.root,s).filter(r=>r.round===n||consult_id&&r.tag.startsWith(`consult-${consult_id}-`));
+  const required=planReview(s.owner,s.assignment).reviewers;
+  const evidence=leadEvidence(c,consult_id);
+  const acceptance=c.optional(`acceptance-${n}-finish.json`);
+  if(acceptance)evidence.push(`acceptance-${n}-finish.json`);
+  for(const run of runs)if(run.file)evidence.push(run.file);
+  const packet={version:1,task_id:s.task_id,round:n,owner:s.owner,model:dispatch?.cli?.model??null,
+    effort:implementDispatch(s,s.owner).options.reasoning_effort??null,criticality:s.assignment?.criticality??'standard',
+    base_commit:s.base_commit,baseline_digest:s.post_digest,changed_files:validation?.changed??[],
+    acceptance:acceptance?{status:acceptance.status,quiescent:acceptance.quiescent===true,file:`acceptance-${n}-finish.json`}:{status:'not_recorded'},
+    criteria:(brief?.success_criteria??[]).slice(0,36).map(text=>String(text).slice(0,180)),panel_status,
+    review_gaps:required.filter(e=>e!=='lead'&&!reviewers.some(r=>r.executor===e&&r.verdict==='pass')),
+    quota:quotaReport(c.root),usage:runs.map(r=>({executor:r.executor,role:r.role,tokens:r.tokens,cost_usd:r.cost_usd,file:r.file})),
+    decision_authority:{source:'host-controller',observed_model:s.lead_model??null,model_verified:false},
+    recommendation,pass_forbidden,note,consult_id,reviewers,evidence:[...new Set(evidence)]};
+  c.art(`lead-packet-${n}.json`,packet);
+  s.pending_review=null;
+  s.phase='LEAD_DECISION_REQUIRED';
+  s.lead_packet={round:n,file:`lead-packet-${n}.json`,recommendation,pass_forbidden};
+  c.save();
+  return {status:'lead_gate',panel_status,verdict,recommendation,pass_forbidden,reviewers,phase:s.phase,next_action:'lead-decision'};
 }
 
 // 위임 리뷰어의 결과를 판정으로 바꿔 적용한다.
@@ -482,15 +619,22 @@ function begin(c,input) {
   try{assertBudget(c.root,s);}catch(e){if(e.code==='BUDGET_EXCEEDED'){s.phase='BLOCKED';s.budget_error=e.message;c.save();}throw e;}
 
   let owner;
+  const adaptive=s.configuration.review?.strategy==='lead-gated-adaptive';
   if(s.phase==='TAKEOVER_REQUIRED'){
     owner='lead';
     if(typeof input.takeover_reason!=='string'||!input.takeover_reason.trim())throw Error('Takeover requires a recorded reason');
   } else if(s.phase==='ALTERNATIVE_REQUIRED'){
     // 지정이 없으면 배치표에서 방금 반려된 일꾼 다음 순번부터 돌아가며 예산 있는 일꾼을 투입한다.
+    // Sol은 배치표에 없다. 승인된 재지시만 명시 이름으로 받는다.
     const pick=input.executor===undefined||input.executor==='auto';
-    owner=pick
-      ?c.rotation().find(e=>e!==s.owner&&c.canWork(e))
-      :selectExecutor(s.configuration,input.executor);
+    // 리드 결정이 이 라운드의 다음 작성자를 묶었으면 배치표가 그 결정을 바꾸지 않는다.
+    const decided=s.lead_decision?.round===s.iteration?s.lead_decision.next_executor??null:null;
+    if(decided&&!pick&&input.executor!==decided)throw Error('ROLE_GATE: this alternative is bound to '+decided);
+    owner=decided
+      ?adaptive&&decided==='sol'?'sol':selectExecutor(s.configuration,decided)
+      :pick
+        ?c.rotation().find(e=>e!==s.owner&&c.canWork(e))
+        :adaptive&&input.executor==='sol'?'sol':selectExecutor(s.configuration,input.executor);
     if(!owner&&pick){
       // 예산이 남은 일꾼이 있어도 설치돼 있지 않으면 쓸 수 없다. 이 단계에 갇히지 않게 다음 단계(takeover 또는 BLOCKED)로 옮긴다.
       s.phase=c.exhausted();
@@ -509,7 +653,7 @@ function begin(c,input) {
       if(requested===undefined||requested===owner||requested==='auto'){
         throw Error(`ADAPTER_UNAVAILABLE: ${owner}; phase is now ALTERNATIVE_REQUIRED; retry begin with an available executor`);
       }
-      owner=selectExecutor(s.configuration,requested);
+      owner=adaptive&&requested==='sol'?'sol':selectExecutor(s.configuration,requested);
     }
     if(input.executor!==undefined&&input.executor!==owner)throw Error('Executor switch requires an alternative verdict');
   }
@@ -528,20 +672,32 @@ function begin(c,input) {
     input={...input,lead_feedback:items};
   }
   if(s.phase!=='PLAN'&&owner!=='lead')contract.feedback(input.lead_feedback);
+  for(const key of ['task_criticality','assignment_strategy','assignment_reason','authorized_implementer','implement_grant','role_for_round']){
+    if(input[key]!==undefined)throw Error('ROLE_GATE: implement grants are controller records, not brief fields');
+  }
+  const pending=assertImplementRound(s,owner);
+  const manual=input.executor===owner||explicitImplementation(s,owner);
+  if(owner!=='lead'&&!pending&&!automaticImplementer(s.configuration,owner)&&!(owner==='haiku'&&manual)){
+    throw Error('ROLE_GATE: '+owner+' is not an eligible automatic implementer');
+  }
+  if(pending){
+    const recorded=c.optional(`implement-grant-${pending.revision}.json`);
+    if(!sameGrant(recorded,pending))throw Error('ROLE_GATE: implement grant does not match the controller record');
+  }
   if(!c.budget(owner))throw Error(owner+' round cap reached');
 
   const round=s.iteration+1;
   const a=owner==='lead'?null:adapter(owner);
   const session=a?(s.sessions[owner]??a.newSession()):null;
   const resume=!!(a&&s.sessions[owner]);
-  const options=s.configuration.executors[owner]??{};
   const promptFile=path.join(c.taskdir(),`prompt-${round}.txt`);
   const brief={...input,repo_root:c.root,round};
+  const planned=implementDispatch(s,owner);
 
   // 프로브와 인자 검증은 lease 획득·시도 소모 전에 끝낸다.
   // 실패해도 phase와 시도 예산을 유지해 같은 일꾼으로 다시 시작할 수 있다.
-  const cli=a?a.probe(options):null;
-  if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options});
+  const cli=a?a.probe(planned.options):null;
+  if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options:planned.options,apexGrant:planned.apexGrant});
 
   if(acceptanceBaseline(c,input)===false)return s;
   const lease=acquire(c.root,s.task_id,round,owner);
@@ -551,7 +707,9 @@ function begin(c,input) {
   s.writer=lease;
   s.iteration=round;
   s.owner=owner;
-  s.attempts[owner]++;
+  s.implementation_selection={executor:owner,source:manual?'explicit':pending?'controller-grant':'automatic',round};
+  if(pending)s.implement_grant={...pending,round};
+  if(owner==='sol')s.apex_rounds=(s.apex_rounds??0)+1;else s.attempts[owner]++;
   if(a){
     s.active_executor=owner;
     if(session)s.sessions[owner]=session;
@@ -565,7 +723,7 @@ function begin(c,input) {
   const request=a
     ?{
       transport:'executor-cli',executor:owner,command:process.execPath,args:[BRIDGE,c.root],
-      ...a.dispatch(brief,lease,{session,resume,probe:cli,promptFile,options}),
+      ...a.dispatch(brief,lease,{session,resume,probe:cli,promptFile,...implementDispatch(s,owner)}),
       task_id:s.task_id,round,token:lease.token
     }
     :{transport:'lead-takeover',brief,token:lease.token};
@@ -654,6 +812,15 @@ function finish(c,input) {
       rationale:`Acceptance commands failed after finish (${failed.map(r=>r.command).join(', ')}); returned to the worker without lead review`,
       blocking_criteria:failed.map(r=>'Acceptance: '+r.command),commands_run:brief.acceptance_commands,
       independent_diff_review:true,acceptance_feedback:failureFeedback(acc.results)});
+  }
+  // 수용 실패는 컨트롤러 재지시다. 모델 pass는 여기로 오지 않는다. Sol처럼 리뷰어가 리드뿐이면 위임 없이 게이트로 올린다.
+  if(s.configuration.review?.strategy==='lead-gated-adaptive'){
+    if(!sameAssignment(c.optional('assignment.json'),s.assignment))throw Error('ADAPTIVE_REVIEW: assignment does not match the controller record');
+    const plan=planReview(s.owner,s.assignment);
+    if(plan.reviewers.length===1&&plan.reviewers[0]==='lead'){
+      openLeadGate(c,{recommendation:null,pass_forbidden:false,reviewers:[],panel_status:'direct',verdict:null,consult_id:null,
+        note:'direct lead review is required; delegated reviewers are refused'});
+    }
   }
   return s;
 }
@@ -761,6 +928,11 @@ function acceptanceHalt(c,evidence) {
 
 // ── 리뷰 ────────────────────────────────────────────────────────────
 
+// 소모된 Sonnet/Sol 승인은 자동 교체로 넘어가지 않는다. 같은 작성자의 다음 라운드는 새 승인이 있어야 시작한다.
+const consumedSpecialist=s=>s.configuration.review?.strategy==='lead-gated-adaptive'
+  &&(s.owner==='sol'||s.owner==='sonnet')
+  &&s.implement_grant?.executor===s.owner&&s.implement_grant.round!=null;
+
 // 판정을 적용한다. 리드가 직접 내린 판정이든 위임 리뷰어의 판정이든 같은 규칙을 거친다.
 function applyReview(c,input) {
   const s=c.s;
@@ -796,6 +968,7 @@ function applyReview(c,input) {
   else if(verdict==='alternative')s.phase='ALTERNATIVE_REQUIRED';
   else if(s.owner==='lead')s.phase='BLOCKED';
   // 같은 반려 사유를 두 번 받은 일꾼은 다른 일꾼이 있으면 교체한다.
+  else if(consumedSpecialist(s))s.phase='REDO';
   else if(!c.canWork(s.owner)||(assessment.hard&&c.pool().some(x=>x!==s.owner&&c.canWork(x))))s.phase=c.exhausted();
   else s.phase='REDO';
 
@@ -814,6 +987,11 @@ function applyReview(c,input) {
 
 function review(c,input) {
   if(c.writerHeld())throw Error('Writer still present; recover');
+  const s=c.s;
+  // 옵트인 작업의 출구는 review()가 아니다. 게이트에 있으면 액션 자체가 거부되고, REVIEW에 있어도 채택으로 VERIFY에 닿지 않는다.
+  if(s.configuration.review?.strategy==='lead-gated-adaptive'){
+    throw Error('ADAPTIVE_REVIEW: the lead cannot replace a missing independent review; record a lead-decision');
+  }
   // adopt: 보류된 위임 판정을 그대로 채택. 아니면 리드 자신의 판정(위임 판정이 있었다면 덮어쓴 것으로 기록).
   if(input.adopt===true){
     if(!c.s.pending_review)throw Error('No pending delegated review to adopt');
@@ -829,7 +1007,7 @@ function decide(c,input) {
   const s=c.s;
   if(typeof input.decision!=='string'||!input.decision.trim())throw Error('Record architecture decision');
   c.art(`decision-${s.iteration}.json`,input);
-  s.phase=s.owner!=='lead'&&c.canWork(s.owner)?'REDO':c.exhausted();
+  s.phase=s.owner!=='lead'&&(c.canWork(s.owner)||consumedSpecialist(s))?'REDO':c.exhausted();
   c.save();
   return s;
 }
@@ -919,7 +1097,7 @@ function recover(c,input) {
   if(c.writerHeld())release(c.root,input.token);
   s.writer=null;
   fs.rmSync(acceptanceMarker(c),{force:true});
-  s.phase=s.iteration===0?'PLAN':s.result_failures>=2||s.owner==='lead'||!c.canWork(s.owner)?c.exhausted():'REDO';
+  s.phase=s.iteration===0?'PLAN':s.result_failures>=2||s.owner==='lead'||(!c.canWork(s.owner)&&!consumedSpecialist(s))?c.exhausted():'REDO';
   c.save();
   return s;
 }
@@ -934,7 +1112,150 @@ const stampExceptions=(list,round)=>list.map(e=>({...e,round,at:new Date().toISO
 
 // ── 진입점 ──────────────────────────────────────────────────────────
 
-const ACTIONS={consult,'consult-finish':consultFinish,begin,finish,review,decide,verify,recover};
+const LEAD_DECISIONS=['APPROVE','REDO','REASSIGN_TO_SONNET','REASSIGN_OTHER','ESCALATE','BLOCK'];
+const namedEvidence=v=>typeof v==='string'?v.trim().length>0:Array.isArray(v)&&v.length>0&&v.every(x=>typeof x==='string'&&x.trim());
+
+function roundUsage(c) {
+  const file=`usage-${c.s.iteration}.json`;
+  const usage=c.optional(file);
+  return usage?{recorded:true,file,usage}:{recorded:false};
+}
+
+function nextGrant(s,executor,strategy,criticality,reason) {
+  if(executor==='sol'&&(s.apex_rounds??0)>=APEX_ROUND_CAP)throw Error('ROLE_GATE: Sol APEX round cap reached; BLOCK or approve verified work');
+  if(s.implement_grant&&s.implement_grant.round==null)throw Error('ROLE_GATE: an implement grant is already open');
+  return makeGrant({executor,strategy,criticality,reason,revision:(s.implement_grant?.revision??0)+1});
+}
+
+// 옵트인 작업의 최종 판정. 모델 호출은 하지 않고, APPROVE도 CLOSE로 가지 않는다.
+function leadDecision(c,input) {
+  const s=c.s;
+  if(s.configuration.review?.strategy!=='lead-gated-adaptive')throw Error('LEAD_DECISION: the lead gate is only for lead-gated-adaptive');
+  if(c.writerHeld())throw Error('Writer still present; recover');
+  if(!sameAssignment(c.optional('assignment.json'),s.assignment))throw Error('ADAPTIVE_REVIEW: assignment does not match the controller record');
+  const requested=input.decision;
+  const normalized=requested==='REDO_SAME_OWNER'?'REDO':requested;
+  if(!LEAD_DECISIONS.includes(normalized))throw Error('LEAD_DECISION: decision must be APPROVE, REDO, REDO_SAME_OWNER, REASSIGN_TO_SONNET, REASSIGN_OTHER, ESCALATE, or BLOCK');
+  const rationale=typeof input.rationale==='string'?input.rationale.trim():'';
+  if(!rationale)throw Error('LEAD_DECISION: rationale must be text');
+  if(input.decision_usage!==undefined){
+    const u=input.decision_usage;
+    if(!u||typeof u.source!=='string'||!u.source.trim()||u.source.length>120||!Number.isFinite(u.total_tokens)||u.total_tokens<0||Object.keys(u).some(k=>!['source','total_tokens'].includes(k)))throw Error('LEAD_DECISION: decision_usage requires source and nonnegative total_tokens');
+  }
+  if(typeof input.contract_change!=='boolean')throw Error('LEAD_DECISION: contract_change must be boolean');
+  if(input.baseline_digest!==s.post_digest)throw Error('LEAD_DECISION: baseline_digest does not match the round digest');
+  if(snapshot(c.root).digest!==s.post_digest){
+    s.phase='RECOVERY_REQUIRED';
+    c.save();
+    throw Error('Tree drift before lead decision');
+  }
+  const plan=planReview(s.owner,s.assignment);
+  const direct=plan.reviewers.length===1&&plan.reviewers[0]==='lead';
+  const records=s.review_results?.[s.iteration]??[];
+  let grant=null,next_executor=null,required_reviewer=null,phase;
+  if(normalized==='APPROVE'){
+    if(input.contract_change===true)throw Error('LEAD_DECISION: APPROVE is refused when the contract changed');
+    const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
+    if(raw.status!=='complete')throw Error('LEAD_DECISION: an incomplete result cannot be approved');
+    if(direct){
+      if(input.diff_reviewed!==true)throw Error('LEAD_DECISION: APPROVE requires diff_reviewed:true after reading the diff');
+      if(!namedEvidence(input.tests_checked))throw Error('LEAD_DECISION: APPROVE requires tests_checked naming the tests that were read');
+      if(!namedEvidence(input.changed_scope))throw Error('LEAD_DECISION: APPROVE requires changed_scope naming the change that was read');
+    } else {
+      const panel=aggregateVerdicts(records);
+      const covered=plan.reviewers.every(e=>records.some(r=>r.executor===e&&r.ok&&r.verdict==='pass'&&r.digest===s.post_digest));
+      if(panel.status!=='unanimous'||panel.verdict!=='pass'||panel.digest!==s.post_digest||!covered){
+        throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest');
+      }
+    }
+    phase='VERIFY';
+  } else if(normalized==='REDO'){
+    if(s.owner==='sol'){
+      if(s.assignment?.strategy!=='sol_apex'||s.assignment?.criticality!=='apex')throw Error('ROLE_GATE: Sol implements only an APEX round');
+      grant=nextGrant(s,'sol','sol_apex','apex',rationale);
+    } else if(s.owner==='sonnet'){
+      grant=nextGrant(s,'sonnet','reassign_to_sonnet',s.assignment.criticality,rationale);
+    }
+    phase='REDO';
+  } else if(normalized==='REASSIGN_TO_SONNET'){
+    if(s.assignment?.strategy==='sol_apex')throw Error('ROLE_GATE: an APEX task stays with Sol');
+    if(s.owner==='sonnet')throw Error('LEAD_DECISION: REASSIGN_TO_SONNET requires a different executor; use REDO for the same owner');
+    grant=nextGrant(s,'sonnet','reassign_to_sonnet',s.assignment.criticality,rationale);
+    next_executor='sonnet';
+    required_reviewer='sol';
+    phase='ALTERNATIVE_REQUIRED';
+  } else if(normalized==='REASSIGN_OTHER'){
+    const allowed=['grok','antigravity','haiku','luna'];
+    if(input.executor!==undefined){
+      if(!allowed.includes(input.executor))throw Error('LEAD_DECISION: REASSIGN_OTHER executor must be grok, antigravity, haiku, or luna');
+      if(input.executor===s.owner)throw Error('LEAD_DECISION: REASSIGN_OTHER requires a different executor');
+    }
+    next_executor=input.executor??null;
+    phase='ALTERNATIVE_REQUIRED';
+  } else if(normalized==='ESCALATE'){
+    phase='DECISION_REQUIRED';
+  } else {
+    phase='BLOCKED';
+  }
+  const record={
+    decision:normalized,requested_decision:requested,rationale,baseline_digest:s.post_digest,contract_change:input.contract_change,
+    round:s.iteration,owner:s.owner,required_reviewer,next_executor,consumed_usage:roundUsage(c),
+    implementation_usage:roundUsage(c),decision_usage:input.decision_usage??null,
+    authority:{source:'controller-command',observed_model:s.lead_model??null,model_verified:false},
+    ...(input.diff_reviewed!==undefined?{diff_reviewed:input.diff_reviewed===true}:{}),
+    ...(input.tests_checked!==undefined?{tests_checked:input.tests_checked}:{}),
+    ...(input.changed_scope!==undefined?{changed_scope:input.changed_scope}:{}),
+    ...(grant?{implement_grant_revision:grant.revision}:{})
+  };
+  const file=`lead-decision-${s.iteration}.json`;
+  if(grant){
+    s.implement_grant=grant;
+    c.art(`implement-grant-${grant.revision}.json`,grant);
+  }
+  c.art(file,record);
+  s.lead_decision={...record,file};
+  if(normalized!=='APPROVE'){
+    const blocking=[...new Set(records.flatMap(r=>r.blocking_criteria??[]).filter(x=>typeof x==='string'&&x.trim()))];
+    s.reviews.push({
+      verdict:normalized==='REDO'?'redo':normalized==='ESCALATE'||normalized==='BLOCK'?'decision':'alternative',
+      rationale,blocking_criteria:blocking.length?blocking:[rationale],commands_run:['lead-decision'],
+      independent_diff_review:direct?input.diff_reviewed===true:true,reviewed_by:'lead',lead_decision:normalized,
+      owner:s.owner,round:s.iteration,findings:records.flatMap(r=>Array.isArray(r.findings)?r.findings:[])
+    });
+  }
+  s.pending_review=null;
+  s.phase=phase;
+  c.save();
+  return {status:'decided',decision:normalized,phase:s.phase,lead_decision:s.lead_decision};
+}
+
+// 한 라운드짜리 구현 승인. 워커를 띄우지 않고, 기존 writer가 있으면 거절한다.
+function grantImplement(c,input) {
+  const s=c.s;
+  if(s.configuration.review?.strategy!=='lead-gated-adaptive')throw Error('ROLE_GATE: implement grants require review.strategy lead-gated-adaptive');
+  if(!sameAssignment(c.optional('assignment.json'),s.assignment))throw Error('ADAPTIVE_REVIEW: assignment does not match the controller record');
+  if(c.writerHeld())throw Error('Writer still present; recover');
+  if(s.implement_grant&&s.implement_grant.round==null)throw Error('ROLE_GATE: an implement grant is already open');
+  const reason=typeof input.reason==='string'?input.reason.trim():'';
+  if(!reason)throw Error('ROLE_GATE: grant reason must be text');
+  const revision=(s.implement_grant?.revision??0)+1;
+  let grant;
+  if(input.executor==='sonnet'){
+    if(input.strategy!=='reassign_to_sonnet')throw Error('ROLE_GATE: Sonnet reassignment requires strategy reassign_to_sonnet');
+    if(s.assignment?.strategy==='sol_apex')throw Error('ROLE_GATE: an APEX task stays with Sol');
+    grant=makeGrant({executor:'sonnet',strategy:'reassign_to_sonnet',criticality:s.assignment.criticality,reason,revision});
+  } else if(input.executor==='sol'){
+    if(input.strategy!=='sol_apex')throw Error('ROLE_GATE: Sol implement grant requires strategy sol_apex');
+    if(s.assignment?.strategy!=='sol_apex'||s.assignment?.criticality!=='apex')throw Error('ROLE_GATE: Sol implements only an APEX round');
+    grant=makeGrant({executor:'sol',strategy:'sol_apex',criticality:'apex',reason,revision});
+  } else throw Error('ROLE_GATE: only sonnet or sol can receive an implement grant');
+  s.implement_grant=grant;
+  c.art(`implement-grant-${grant.revision}.json`,grant);
+  c.save();
+  return {status:'granted',grant};
+}
+
+const ACTIONS={consult,'consult-finish':consultFinish,begin,finish,review,decide,verify,recover,'grant-implement':grantImplement,'lead-decision':leadDecision};
 
 export function run(root,action,input={}) {
   root=repo(root);
@@ -1011,14 +1332,43 @@ if(isMain(import.meta.url)) {
       console.log(JSON.stringify(migrate(repo(root)),null,2));
       process.exit(0);
     }
+    // 감시는 읽기 전용이다. --watch가 컨트롤러 잠금을 잡고 있으면 라운드가 멈춘다.
+    if(action==='monitor'){
+      const resolved=repo(root);
+      if(file)throw Error('monitor reads the task directory; it does not take an input file');
+      const watch=flags.includes('--watch');
+      if(watch&&flags.includes('--once'))throw Error('monitor accepts only one of --once or --watch');
+      if(flags.some(flag=>flag!=='--watch'&&flag!=='--once'))throw Error('monitor accepts --once or --watch');
+      const stateFile=controlPath(resolved,'state.json');
+      if(!fs.existsSync(stateFile))throw Error('Initialize first');
+      const state=read(stateFile);
+      if(!state?.task_id)throw Error('Initialize first');
+      const taskdir=controlPath(resolved,'tasks',state.task_id);
+      const text=()=>formatWatch(readRoundMonitors(taskdir));
+      process.stdout.write(text());
+      if(watch){
+        let last=text();
+        const timer=setInterval(()=>{
+          const next=text();
+          if(next!==last){last=next;process.stdout.write(next);}
+        },1000);
+        const stop=()=>{clearInterval(timer);process.exit(0);};
+        process.on('SIGINT',stop);process.on('SIGTERM',stop);
+      }
+    } else {
     const input=readInput(file);
-    if(action==='status'&&flags[0]==='--summary'&&flags.length===1){input.summary=true;flags.length=0;}
+    if(action==='status'&&flags.includes('--summary')&&flags.includes('--monitor'))throw Error('status summary and monitor are separate views');
+    if(action==='status'&&flags.length===1&&(flags[0]==='--summary'||flags[0]==='--monitor')){
+      input[flags[0]==='--summary'?'summary':'monitor']=true;
+      flags.length=0;
+    }
     if(flags.length){
       if(action!=='init'||flags.length!==2||flags[0]!=='--executor')throw Error('Only init accepts --executor NAME');
       input.executor=flags[1];
     }
     const out=action==='autopilot'?await (await import('./autopilot.mjs')).autopilot(root,input):run(root,action,input);
     console.log(JSON.stringify(out,null,2));
+    }
   } catch(e){
     printError(e);
   }

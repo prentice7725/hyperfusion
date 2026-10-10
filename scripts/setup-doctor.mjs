@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {config,selectExecutor,EXECUTORS,CAP} from './executor-config.mjs';
+import {config,selectExecutor,EXECUTORS,CAP,automaticImplementer} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {repo,git,read,atomic,riskyGitConfig} from './artifact.mjs';
 import {controlRoot,controlPath,isLegacy,ensureControl} from './control-dir.mjs';
@@ -33,7 +33,7 @@ for(const name of c?.external.available??[]){
  else{try{bench.push({name,ok:true,detail:entry()});}catch(e){bench.push({name,ok:false,detail:e.message,error:errorRecord(e)});}}
 }
 // auto면 한 명이라도 설치돼 있으면 통과. 명시 지정이면 그 일꾼이 반드시 있어야 한다.
-if(selected==='auto')check('workers',()=>{const ok=bench.filter(b=>b.ok).map(b=>b.name);if(!ok.length)throw Error('ADAPTER_UNAVAILABLE: no worker CLI installed');return ok.join(', ');});
+if(selected==='auto')check('workers',()=>{const ok=bench.filter(b=>b.ok&&automaticImplementer(c,b.name)).map(b=>b.name);if(!ok.length)throw Error('ADAPTER_UNAVAILABLE: no eligible automatic worker CLI installed');return ok.join(', ');});
 const warnings=[];
 let root;
 check('repository',()=>{root=repo(process.argv[2]??process.cwd());git(root,['rev-parse','HEAD']);return root;});

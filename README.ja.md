@@ -1,5 +1,7 @@
 # HyperFusion
 
+v0.3 External-Firstと共通監視は明示的なオプトインです。[設定例](hyperfusion.v03.config.example.json)と[運用・役割・使用量の説明](references/universal-supervisor.md)を参照してください。新しいプロファイルではGrok/AGY/Lunaを自動実装に使い、作者ごとの必須レビュー後にホストの最終判断を待ちます。既存のclassic設定と実行中のタスクは自動変更しません。
+
 [한국어](README.md) | 日本語
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。

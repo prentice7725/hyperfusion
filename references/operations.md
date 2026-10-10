@@ -126,7 +126,7 @@ node scripts/fusion-state.mjs autopilot REPO
 
 JSON 파일 또는 stdin(`-`)으로 `{"max_steps":64}`를 줄 수 있다(기본 64, 1~256). 별도 데몬은 아니며 명령이 실행되는 동안 begin → 브리지 → finish → delegate-review → 리뷰 브리지 → consult-finish를 반복한다. 각 호출은 한 단계다. 재지시에는 최신 brief와 `lead_feedback:"@review"`를 사용하고, 교체 대상은 기존 컨트롤러가 선택한다.
 
-VERIFY, DECISION_REQUIRED, BLOCKED, TAKEOVER_REQUIRED, RECOVERY_REQUIRED, CLOSE, ARCHIVED에서 멈춘다. 최종 verify·설계 결정·takeover·복구는 리드가 한다. 실패한 수용 테스트는 기존 규칙대로 피드백을 붙여 재시도하지만, 무시된 실행 입력 변경으로 테스트를 건너뛴 경우에는 멈춘다. 트리·HEAD/index·범위 검사, 라운드/리뷰 예산과 비용·시간 상한을 그대로 적용한다. 비용 상한은 보고된 비용만 계산하며, 보고되지 않은 비용은 보장하지 못한다.
+VERIFY, LEAD_DECISION_REQUIRED, DECISION_REQUIRED, BLOCKED, TAKEOVER_REQUIRED, RECOVERY_REQUIRED, CLOSE, ARCHIVED에서 멈춘다. `lead-gated-adaptive`는 위임 리뷰가 만장일치여도 여기서 멈추고 `lead-decision`을 기다린다. 최종 verify·설계 결정·takeover·복구는 리드가 한다. 실패한 수용 테스트는 기존 규칙대로 피드백을 붙여 재시도하지만, 무시된 실행 입력 변경으로 테스트를 건너뛴 경우에는 멈춘다. 트리·HEAD/index·범위 검사, 라운드/리뷰 예산과 비용·시간 상한을 그대로 적용한다. 비용 상한은 보고된 비용만 계산하며, 보고되지 않은 비용은 보장하지 못한다.
 
 오토파일럿 브리지는 프로세스 표를 관측하고 PID와 생성 시각으로 자손을 추적해 `quiescence-*.json`에 정지 증거를 남긴다. 확인 불가·잔존 자손·불확실한 종료에서는 자동 finish하지 않고 writer lease 또는 open_consult를 유지한다. 관측 사이에 부모 연결을 끊고 빠져나간 프로세스까지 완전히 추적하는 OS 격리는 아니다. 그런 실행이 가능한 회사 환경에서는 별도 프로세스 격리가 필요하다.
 
