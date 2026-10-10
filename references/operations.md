@@ -45,6 +45,21 @@ brief에 `acceptance_commands`를 넣으면 컨트롤러가 명령을 직접 실
 | finish 직후(결과가 complete일 때) | 실행 후 `acceptance-N-finish.json`에 종료 코드, 소요 시간, 출력 SHA-256과 끝부분 4KB를 남긴다. 실패하면 리뷰 없이 실패 출력을 붙여 같은 일꾼에게 REDO로 돌린다(같은 실패 반복 시 일반 반려처럼 교체). 리드 takeover 라운드는 기록만 하고 리드가 판정한다 |
 | VERIFY | finish 실행이 통과했고 트리와 무시된 파일이 그대로면 그 결과를 재사용한다. 아니면 다시 실행한다. 실패하면 REDO로 돌린다 |
 
+### AC 추적표와 PR 초안
+
+brief에 `acceptance_map`을 넣으면 수용 기준 ID와 그 기준을 증명하는 수용 명령이 이어진다.
+
+```json
+{"success_criteria":["AC1: 재시도 3회","AC2: 로그 한 번"],
+ "acceptance_commands":["npm test -- retry"],
+ "acceptance_map":{"AC1":["npm test -- retry"]}}
+```
+
+- 키는 `success_criteria`에 나오는 AC ID여야 하고, 명령은 `acceptance_commands`의 문자열을 그대로 옮겨야 한다.
+- 매핑된 명령이 실패하면 반려 사유가 `AC1 Acceptance: <명령>`이 된다. 같은 AC로 두 번 반려되는 일꾼은 교체 규칙에 걸린다.
+- CLOSE 때 AC별 판정을 `verification.json`의 `ac_table`과 상태의 `ac_table`에 남긴다. `PASS`는 컨트롤러가 실행한 명령이 모두 통과한 기준, `REVIEWED`는 명령 없이 리뷰로만 확인된 기준이다. 매핑된 명령이 통과하지 않은 기준이 있으면 CLOSE하지 않는다(`AC_NOT_PROVEN`).
+- CLOSE 때 제어 폴더의 작업 디렉터리에 `pr-draft.md`(제목, 변경 파일, AC 표, 라운드별 판정, 남은 위험)를 쓴다. 저장소에는 쓰지 않고 커밋·푸시도 하지 않는다. `report`가 경로(`pr_draft`)와 `ac_table`을 돌려준다.
+
 `status --summary`에 마지막 실행 결과가 나온다. 컨트롤러가 되돌린 라운드는 리뷰 기록의 `reviewed_by`가 `controller`이고 지표에는 `acceptance_returns`로 센다.
 
 테스트 실행은 저장소 코드 실행이다. 그래서 다음을 지킨다.

@@ -17,6 +17,7 @@ import {readInput,printError} from './cli.mjs';
 import {SCHEMA_VERSION,ARCHITECTURE,VERSION} from './versions.mjs';
 import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
+import {acTable,failureCriteria,prDraft,draftInputs} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
 import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
@@ -810,7 +811,7 @@ function finish(c,input) {
     const failed=acc.results.filter(r=>r.status!=='pass');
     return applyReview(c,{verdict:'redo',reviewed_by:'controller',
       rationale:`Acceptance commands failed after finish (${failed.map(r=>r.command).join(', ')}); returned to the worker without lead review`,
-      blocking_criteria:failed.map(r=>'Acceptance: '+r.command),commands_run:brief.acceptance_commands,
+      blocking_criteria:failureCriteria(brief,failed),commands_run:brief.acceptance_commands,
       independent_diff_review:true,acceptance_feedback:failureFeedback(acc.results)});
   }
   // 수용 실패는 컨트롤러 재지시다. 모델 pass는 여기로 오지 않는다. Sol처럼 리뷰어가 리드뿐이면 위임 없이 게이트로 올린다.
@@ -1060,15 +1061,27 @@ function verify(c,input) {
         const failed=evidence.results.filter(r=>r.status!=='pass');
         return applyReview(c,{verdict:'redo',reviewed_by:'controller',
           rationale:`Acceptance commands failed during verification (${failed.map(r=>r.command).join(', ')})`,
-          blocking_criteria:failed.map(r=>'Acceptance: '+r.command),commands_run:brief.acceptance_commands,
+          blocking_criteria:failureCriteria(brief,failed),commands_run:brief.acceptance_commands,
           independent_diff_review:true,acceptance_feedback:failureFeedback(evidence.results)});
       }
     }
   }
   if(acceptanceHalt(c,null))return s;
-  c.art('verification.json',{...input,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{})});
+  // AC 추적표는 컨트롤러가 실행한 마지막 수용 결과로 만든다. 명령이 없는 기준은 리뷰로 확인된 것으로만 적는다.
+  const results=auto&&s.acceptance?.file?(c.optional(s.acceptance.file)?.results??[]):[];
+  const ac=acTable(brief,results,{reviewed:true});
+  const unproven=ac.filter(r=>r.status==='FAIL'||r.status==='NOT_RUN');
+  if(unproven.length){s.scope_exceptions=before;throw Error('AC_NOT_PROVEN: '+unproven.map(r=>r.id).join(', ')+' has no passing acceptance result');}
+  c.art('verification.json',{...input,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{}),ac_table:ac});
   s.phase='CLOSE';
   s.closed_at=new Date().toISOString();
+  s.ac_table=ac.map(({id,status})=>({id,status}));
+  // PR 설명 초안. 커밋·푸시는 하지 않으며 저장소가 아니라 제어 폴더에 쓴다.
+  try{
+    const draft=prDraft({state:s,brief,table:ac,...draftInputs(c.taskdir(),s)});
+    fs.writeFileSync(path.join(c.taskdir(),'pr-draft.md'),draft);
+    s.pr_draft=path.join(c.taskdir(),'pr-draft.md');
+  }catch(e){s.pr_draft_error=e.message;}
   c.save();
   return s;
 }

@@ -1,5 +1,6 @@
 import {checkPrior} from './memory-policy.mjs';
 import {checkBashRules} from './bash-policy.mjs';
+import {checkAcceptanceMap} from './ac-trace.mjs';
 const requireThat=(v,m)=>{if(!v)throw Error(m);};
 const str=v=>typeof v==='string'&&v.trim().length>0;
 const strs=v=>Array.isArray(v)&&v.every(str);
@@ -40,6 +41,8 @@ export function brief(v) {
  requireThat(v.acceptance_artifacts===undefined||(strs(v.acceptance_artifacts)&&v.acceptance_artifacts.length<=20&&v.acceptance_artifacts.every(g=>reportedPath(g.replace(/\*\*?|\?/g,'x'))&&!/^(?:\*\*\/)*\*{1,2}$/.test(g))),'Invalid acceptance_artifacts (repository-relative globs, not "**")');
  requireThat(v.acceptance_baseline_green===undefined||(str(v.acceptance_baseline_green)&&v.acceptance_baseline_green.length<=300),'acceptance_baseline_green must be a short reason (why the commands already pass before any change)');
  requireThat(v.acceptance_commands!==undefined||(v.acceptance_timeout_ms===undefined&&v.acceptance_artifacts===undefined&&v.acceptance_baseline_green===undefined),'acceptance options need acceptance_commands');
+ // AC 추적: 어떤 수용 명령이 어떤 수용 기준(AC ID)을 증명하는지. 선택 항목이다.
+ checkAcceptanceMap(v);
  checkPrior(v.prior_experience);
  // 일꾼에게 열어 줄 Bash 규칙은 작업을 시작하기 전에 거른다(디스패치 때 한 번 더 확인한다).
  checkBashRules(v.executor_bash_rules);

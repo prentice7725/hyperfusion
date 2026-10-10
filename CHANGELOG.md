@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- AC 추적표: brief의 `acceptance_map`이 수용 기준 ID와 수용 명령을 잇는다. 실패한 명령은 AC ID가 붙은 반려 사유가 되고, CLOSE 때 AC별 판정(PASS/REVIEWED)을 남기며 매핑된 명령이 통과하지 않으면 닫지 않는다.
+- CLOSE 때 제어 폴더에 PR 설명 초안 `pr-draft.md`를 만든다(변경 파일, AC 표, 라운드, 남은 위험). 커밋·푸시는 하지 않는다.
+
 ## 0.15.0
 
 - v0.3 명시적 External-First 프로필, 작성자별 필수/이중 리뷰, 라운드별 Sonnet·APEX Sol grant 및 호스트 최종 판정 게이트.
