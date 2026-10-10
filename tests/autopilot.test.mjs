@@ -13,7 +13,13 @@ import {descendants,watchProcessTree} from '../scripts/process-proof.mjs';
 const greenAfterInit=f=>{const mark=path.join(f.temp,'green');return {cmd:`node -e "process.exit(require('fs').existsSync(process.argv[1])?0:1)" "${mark}"`,flip:()=>fs.writeFileSync(mark,'1')};};
 const setup=(t,extra={})=>{
  const f=fixture(t,{initialize:false}),g=greenAfterInit(f);f.brief.acceptance_commands=[g.cmd];
- run(f.root,'init',{...f.brief,executor:'grok',...extra});g.flip();return f;
+ const state=run(f.root,'init',{...f.brief,executor:'grok',...extra});
+ if(state.phase!=='PLAN'){
+  const dir=path.join(f.control,'tasks',f.brief.task_id);
+  const baseline=fs.readdirSync(dir).find(name=>/^acceptance-baseline-\d+\.json$/.test(name));
+  assert.equal(state.phase,'PLAN',JSON.stringify({phase:state.phase,errors:state.last_errors,evidence:baseline?read(path.join(dir,baseline)):null}));
+ }
+ g.flip();return f;
 };
 test('autopilot passes independent review and stops at VERIFY with process and masking audit',async t=>{
  const f=setup(t);const out=await autopilot(f.root);

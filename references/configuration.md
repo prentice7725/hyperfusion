@@ -1,5 +1,7 @@
 # 설정
 
+v0.3 신규 작업용 설정은 [hyperfusion.v03.config.example.json](../hyperfusion.v03.config.example.json), 실제 동작과 한계는 [universal-supervisor.md](universal-supervisor.md)를 따른다. classic 기본값은 하위 호환용이다. 새 정책을 사용하려면 명시적으로 선택한다.
+
 대상 저장소 루트의 `hyperfusion.config.json`(선택)을 읽는다. 없으면 다음을 쓴다.
 ```json
 {
@@ -35,7 +37,7 @@
 
 ## 리뷰 주체
 
-`"review": {"by": "lead" | "delegate", "reviewers": ["sol","sonnet","antigravity","grok","luna","haiku"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. Codex 팀원 설정은 `executors.sol` / `executors.luna`의 `model`과 `reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 기본 모델은 sol `gpt-6.1-sol`, luna `gpt-6-luna`이다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
+`"review": {"by": "lead" | "delegate", "reviewers": ["sol","sonnet","antigravity","grok","luna","haiku"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. `strategy: "lead-gated-adaptive"`에서는 `auto_apply`가 판정을 VERIFY로 넘기지 않는다. Codex 팀원 설정은 `executors.sol` / `executors.luna`의 `model`과 `reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 기본 모델은 sol `gpt-6.1-sol`, luna `gpt-6-luna`이다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
 
 ## 기억 계층
 

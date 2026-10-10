@@ -10,7 +10,8 @@
 | begin (ALTERNATIVE_REQUIRED) | `executor` 생략 시 배치 순서상 다음 일꾼, 지정 시 그 일꾼. `lead_feedback` 필수. 기존 세션이 있으면 재개 |
 | begin (TAKEOVER_REQUIRED) | `takeover_reason` 필수. 리드가 lease를 받음 |
 | finish | token, quiescent:true, 선택 result(생략하면 브리지의 result-N.json) → REVIEW 또는 RECOVERY_REQUIRED. 브리지가 남긴 세션 ID를 묶음 |
-| review | 판정/근거/증거 → 다음 단계. `{"adopt":true}`면 보류된 위임 판정 채택 |
+| review | 판정/근거/증거 → 다음 단계. `{"adopt":true}`면 보류된 위임 판정 채택. `lead-gated-adaptive`에서는 이 액션으로 VERIFY에 가지 않는다 |
+| lead-decision | `LEAD_DECISION_REQUIRED`에서 `APPROVE\|REDO\|REDO_SAME_OWNER\|REASSIGN_TO_SONNET\|REASSIGN_OTHER\|ESCALATE\|BLOCK`, rationale, baseline_digest, contract_change. `APPROVE`는 VERIFY까지이고 CLOSE는 verify가 남긴다 |
 | decide | decision → 같은 일꾼 REDO(예산 내) |
 | verify | acceptance_satisfied:true, 실제 통과 테스트 → CLOSE. brief에 `acceptance_commands`가 있으면 컨트롤러가 직접 돌린 결과가 증거이고 `tests`는 선택이다(finish 직후 실행이 통과했고 트리가 그대로면 재사용). 무시된 파일이 바뀌어 실행을 건너뛰었으면 확인 후 `acceptance_trust_ignored:true`. 여기서 실패하면 REDO로 되돌린다. 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 거절한다. 알고 받아들일 때만 `allow_out_of_scope: [{path, reason}]` |
 | recover | token(보유 시), quiescent:true, reason, 선택 `allow_out_of_scope: [{path, reason}]`(범위 밖에 남은 파일을 알고 받아들일 때) |
@@ -18,9 +19,10 @@
 | consult | mode(advisor/committee), question, focus?, executors? → 읽기 전용 상담 dispatch. [consult.md](consult.md) |
 | delegate-review | REVIEW에서 다른 모델에게 읽기 전용 리뷰를 맡김(executors? 생략 시 review.reviewers 순서, 구현자 제외) |
 | consult-finish | quiescent:true → 위원별 결과. 트리가 바뀌었으면 답변 폐기 후 RECOVERY_REQUIRED |
-| status | 기본은 전체 상태. `--summary`면 task_id·phase·owner·remaining·next_action만 출력 |
+| status | 기본은 전체 상태. `--summary`면 task_id·phase·owner·remaining·next_action만 출력하고 감시 필드는 넣지 않는다. `--monitor`는 별도 보기이며 `declares_success:false`와 라운드 모니터만 낸다. 두 플래그는 함께 쓸 수 없다 |
+| monitor | 작업 디렉터리의 모니터를 읽기 전용으로 출력. `--once`(생략 가능) 또는 `--watch`. 잠금을 잡지 않고, 진행률을 내지 않으며, 작업 성공을 선언하지 않는다 |
 | report | 현재 작업의 라운드별 담당·판정·소요 시간·비용. 과거 작업은 입력에 task_id 지정 |
-| autopilot | 초기화된 작업에서 begin → 브리지 → finish → 독립 위임 리뷰 → consult-finish를 반복. `acceptance_commands`와 `review.auto_apply:true` 필수. VERIFY·DECISION_REQUIRED·BLOCKED·TAKEOVER_REQUIRED 및 안전 확인 실패에서 리드에게 제어 반환. 입력 `{"max_steps":64}`(1~256, 기본 64). [운영 설명](operations.md#오토파일럿) |
+| autopilot | 초기화된 작업에서 begin → 브리지 → finish → 독립 위임 리뷰 → consult-finish를 반복. `acceptance_commands`와 `review.auto_apply:true` 필수. VERIFY·LEAD_DECISION_REQUIRED·DECISION_REQUIRED·BLOCKED·TAKEOVER_REQUIRED 및 안전 확인 실패에서 리드에게 제어 반환. 입력 `{"max_steps":64}`(1~256, 기본 64). [운영 설명](operations.md#오토파일럿) |
 
 일꾼 begin은 lease와 시도를 쓰기 전에 CLI를 프로브한다. 반환된 `command`/`args`(executor-bridge)를 라운드당 한 번 실행한다. RESULT_READY 후에도 lease는 유지되고, 리드가 정지 확인 후 finish 한다.
 

@@ -76,6 +76,14 @@ export function validatePlan(root,plan) {
  const members=plan.team.map(t=>t.member);
  plan.review??=members.includes('sol')?{by:'delegate',reviewers:['sol',...implementers]}:{by:'lead'};
  if(!['lead','delegate'].includes(plan.review.by))throw Error('review.by must be lead or delegate');
+ if(plan.review.strategy!==undefined&&plan.review.strategy!=='lead-gated-adaptive')throw Error('Unknown project review.strategy');
+ if(plan.review.auto_apply!==undefined&&typeof plan.review.auto_apply!=='boolean')throw Error('Project review.auto_apply must be boolean');
+ if(plan.review.strategy==='lead-gated-adaptive'){
+  if(plan.review.by!=='delegate')throw Error('Adaptive project review requires delegate');
+  const required=new Set(implementers.flatMap(e=>e==='luna'?['sonnet']:e==='grok'||e==='antigravity'?['sol','sonnet']:['sol']));
+  if([...required].some(e=>!members.includes(e)))throw Error('Adaptive project team is missing mandatory reviewer(s): '+[...required].filter(e=>!members.includes(e)).join(', '));
+  warnings.push('Sonnet implementation requires a controller grant; Sol APEX requires a task-specific grant, never owns rules.');
+ }
  if(plan.review.by==='delegate'){
   plan.review.reviewers??=members;
   if(!plan.review.reviewers.length||!plan.review.reviewers.every(r=>members.includes(r)&&REVIEWERS.includes(r)))throw Error('Reviewers must be team members');
@@ -124,7 +132,7 @@ export function teamRules(plan) {
 export function teamConfig(plan,base) {
  const implementers=plan.team.map(t=>t.member).filter(m=>EXECUTORS.includes(m));
  return {...base,external:{default:'auto',available:implementers},routing:{...base.routing,rules:teamRules(plan)},
-  review:{...base.review,by:plan.review.by,...(plan.review.by==='delegate'?{reviewers:plan.review.reviewers}:{})},
+  review:{...base.review,...plan.review},
   project:{name:plan.name,revision:plan.revision}};
 }
 
@@ -165,6 +173,7 @@ export function teamReport(root,p=loadProject(root)) {
  for(const t of p.team)L.push(`| ${t.member} | ${cell(modelOf(c,t.member))} | ${cell(t.role)} | ${t.owns.length?cell(t.owns.map(o=>'`'+o+'`').join(', ')):(t.member==='sol'?'리뷰':'예비')} | ${cell(t.why)} | ${installed(c,t.member)?'✓':'✗ 설치 필요'} |`);
  L.push('','- 리드: Claude Opus 5.5 — 계획, 배치, 최종 검증(VERIFY), 설계 결정');
  L.push(`- 리뷰: ${p.review.by==='delegate'?'위임 — '+p.review.reviewers.join(' → ')+' 순서(구현자는 자기 라운드 리뷰 불가)':'리드가 직접'}`,'');
+ if(p.review.strategy==='lead-gated-adaptive')L.push('- v0.3: 자동 구현은 External-First, Haiku reserve 유지. 실제 owner로 필수 리뷰를 정하며 호스트 최종 판정 전 VERIFY/CLOSE 금지. Sonnet/Sol은 작업별 controller grant만 허용.','');
  if(p.excluded.length)L.push('## 이번 프로젝트에서 쓰지 않음','','| 팀원 | 이유 |','|---|---|',...p.excluded.map(x=>`| ${x.member} | ${cell(x.why)} |`),'');
  L.push('## 마일스톤','');
  for(const m of p.milestones){

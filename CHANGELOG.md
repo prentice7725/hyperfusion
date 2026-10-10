@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- v0.3 명시적 External-First 프로필, 작성자별 필수/이중 리뷰, 라운드별 Sonnet·APEX Sol grant 및 호스트 최종 판정 게이트.
+- 모든 implement/review/consult의 공통 로컬 감시: QUIET 주기 갱신, UTF-8/NDJSON 재동기화, identity별 재시작 복구, bounded 알림·중복 기록, 종료 관측 보존 정책. 진행률·성공을 생성하지 않는다.
+- 재배정 경로에도 초기 배치와 같은 구현자 자격·Haiku reserve를 적용하고, grant를 bridge 실행 직전에 불변 controller 기록과 다시 비교한다.
+- 구현·검수·상담·실패 호출과 APEX Sol을 포함한 전체 사용량 계측. Claude 모델별 성공당 토큰을 분리하고 미측정은 null로 보존한다.
+- v0.3 운영 안내와 앱 핸드오프 후속 설계. Windows 테스트 파일은 순차 실행하고 다른 OS의 파일 병렬도는 2로 제한한다. 공유 프로세스 목록의 orphan 검사 간섭을 격리하며 제품 종료 증명 조건은 유지한다.
+
 - 기본 추론 강도: Sonnet high, Haiku max, Antigravity high, Grok xhigh, Luna xhigh, Sol medium. 설정으로 덮어쓰고 `null`이면 플래그를 넘기지 않는다.
 - 추론 강도(`reasoning_effort`)를 모든 일꾼에 적용: Claude Code(Sonnet·Haiku)와 agy는 `--effort`, Grok은 `--reasoning-effort`, Codex는 `model_reasoning_effort`. 일꾼마다 받는 값만 허용(`EFFORT_UNSUPPORTED`)하고, CLI에 플래그가 없으면 무시하지 않고 거절한다.
 - 비밀번호 값 일부가 먼저 마스킹됐거나 사용자가 마스킹 표식을 넣었을 때 나머지 값이 그대로 전송되던 문제를 수정했다. 민감값 할당 전체를 다시 가린다.

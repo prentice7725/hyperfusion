@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {adapter} from './adapters/index.mjs';
 import {read} from './artifact.mjs';
+import {implementDispatch,sameGrant,sameAssignment,assertImplementRound} from './review-plan.mjs';
 
 // 브리지는 dispatch 파일을 그대로 믿지 않는다. 컨트롤러가 쓴 brief와 상태에서 같은 요청을 다시 만들어 보고,
 // 실행 파일, 인자, 프롬프트가 하나라도 다르면 일꾼을 띄우지 않는다. 그래서 파일이 바뀌었어도 권한이 넓어지지 않는다.
@@ -19,9 +20,17 @@ function compare(label,expected,request) {
 // 구현 라운드: brief-N.json(생성 후 불변)과 상태의 세션으로 요청을 다시 만든다.
 export function verifyExecute(root,state,dir,request,lease) {
  const n=state.iteration,owner=state.owner,a=adapter(owner);
- const options=state.configuration?.executors?.[owner]??{};
+ if(state.configuration?.review?.strategy==='lead-gated-adaptive'){
+  if(!sameAssignment(read(path.join(dir,'assignment.json')),state.assignment))throw Error('ROLE_GATE: assignment differs from controller record');
+  if(owner==='sol'||owner==='sonnet'){
+   const grant=state.implement_grant;
+   if(!grant||grant.round!==n||!sameGrant(read(path.join(dir,`implement-grant-${grant.revision}.json`)),{...grant,round:null}))throw Error('ROLE_GATE: active grant differs from controller record');
+   assertImplementRound({...state,implement_grant:{...grant,round:null}},owner);
+  }
+ }
  const brief={...read(path.join(dir,`brief-${n}.json`)),repo_root:root,round:n};
- const expected=a.dispatch(brief,lease,{session:state.sessions?.[owner]??null,resume:!!request.cli?.resume,probe:a.probe(options),promptFile:path.join(dir,`prompt-${n}.txt`),options});
+ const planned=implementDispatch(state,owner);
+ const expected=a.dispatch(brief,lease,{session:state.sessions?.[owner]??null,resume:!!request.cli?.resume,probe:a.probe(planned.options),promptFile:path.join(dir,`prompt-${n}.txt`),...planned});
  compare(`dispatch-${n}.json`,expected,request);
  return expected;
 }
@@ -35,7 +44,11 @@ export function verifyConsult(root,state,dir,request,{id,member,executor}) {
   &&Array.isArray(brief.allowed_actions)&&brief.allowed_actions.length===1&&brief.allowed_actions[0]==='read'
   &&request.executor===executor&&request.kind==='consult';
  if(!ok)throw Error('DISPATCH_TAMPERED: consult request does not match the open consult or is not read-only; nothing was started');
- const a=adapter(executor),options=state.configuration?.executors?.[executor]??{};
+ const a=adapter(executor);
+ // 옵트인 리뷰 계획이 강도를 정하면 그 값이 설정 파일보다 우선이다. 검증도 같은 값을 다시 만든다.
+ const options={...(state.configuration?.executors?.[executor]??{})};
+ const planned=state.open_consult?.plan?.effort?.[executor];
+ if(state.open_consult?.adaptive&&planned)options.reasoning_effort=planned;
  const expected=a.dispatch(brief,{token:'consult',owner:executor},{session:request.cli?.session_id??null,resume:false,probe:a.probe(options),
   promptFile:path.join(dir,`prompt-consult-${id}-${member}.txt`),options});
  compare(`consult-${id}-${member}.json`,expected,request);

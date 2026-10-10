@@ -149,6 +149,7 @@
         "TAKEOVER_REQUIRED",
         "EXECUTING",
         "REVIEW",
+        "LEAD_DECISION_REQUIRED",
         "DECISION_REQUIRED",
         "VERIFY",
         "RECOVERY_REQUIRED",

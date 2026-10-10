@@ -1,5 +1,7 @@
 # 일꾼 배치 (routing)
 
+v0.3은 [External-First 운영 안내](universal-supervisor.md)를 따른다. 아래는 classic 기본 배치다. External-First의 자동 제외 정책은 initial, 신규 후보 탐색, 교체와 lease 발급에 모두 적용하며, 명시 grant 없는 Sonnet/Sol과 reserve Haiku를 fallback에 다시 넣지 않는다.
+
 리드는 작업마다 일꾼을 능동적으로 고른다. 감으로 고르지 않고 **능력(caps)으로 거르기 → 배치표 순서 → 실적 → 설치 상태** 순으로 결정하며, 결정 근거를 `state.routing.reason`에 남긴다.
 
 ## brief 힌트

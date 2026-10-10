@@ -4,8 +4,9 @@ import path from 'node:path';
 import {isMain} from './platform.mjs';
 import {read} from './artifact.mjs';
 import {adapter} from './adapters/index.mjs';
-import {config,EXECUTORS,KIND_NEEDS,canDo} from './executor-config.mjs';
+import {config,EXECUTORS,KIND_NEEDS,canDo,externalFirst,routingPolicy,automaticImplementer,DIFFICULTY_EFFORT} from './executor-config.mjs';
 import {controlPath} from './control-dir.mjs';
+import {quotaReport,exhaustedExecutors} from './quota-policy.mjs';
 
 // 작업 종류·난이도로 배치표 규칙을 고르고, 과거 실적과 설치 상태로 순서를 조정한다.
 // 결과는 투입 순서(candidates)와 근거(reason)다. 리드는 이를 기록하고 필요하면 명시 지정으로 덮어쓴다.
@@ -50,6 +51,17 @@ export function route(root,c,brief,{probe=true}={}) {
  // 능력으로 거른다. 필요한 능력이 없는 일꾼은 예비 인력으로도 넣지 않는다(예: 이미지 생성 못 하는 일꾼은 이미지 작업 제외).
  const unable=order.filter(e=>!canDo(c,e,brief.task_kind));
  if(unable.length){order=order.filter(e=>!unable.includes(e));notes.push(`lacks ${KIND_NEEDS[brief.task_kind]}: ${unable.join(', ')}`);}
+ // External-First: 승인 전용 일꾼과 예비 Claude 인력은 학습·탐색·신입 우대·예비 순서보다 먼저 빠진다.
+ const policy=routingPolicy(c);
+ const excluded=[];
+ if(externalFirst(c)){
+  const out=order.filter(e=>!automaticImplementer(c,e));
+  if(out.length){order=order.filter(e=>!out.includes(e));excluded.push(...out);notes.push(`external-first excludes automatic ${out.join(', ')}`);}
+ }
+ // 확정된(fresh) 소진만 뒤로 민다. 지난 값이나 모르는 값은 순서를 바꾸지 않는다.
+ const quota=quotaReport(root);
+ const drained=exhaustedExecutors(quota,order);
+ if(drained.length&&drained.length<order.length){order=[...order.filter(e=>!drained.includes(e)),...drained];notes.push('quota exhausted (fresh record): '+drained.join(', '));}
  const stats=c.routing.learn?history(root,brief.task_kind,{difficulty:brief.difficulty,halfLifeDays:c.routing.half_life_days}):{};
  const demoted=order.filter(e=>{const s=stats[e];return s&&s.weighted_tasks>=c.routing.min_samples&&s.weighted_score/s.weighted_tasks<c.routing.demote_below;});
  if(demoted.length){order=[...order.filter(e=>!demoted.includes(e)),...demoted];notes.push('demoted by track record: '+demoted.map(e=>`${e} ${stats[e].passed}/${stats[e].tasks}`).join(', '));}
@@ -73,9 +85,29 @@ export function route(root,c,brief,{probe=true}={}) {
    candidates.splice(candidates.indexOf(pick),1);candidates.unshift(pick);notes.push('newcomer trial first pick: '+pick);
   }
  }
+ // Quota exhaustion must not be undone by exploration/newcomer promotion.
+ if(drained.length)candidates.sort((a,b)=>Number(drained.includes(a))-Number(drained.includes(b)));
  if(Object.keys(unavailable).length)notes.push('skipped (not installed or unsupported): '+Object.keys(unavailable).join(', '));
  if(!candidates.length)throw Error('ADAPTER_UNAVAILABLE: no routed executor is installed: '+JSON.stringify(unavailable));
- return {executor:candidates[0],candidates,task_kind:brief.task_kind??null,difficulty:brief.difficulty??null,stats,unavailable,reason:notes.join('; ')};
+ const out={executor:candidates[0],candidates,task_kind:brief.task_kind??null,difficulty:brief.difficulty??null,stats,unavailable,reason:notes.join('; ')};
+ if(policy!=='classic'){
+  out.policy=policy;
+  out.excluded=excluded;
+  out.quota=Object.fromEntries(Object.entries(quota).map(([p,st])=>[p,{state:st.state,remaining:st.remaining??null}]));
+  out.effort=effortFor(c,candidates[0],brief.difficulty);
+ }
+ return out;
+}
+
+// External-First에서 난이도별 강도. 운영자가 직접 적은 값이 있으면 그 값이 우선이다. CLI 지원은 어댑터 프로브가 다시 확인한다.
+export function effortFor(c,executor,difficulty) {
+ const configured=c?.executors?.[executor]?.reasoning_effort??null;
+ const source=c?.effort_source?.[executor]??(configured?'config':'cli-default');
+ const table=DIFFICULTY_EFFORT[executor];
+ if(externalFirst(c)&&table&&difficulty&&table[difficulty]&&source==='default'){
+  return {executor,reasoning_effort:table[difficulty],source:'difficulty',difficulty};
+ }
+ return {executor,reasoning_effort:configured,source,difficulty:difficulty??null};
 }
 
 if(isMain(import.meta.url)) {

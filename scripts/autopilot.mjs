@@ -12,7 +12,7 @@ import {SCHEMA_VERSION} from './versions.mjs';
 
 // 정지 확인이 실패하면 이유와 남은 프로세스를 메시지에 남긴다(리드와 CI 로그에서 바로 보이게).
 const proofText=q=>q?`${q.reason}${q.remaining?.length?`; remaining ${JSON.stringify(q.remaining.slice(0,5))}`:''}${q.checks?`; checks ${q.checks}`:''}`:'missing evidence';
-const STOPS=new Set(['VERIFY','DECISION_REQUIRED','BLOCKED','TAKEOVER_REQUIRED','RECOVERY_REQUIRED','CLOSE','ARCHIVED']);
+const STOPS=new Set(['VERIFY','LEAD_DECISION_REQUIRED','DECISION_REQUIRED','BLOCKED','TAKEOVER_REQUIRED','RECOVERY_REQUIRED','CLOSE','ARCHIVED']);
 const failure=(code,message)=>Object.assign(Error(message),{code});
 
 // Uses the same controller actions as the lead. No decision, recovery, scope expansion or final verification.

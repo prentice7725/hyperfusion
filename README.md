@@ -1,5 +1,7 @@
 # HyperFusion
 
+v0.3 External-First와 범용 감시는 **명시적 옵트인**입니다. [v0.3 설정 예제](hyperfusion.v03.config.example.json)와 [운영·역할·사용량 안내](references/universal-supervisor.md)를 참고하세요. 신규 프로필은 자동 구현을 Grok/AGY/Luna에 맡기고, 작성자별 필수 검수 뒤 호스트 최종 판정을 기다립니다. 기존 classic 설정·작업은 자동 변경하지 않습니다.
+
 한국어 | [日本語](README.ja.md)
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
