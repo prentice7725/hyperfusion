@@ -31,7 +31,8 @@ test('Grok, Antigravity and Haiku standard rounds use Sol only',async t=>{
   f.begin();f.finish();
   assert.throws(()=>f.review('pass'),/cannot replace/);
   assert.equal(f.state().phase,'REVIEW');
-  assert.throws(()=>run(f.root,'delegate-review',{executors:['sonnet']}),/controller plan/);
+  assert.throws(()=>run(f.root,'delegate-review',{executors:['sonnet']}),/substitution_reason/);
+  assert.throws(()=>run(f.root,'delegate-review',{executors:[executor],substitution_reason:'sol quota'}),/self-review/);
   const {c,out}=await delegate(f);
   assert.deepEqual(c.members.map(m=>m.executor),['sol']);
   assert.equal(out.review.status,'lead_gate');
@@ -94,19 +95,19 @@ test('dual_review on a standard Grok round is still both reviewers',async t=>{
 test('Luna stays with Sonnet and Haiku stays with Sol when the grade is raised',async t=>{
  const luna=adaptive(t,{executor:'luna',criticality:'important',strategy:'dual_review',executors:{sonnet:{reasoning_effort:'low'}}});
  luna.begin();luna.finish();
- assert.throws(()=>run(luna.root,'delegate-review',{executors:['sol']}),/controller plan/);
+ assert.throws(()=>run(luna.root,'delegate-review',{executors:['sol']}),/substitution_reason/);
  const lunad=await delegate(luna);
  assert.deepEqual(lunad.c.members.map(m=>m.executor),['sonnet']);
  const claude=args(luna,'claude');
  assert.equal(claude[claude.indexOf('--effort')+1],'high');
  const haiku=adaptive(t,{executor:'haiku',criticality:'apex',strategy:'dual_review'});
  haiku.begin();haiku.finish();
- assert.throws(()=>run(haiku.root,'delegate-review',{executors:['sonnet']}),/controller plan/);
+ assert.throws(()=>run(haiku.root,'delegate-review',{executors:['sonnet']}),/substitution_reason/);
  const haikud=await delegate(haiku);
  assert.deepEqual(haikud.c.members.map(m=>m.executor),['sol']);
 });
 
-test('a missing Sol is not replaced',async t=>{
+test('a missing Sol is not replaced silently',async t=>{
  const f=adaptive(t,{executor:'haiku'});
  f.begin();f.finish();
  process.env.HF_CODEX_BIN=path.join(f.temp,'missing-codex.mjs');
@@ -153,7 +154,9 @@ test('both redos are applied once, and a Sol crash does not promote Sonnet',asyn
  assert.equal(crashed.state().reviews.length,0);
  assert.equal(crashed.state().review_results[1].find(r=>r.executor==='sonnet').verdict,'pass');
  assert.equal(crashed.state().review_results[1].find(r=>r.executor==='sol').ok,false);
- assert.throws(()=>run(crashed.root,'delegate-review',{}),/Invalid phase/);
+ assert.throws(()=>run(crashed.root,'delegate-review',{}),/1 reviewer\(s\) needed/);
+ assert.throws(()=>run(crashed.root,'delegate-review',{executors:['grok'],substitution_reason:'sol quota'}),/self-review/);
+ assert.throws(()=>run(crashed.root,'delegate-review',{executors:['sonnet'],substitution_reason:'sol quota'}),/already reviewed/);
  assert.throws(()=>crashed.review('pass'),/Invalid phase/);
  assert.throws(()=>decide(crashed),/every mandatory review/);
  decide(crashed,{decision:'REDO',rationale:'Sol did not finish'});
@@ -181,7 +184,7 @@ test('after Grok is replaced by Sonnet, the new round is reviewed by Sol',async 
  f.begin({executor:'sonnet'});
  f.finish();
  assert.equal(f.state().owner,'sonnet');
- assert.throws(()=>run(f.root,'delegate-review',{executors:['sonnet']}),/controller plan/);
+ assert.throws(()=>run(f.root,'delegate-review',{executors:['sonnet']}),/self-review/);
  const second=await delegate(f);
  assert.deepEqual(second.c.members.map(m=>m.executor),['sol']);
  const plan=read(task(f,'review-plan-2.json'));
@@ -206,4 +209,73 @@ test('auto_apply off still stops at the lead gate and adopt cannot apply the pan
  assert.equal(f.state().reviews.length,0);
  assert.equal(read(task(f,'lead-decision-1.json')).baseline_digest,f.state().post_digest);
  assert.equal(read(task(f,'lead-packet-1.json')).diff,undefined);
+});
+
+test('a failed Sol seat is filled by another model with a reason, and the lead still decides',async t=>{
+ const f=adaptive(t,{criticality:'important',reason:'sol quota'});
+ f.begin();f.finish();f.mode('codex-crash');
+ const first=await delegate(f);
+ assert.equal(first.out.review.panel_status,'reviewer_failed');
+ assert.match(first.out.review.reviewers.map(r=>r.executor).join(),/sonnet/);
+ assert.equal(f.state().phase,'LEAD_DECISION_REQUIRED');
+ f.mode('ok');
+ assert.throws(()=>run(f.root,'delegate-review',{executors:['haiku']}),/substitution_reason/);
+ const second=await delegate(f,{executors:['haiku'],substitution_reason:'Codex quota exhausted until 01:56'});
+ assert.deepEqual(second.c.members.map(m=>m.executor),['haiku']);
+ assert.equal(second.out.review.panel_status,'unanimous');
+ assert.equal(second.out.review.recommendation,'APPROVE');
+ assert.equal(f.state().phase,'LEAD_DECISION_REQUIRED');
+ const records=f.state().review_results[1];
+ assert.deepEqual(records.map(r=>r.executor),['sonnet','haiku']);
+ assert.equal(records[1].substitute,true);
+ assert.equal(f.state().lead_packet.file,'lead-packet-1-c2.json');
+ const packet=read(task(f,f.state().lead_packet.file));
+ assert.deepEqual(packet.planned_reviewers,['sol','sonnet']);
+ assert.deepEqual(packet.substitutes,['haiku']);
+ assert.deepEqual(packet.review_gaps,[]);
+ assert.equal(read(task(f,'consult-c2.json')).substitution_reason,'Codex quota exhausted until 01:56');
+ assert.throws(()=>run(f.root,'delegate-review',{}),/cap reached/);
+ assert.equal(decide(f).phase,'VERIFY');
+ assert.deepEqual(measure(f.root).mandatory_review_gaps,[]);
+});
+
+test('with no reviewer left, the lead fills the seat only by naming its own diff review',async t=>{
+ const f=adaptive(t,{reason:'sol down'});
+ f.begin();f.finish();f.mode('codex-crash');
+ const first=await delegate(f);
+ assert.equal(first.out.review.panel_status,'reviewer_failed');
+ assert.deepEqual(read(task(f,'lead-packet-1.json')).review_gaps,['sol']);
+ assert.throws(()=>decide(f),/substitute/);
+ assert.throws(()=>decide(f,{diff_reviewed:true,tests_checked:['tests/a.test.mjs']}),/substitute/);
+ const approved=decide(f,{diff_reviewed:true,tests_checked:['tests/a.test.mjs'],changed_scope:['a.txt']});
+ assert.equal(approved.phase,'VERIFY');
+ assert.deepEqual(approved.lead_decision.lead_filled_seats,['sol']);
+ assert.deepEqual(measure(f.root).mandatory_review_gaps,[]);
+});
+
+test('a reviewer redo cannot be outvoted by a substitute or a lead fill',async t=>{
+ const f=adaptive(t,{criticality:'important',reason:'payments'});
+ f.begin();f.finish();f.mode('review-redo');
+ await delegate(f);
+ assert.throws(()=>decide(f,{diff_reviewed:true,tests_checked:['t'],changed_scope:['a.txt']}),/every mandatory review/);
+ assert.throws(()=>run(f.root,'delegate-review',{executors:['haiku'],substitution_reason:'second opinion'}),/no mandatory reviewer failed/);
+});
+
+test('a second rejection on the same AC recommends another worker and REDO needs a reason',async t=>{
+ const f=adaptive(t,{reason:'repeat'});
+ f.begin();f.finish();f.mode('review-redo');
+ const first=await delegate(f);
+ assert.equal(first.out.review.recommendation,'REDO');
+ assert.deepEqual(read(task(f,'lead-packet-1.json')).repeated_criteria,[]);
+ decide(f,{decision:'REDO',rationale:'AC1 fails'});
+ f.mode('ok');f.begin();f.finish();f.mode('review-redo');
+ const second=await delegate(f);
+ assert.equal(second.out.review.recommendation,'REASSIGN_OTHER');
+ const packet=read(task(f,'lead-packet-2.json'));
+ assert.deepEqual(packet.repeated_criteria,['AC1']);
+ assert.match(packet.note,/rejected again on AC1/);
+ assert.throws(()=>decide(f,{decision:'REDO',rationale:'AC1 again'}),/keep_owner_reason/);
+ const kept=decide(f,{decision:'REDO',rationale:'AC1 again',keep_owner_reason:'only grok has the repo context'});
+ assert.equal(kept.phase,'REDO');
+ assert.equal(kept.lead_decision.keep_owner_reason,'only grok has the repo context');
 });

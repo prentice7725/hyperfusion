@@ -8,7 +8,9 @@
 
 `init`에서 `task_criticality`는 `standard|important|apex`, `assignment_strategy`는 `external_primary|dual_review|sonnet_implementation|sol_apex`다. Sonnet 전문 구현은 important/sonnet_implementation, Sol 구현은 apex/sol_apex와 비어 있지 않은 `assignment_reason`을 사용한다. controller grant는 한 라운드에만 소비되며, 외부 저장소 설정이나 워커 결과·감시 이벤트로 만들지 않는다. Sonnet 기본 라운드 상한은 계속 3회이며, APEX Sol도 작업당 최대 3개 승인 라운드로 제한한다.
 
-| 실제 라운드 작성자 | 필수 독립 리뷰 |
+**리뷰 원칙.** 최소 원칙은 하나다: 라운드를 구현한 모델은 그 라운드를 리뷰하지 않는다. 나머지는 상황(한도, 장애)에 맞춰 바꾼다. 최종 판정은 언제나 호스트 리드다. 아래 표는 기본 리뷰어와 자리 수다.
+
+| 실제 라운드 작성자 | 기본 독립 리뷰 |
 |---|---|
 | Grok/Antigravity 일반, Haiku, 승인된 Sonnet | Sol medium |
 | Luna | Sonnet high |
@@ -16,6 +18,8 @@
 | 승인된 APEX Sol | 호스트 리드의 실제 diff·테스트·변경 범위 직접 리뷰 |
 
 `delegate-review → bridge --consult → consult-finish` 이후 필수 결과는 별도로 보존되고 `LEAD_DECISION_REQUIRED`에서 멈춘다. `auto_apply:true`, `review {adopt:true}`, autopilot은 이 게이트를 건너뛰지 못한다. 승인 입력은 `decision`, `rationale`, `baseline_digest`, `contract_change`다. `APPROVE`는 VERIFY만 열며 CLOSE에는 계속 수용 검사와 quiescence가 필요하다. Sol 직접 리뷰 승인에는 `diff_reviewed:true`, 이름을 명시한 `tests_checked`, `changed_scope`도 필요하다.
+
+기본 리뷰어가 한도 소진이나 장애로 끝내지 못하면 게이트(`LEAD_DECISION_REQUIRED`)에서 `delegate-review`를 다시 부른다. 끝난 리뷰는 남고 빈 자리만 채운다. 기본 리뷰어가 아닌 모델을 넣으려면 `executors`와 `substitution_reason`을 적는다(예: `{"executors":["haiku"],"substitution_reason":"Codex 한도 소진, 01:56 해제"}`). 작성자 자신과 리드는 위임 리뷰어가 될 수 없다. 라운드당 위임 상한(2회)은 그대로다. 남은 리뷰어가 없으면 리드가 `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적고 빈 자리를 직접 채워 APPROVE할 수 있으며 `lead_filled_seats`로 기록된다. 끝낸 리뷰어가 하나라도 pass가 아니면 대체나 직접 채움으로 뒤집지 못한다. 패킷에는 `planned_reviewers`, `substitutes`, `review_gaps`, 같은 회사 모델끼리 리뷰했으면 `same_family_reviewers`가 남는다(교차 검증이 약하다는 표시).
 
 컨트롤러 명령을 호출한 호스트가 실제 Opus인지 프로세스 출력이나 모델 이름 문자열로 인증할 수는 없다. 모델 신원은 호스트 통합이 보증해야 한다. 현재 기록은 `authority.model_verified:false`, 실제로 관측하지 않은 모델은 null이며, boolean 입력만으로 '실제 Opus 독립 기술 리뷰 완료'라고 인증하지 않는다. 제어 폴더는 작업 폴더 밖에 두지만 이는 OS 수준 접근 격리의 대체물이 아니다.
 

@@ -23,7 +23,7 @@ import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
 import {ensureControl,isLegacy,migrate,controlRoot,controlPath,acquireLock} from './control-dir.mjs';
 import {ignoredManifest,ignoredChanges,runCommands,failureFeedback} from './acceptance.mjs';
 import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
-import {planReview,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation} from './review-plan.mjs';
+import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation} from './review-plan.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 // 상담 위원에게 직접 넣어 주는 diff의 최대 길이.
@@ -344,7 +344,11 @@ function consult(c,input) {
   let adaptivePlan=null;
   let size=mode==='committee'?2:1;
   const explicit=input.executors!==undefined;
-  let picks;
+  let picks,panel=null;
+  if(s.phase==='LEAD_DECISION_REQUIRED'){
+    // 게이트에서 다시 위임할 수 있는 건 리뷰어가 끝내지 못한 라운드뿐이다(한도·장애). 판정이 난 패널은 다시 돌리지 않는다.
+    if(!adaptive||!(s.review_results?.[s.iteration]??[]).some(r=>!r.ok))throw Error('Invalid phase LEAD_DECISION_REQUIRED for delegate-review: no mandatory reviewer failed this round');
+  }
   if(adaptive){
     const recorded=c.optional('assignment.json');
     if(!sameAssignment(recorded,s.assignment))throw Error('ADAPTIVE_REVIEW: assignment does not match the controller record');
@@ -352,17 +356,12 @@ function consult(c,input) {
     if(adaptivePlan.reviewers.length===1&&adaptivePlan.reviewers[0]==='lead'){
       throw Error('ADAPTIVE_REVIEW: this round requires a direct lead review; delegated reviewers are refused');
     }
-    if(explicit){
-      const asked=[...input.executors];
-      const same=asked.length===adaptivePlan.reviewers.length&&adaptivePlan.reviewers.every(e=>asked.includes(e));
-      if(!same)throw Error('ADAPTIVE_REVIEW: reviewer list must match the controller plan for '+s.owner);
-    }
     if(adaptivePlan.reviewers.includes(s.owner))throw Error('ADAPTIVE_REVIEW: self-review is refused');
-    const failed=s.review_failed?.[s.iteration]??[];
-    if(failed.some(e=>adaptivePlan.reviewers.includes(e))||s.review_results?.[s.iteration]?.length){
-      throw Error('ADAPTIVE_REVIEW: mandatory review already failed or finished; no substitute reviewer');
-    }
-    picks=adaptivePlan.reviewers;
+    // 끝난 리뷰는 남기고, 빈 자리만 기본 리뷰어나 리드가 고른 다른 모델로 채운다.
+    const kept=(s.review_results?.[s.iteration]??[]).filter(r=>r.ok).map(r=>r.executor);
+    panel=panelSeats(adaptivePlan,{asked:explicit?input.executors:undefined,kept,failed:s.review_failed?.[s.iteration]??[],reason:input.substitution_reason});
+    for(const e of panel.reviewers)if(!REVIEWERS.includes(e))throw Error('Consult executors must be named from '+REVIEWERS.join(', '));
+    picks=panel.reviewers;
     size=picks.length;
   }
   if(mode!=='review'&&(s.consult_runs??0)+size>CONSULT_CAP){
@@ -434,7 +433,7 @@ function consult(c,input) {
     const d=a.dispatch(brief,{token:'consult',owner:m.executor},{
       session:a.newSession(),resume:false,probe:m.cli,
       promptFile:path.join(c.taskdir(),`prompt-consult-${id}-${m.member}.txt`),
-      options:{...(s.configuration.executors[m.executor]??{}),...(adaptivePlan?.effort?.[m.executor]?{reasoning_effort:adaptivePlan.effort[m.executor]}:{})}
+      options:{...(s.configuration.executors[m.executor]??{}),...(panel?.effort?.[m.executor]?{reasoning_effort:panel.effort[m.executor]}:{})}
     });
     return [m.member,{transport:'executor-cli',kind:'consult',executor:m.executor,...d,task_id:s.task_id,consult_id:id,member:m.member}];
   });
@@ -447,11 +446,14 @@ function consult(c,input) {
     if(prior){
       if(!samePlan(prior,storedPlan)||prior.baseline_digest!==base.digest)throw Error('ADAPTIVE_REVIEW: frozen review plan does not match this round snapshot');
     }else c.art(`review-plan-${n}.json`,storedPlan);
+    // 파일의 계획은 기본 리뷰어로 고정하고, 이번 위임에서 실제로 앉힌 리뷰어는 따로 남긴다.
+    storedPlan={...storedPlan,reviewers:[...panel.reviewers],effort:panel.effort,planned:[...adaptivePlan.reviewers],kept:panel.kept,substitutes:panel.substitutes,substitution_reason:panel.substitution_reason};
   }
   const roster=members.map(({member,executor})=>({member,executor}));
   c.art(`consult-${id}-base.json`,base);
   for(const [member,request] of requests)c.art(`consult-${id}-${member}.json`,request);
-  c.art(`consult-${id}.json`,{id,mode,question:input.question,focus:input.focus??[],members:roster,phase:s.phase});
+  c.art(`consult-${id}.json`,{id,mode,question:input.question,focus:input.focus??[],members:roster,phase:s.phase,
+    ...(panel?{planned:storedPlan.planned,substitutes:panel.substitutes,substitution_reason:panel.substitution_reason}:{})});
 
   if(mode==='review')s.review_runs={...(s.review_runs??{}),[n]:(s.review_runs?.[n]??0)+1};
   else s.consult_runs=(s.consult_runs??0)+size;
@@ -507,7 +509,9 @@ function applyAdaptiveReview(c,open,results) {
   const plan=open.plan;
   const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
   const byExecutor=new Map(results.filter(Boolean).map(r=>[r.executor,r]));
-  const records=plan.reviewers.map(executor=>{
+  // 앞선 위임에서 끝난 리뷰는 그대로 두고, 이번 자리의 결과를 붙인다.
+  const kept=(s.review_results?.[s.iteration]??[]).filter(r=>r.ok);
+  const fresh=plan.reviewers.map(executor=>{
     const result=byExecutor.get(executor);
     if(!result)return {executor,ok:false,verdict:null,digest:open.digest,consult_id:open.id};
     let verdict=result.recommended_verdict;
@@ -516,8 +520,10 @@ function applyAdaptiveReview(c,open,results) {
       verdict='redo';
       blocking=['worker reported '+raw.status];
     }
-    return {executor,ok:true,verdict,blocking_criteria:blocking,summary:result.summary,confidence:result.confidence,findings:result.findings??[],digest:open.digest,consult_id:open.id};
+    return {executor,ok:true,verdict,blocking_criteria:blocking,summary:result.summary,confidence:result.confidence,findings:result.findings??[],digest:open.digest,consult_id:open.id,
+      ...((plan.substitutes??[]).includes(executor)?{substitute:true,substitution_reason:plan.substitution_reason}:{})};
   });
+  const records=[...kept,...fresh];
   s.review_results={...(s.review_results??{}),[s.iteration]:records};
   const decision=aggregateVerdicts(records);
   const listed=records.map(r=>({executor:r.executor,verdict:r.verdict,digest:r.digest}));
@@ -525,7 +531,7 @@ function applyAdaptiveReview(c,open,results) {
   if(decision.status==='reviewer_failed'){
     const missing=records.filter(r=>!r.ok).map(r=>r.executor);
     s.review_failed={...(s.review_failed??{}),[s.iteration]:[...new Set([...(s.review_failed?.[s.iteration]??[]),...missing])]};
-    note='mandatory reviewer did not finish; no substitute reviewer; APPROVE is refused';
+    note=`mandatory reviewer did not finish (${missing.join(', ')}); delegate-review again with executors other than ${s.owner} and a substitution_reason, or decide with your own diff review`;
   } else if(decision.status!=='unanimous'||records.some(r=>r.digest!==s.post_digest)){
     note='mandatory reviews disagree or the digest does not match the round; a pass is not synthesized';
   } else {
@@ -535,6 +541,17 @@ function applyAdaptiveReview(c,open,results) {
   }
   return openLeadGate(c,{recommendation,pass_forbidden,reviewers:listed,panel_status:decision.status,verdict:decision.status==='unanimous'?decision.verdict:null,consult_id:open.id,note});
 }
+
+// classic의 자동 교체 규칙과 같은 판정: 같은 일꾼이 직전 반려와 같은 수용 기준(AC ID)으로 또 반려되면 교체 대상이다.
+function repeatedCriteria(s,blocking) {
+  const prev=s.reviews.filter(r=>r.owner===s.owner&&r.verdict!=='pass').at(-1);
+  if(!prev||!blocking.length)return [];
+  const before=new Set((prev.blocking_criteria??[]).flatMap(contract.criterionKeys));
+  return [...new Set(blocking.flatMap(contract.criterionKeys))].filter(k=>before.has(k));
+}
+const panelBlocking=records=>[...new Set(records.filter(r=>r.ok&&r.verdict!=='pass').flatMap(r=>r.blocking_criteria??[]).filter(x=>typeof x==='string'&&x.trim()))];
+// APEX는 Sol에 남는다. 그 밖에는 REASSIGN_OTHER로 넘길 수 있는 일꾼이 있을 때만 교체를 권한다.
+const swapTargets=(c,s)=>s.owner==='sol'?[]:['grok','antigravity','haiku','luna'].filter(x=>x!==s.owner&&c.pool().includes(x)&&c.canWork(x));
 
 // 증거 파일의 위치만 넘긴다. diff 본문이나 모델 호출은 넣지 않는다.
 function leadEvidence(c,consult_id) {
@@ -548,7 +565,13 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
   const s=c.s,n=s.iteration;
   const dispatch=c.optional(`dispatch-${n}.json`),brief=c.optional(`brief-${n}.json`),validation=c.optional(`validation-${n}.json`);
   const runs=collectRunUsage(c.root,s).filter(r=>r.round===n||consult_id&&r.tag.startsWith(`consult-${consult_id}-`));
-  const required=planReview(s.owner,s.assignment).reviewers;
+  const plan=planReview(s.owner,s.assignment);
+  const coverage=reviewCoverage(plan,s.review_results?.[n]??[],s.post_digest);
+  const repeated=repeatedCriteria(s,panelBlocking(s.review_results?.[n]??[]));
+  if(repeated.length&&recommendation==='REDO'&&swapTargets(c,s).length){
+    recommendation='REASSIGN_OTHER';
+    note+=`; ${s.owner} was rejected again on ${repeated.join(', ')}, so another worker is recommended`;
+  }
   const evidence=leadEvidence(c,consult_id);
   const acceptance=c.optional(`acceptance-${n}-finish.json`);
   if(acceptance)evidence.push(`acceptance-${n}-finish.json`);
@@ -558,14 +581,17 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
     base_commit:s.base_commit,baseline_digest:s.post_digest,changed_files:validation?.changed??[],
     acceptance:acceptance?{status:acceptance.status,quiescent:acceptance.quiescent===true,file:`acceptance-${n}-finish.json`}:{status:'not_recorded'},
     criteria:(brief?.success_criteria??[]).slice(0,36).map(text=>String(text).slice(0,180)),panel_status,
-    review_gaps:required.filter(e=>e!=='lead'&&!reviewers.some(r=>r.executor===e&&r.verdict==='pass')),
+    review_gaps:coverage.gaps,repeated_criteria:repeated,planned_reviewers:plan.reviewers,substitutes:coverage.substitutes,same_family_reviewers:coverage.same_family,
     quota:quotaReport(c.root),usage:runs.map(r=>({executor:r.executor,role:r.role,tokens:r.tokens,cost_usd:r.cost_usd,file:r.file})),
     decision_authority:{source:'host-controller',observed_model:s.lead_model??null,model_verified:false},
     recommendation,pass_forbidden,note,consult_id,reviewers,evidence:[...new Set(evidence)]};
-  c.art(`lead-packet-${n}.json`,packet);
+  // 리뷰어를 바꿔 다시 위임하면 게이트가 다시 열린다. 앞선 패킷은 감사 기록으로 남기고 새 파일에 쓴다.
+  const first=`lead-packet-${n}.json`;
+  const file=fs.existsSync(path.join(c.taskdir(),first))?`lead-packet-${n}-${consult_id??'direct'}.json`:first;
+  c.art(file,packet);
   s.pending_review=null;
   s.phase='LEAD_DECISION_REQUIRED';
-  s.lead_packet={round:n,file:`lead-packet-${n}.json`,recommendation,pass_forbidden};
+  s.lead_packet={round:n,file,recommendation,pass_forbidden};
   c.save();
   return {status:'lead_gate',panel_status,verdict,recommendation,pass_forbidden,reviewers,phase:s.phase,next_action:'lead-decision'};
 }
@@ -1152,7 +1178,7 @@ function leadDecision(c,input) {
   const plan=planReview(s.owner,s.assignment);
   const direct=plan.reviewers.length===1&&plan.reviewers[0]==='lead';
   const records=s.review_results?.[s.iteration]??[];
-  let grant=null,next_executor=null,required_reviewer=null,phase;
+  let grant=null,next_executor=null,required_reviewer=null,phase,lead_filled=null,keep_owner=null;
   if(normalized==='APPROVE'){
     if(input.contract_change===true)throw Error('LEAD_DECISION: APPROVE is refused when the contract changed');
     const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
@@ -1162,14 +1188,27 @@ function leadDecision(c,input) {
       if(!namedEvidence(input.tests_checked))throw Error('LEAD_DECISION: APPROVE requires tests_checked naming the tests that were read');
       if(!namedEvidence(input.changed_scope))throw Error('LEAD_DECISION: APPROVE requires changed_scope naming the change that was read');
     } else {
-      const panel=aggregateVerdicts(records);
-      const covered=plan.reviewers.every(e=>records.some(r=>r.executor===e&&r.ok&&r.verdict==='pass'&&r.digest===s.post_digest));
-      if(panel.status!=='unanimous'||panel.verdict!=='pass'||panel.digest!==s.post_digest||!covered){
+      // 끝낸 리뷰어 중 하나라도 pass가 아니면 승인하지 않는다. 자리가 비었으면(한도·장애) 리드가 직접 diff를 읽고 채울 수 있다.
+      const finished=records.filter(r=>r.ok);
+      const coverage=reviewCoverage(plan,records,s.post_digest);
+      if(finished.some(r=>r.verdict!=='pass'||r.digest!==s.post_digest)){
         throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest');
+      }
+      if(!coverage.covered){
+        const direct_fill=s.owner!=='lead'&&input.diff_reviewed===true&&namedEvidence(input.tests_checked)&&namedEvidence(input.changed_scope);
+        if(!direct_fill)throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest; '
+          +'for a missing reviewer ('+coverage.gaps.join(', ')+') delegate-review a substitute or name diff_reviewed, tests_checked and changed_scope');
+        lead_filled=coverage.gaps;
       }
     }
     phase='VERIFY';
   } else if(normalized==='REDO'){
+    // 같은 실수를 세 번 시키지 않는다. 그래도 같은 일꾼에게 맡기려면 리드가 이유를 남긴다.
+    const repeated=repeatedCriteria(s,panelBlocking(records));
+    if(repeated.length&&swapTargets(c,s).length){
+      keep_owner=typeof input.keep_owner_reason==='string'?input.keep_owner_reason.trim():'';
+      if(!keep_owner)throw Error(`LEAD_DECISION: ${s.owner} was rejected again on ${repeated.join(', ')}; REASSIGN_OTHER (${swapTargets(c,s).join(', ')}) or give keep_owner_reason to REDO`);
+    }
     if(s.owner==='sol'){
       if(s.assignment?.strategy!=='sol_apex'||s.assignment?.criticality!=='apex')throw Error('ROLE_GATE: Sol implements only an APEX round');
       grant=nextGrant(s,'sol','sol_apex','apex',rationale);
@@ -1205,7 +1244,9 @@ function leadDecision(c,input) {
     ...(input.diff_reviewed!==undefined?{diff_reviewed:input.diff_reviewed===true}:{}),
     ...(input.tests_checked!==undefined?{tests_checked:input.tests_checked}:{}),
     ...(input.changed_scope!==undefined?{changed_scope:input.changed_scope}:{}),
-    ...(grant?{implement_grant_revision:grant.revision}:{})
+    ...(grant?{implement_grant_revision:grant.revision}:{}),
+    ...(lead_filled?{lead_filled_seats:lead_filled}:{}),
+    ...(keep_owner?{keep_owner_reason:keep_owner}:{})
   };
   const file=`lead-decision-${s.iteration}.json`;
   if(grant){

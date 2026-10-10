@@ -47,7 +47,7 @@
 `hyperfusion.v03.config.example.json`を対象リポジトリの`hyperfusion.config.json`にコピーして明示的に有効化します。既存のclassic設定と実行中のタスクは自動変更されません。詳細は[universal-supervisor](references/universal-supervisor.md)（韓国語）、実装状況は[v03-implementation-status](references/v03-implementation-status.md)（韓国語）を参照してください。
 
 - **External-First配置。** 自動実装はGrok・Antigravity・Lunaが担当します。Sonnet（重要/再割り当てラウンド）とSol（APEXラウンド）はラウンドごとのgrantがある場合のみ実装し、自動フォールバックや新人優遇はこの2つを選びません。
-- **作者別の必須レビュー。** Grok/AGYの通常作業→Sol、Luna→Sonnet、重要作業→Sol＋Sonnetの二重PASS。必須結果は`LEAD_DECISION_REQUIRED`で止まり、`auto_apply`・`review {adopt}`・オートパイロットでもホストリードの最終判断ゲートは飛ばせません。
+- **作者別のレビュー。** 原則は一つ、実装したモデルは自分のラウンドをレビューしません。既定はGrok/AGYの通常作業→Sol、Luna→Sonnet、重要作業→Sol＋Sonnetの二重PASS。レビュアーが上限や障害で止まったらリードが理由を書いて別のモデルに差し替え、残るレビュアーがいなければリードが自分でdiffを読んで埋めます。結果は`LEAD_DECISION_REQUIRED`で止まり、`auto_apply`・`review {adopt}`・オートパイロットでもホストリードの最終判断ゲートは飛ばせません。
 - **共通ローカル監視。** すべてのimplement/review/consult呼び出しを同じsupervisorが観測します（`status --monitor`、`monitor --once|--watch`）。無信号はQUIET警告にとどまり、進捗や成功を生成しません。監視でモデルは呼びません。
 - **使用量の計測。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で運用者の観測を記録します。
 - **既定の推論強度。** Sonnet high、Haiku max、Antigravity high、Grok xhigh、Luna xhigh、Sol medium。設定`reasoning_effort`で上書きでき、`null`ならフラグを渡しません。

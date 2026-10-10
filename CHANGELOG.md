@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- adaptive 모드에도 반복 반려 교체 규칙을 적용한다. 같은 일꾼이 같은 AC로 두 번 반려되면 lead-packet이 `REASSIGN_OTHER`를 권하고, 그래도 `REDO`하려면 `keep_owner_reason`이 필요하다.
+- 리뷰어 교체: 최소 원칙은 "구현한 모델은 그 라운드를 리뷰하지 않는다" 하나로 두고, 나머지는 한도·장애에 맞춰 바꾼다. 필수 리뷰어가 실패하면 게이트에서 `delegate-review`를 다시 불러 빈 자리만 다른 모델로 채운다(`executors` + `substitution_reason`). 남은 리뷰어가 없으면 리드가 diff·테스트·범위를 적고 직접 채워 승인한다(`lead_filled_seats`). 끝낸 리뷰어의 반려는 뒤집지 못하고, 패킷에 계획·대체·같은 회사 리뷰어를 남긴다.
+
 ## 0.15.0
 
 - v0.3 명시적 External-First 프로필, 작성자별 필수/이중 리뷰, 라운드별 Sonnet·APEX Sol grant 및 호스트 최종 판정 게이트.
