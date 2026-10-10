@@ -32,6 +32,8 @@ CLI 실패의 stderr는 `{code, message, next_action}` JSON이다. doctor는 체
 | takeover로 리드가 lease를 받음 | 허용 |
 | 상태 파일을 읽을 수 없음 | 차단 |
 
+같은 설정에 **Stop 훅**도 들어 있다. 리드가 턴을 끝내려 할 때 작업 폴더(cwd)의 저장소에 진행 중인 작업이 리드 차례 단계(PLAN, REVIEW, VERIFY, REDO, ALTERNATIVE_REQUIRED, LEAD_DECISION_REQUIRED, 끝나지 않은 상담)에 있으면 한 번 막고 다음 동작을 알려 준다. 이미 한 번 막혀 이어 가는 중(`stop_hook_active`)이면 통과시키므로, 사용자 판단이 필요해 멈추는 경우 이유를 보고하고 다시 끝내면 된다. 일꾼 실행 중(EXECUTING), DECISION_REQUIRED, TAKEOVER_REQUIRED, RECOVERY_REQUIRED, 종료 단계와 상태를 읽지 못한 경우는 막지 않는다.
+
 Git 저장소 밖의 파일(스크래치 패드의 입력 JSON 등)은 막지 않는다. 일꾼 Sonnet은 `--safe-mode`로 떠서 사용자 훅이 꺼지므로 이 훅에 막히지 않는다. Bash·PowerShell을 통한 쓰기는 검사하지 않는다. 그 경로는 기존 보호 파일 스냅샷과 라운드 diff 검사가 잡는다.
 
 ## 수용 테스트 자동 실행
