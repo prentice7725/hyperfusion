@@ -17,6 +17,7 @@ import {readInput,printError} from './cli.mjs';
 import {SCHEMA_VERSION,ARCHITECTURE,VERSION} from './versions.mjs';
 import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
+import {compactView} from './lead-view.mjs';
 import {acTable,failureCriteria,prDraft,draftInputs} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
@@ -1397,6 +1398,63 @@ function grantImplement(c,input) {
   return {status:'granted',grant};
 }
 
+const SELF=fileURLToPath(import.meta.url);
+
+// 지금 단계에서 리드가 칠 다음 명령 한 줄과, 채워 둘 수 있는 입력. 읽기 전용이며 상태를 바꾸지 않는다.
+// 리드는 token이나 digest를 옮겨 적지 않고 비워 둔 칸(<...>)만 채우면 된다. 입력은 표준입력(-)으로 넘긴다.
+function nextStep(c) {
+  const s=c.s,root=c.root;
+  const line=(action,withInput=true)=>`node "${SELF}" ${action} "${root}"${withInput?' -':''}`;
+  const base={task_id:s.task_id,phase:s.phase,owner:s.owner,iteration:s.iteration};
+  const files=name=>path.join(c.taskdir(),name);
+  const step=(rest)=>({...base,...rest});
+  const bridge=(...extra)=>({command:process.execPath,args:[BRIDGE,root,...extra]});
+  if(s.open_consult){
+    return step({step:'run the consult bridge once, then consult-finish',run:bridge('--consult',s.open_consult.id),
+      then:{action:'consult-finish',command_line:line('consult-finish'),input:{quiescent:true}}});
+  }
+  switch(s.phase){
+  case 'PLAN':case 'REDO':case 'ALTERNATIVE_REQUIRED':case 'TAKEOVER_REQUIRED':{
+    const brief=c.optional(`brief-${s.iteration}.json`)?files(`brief-${s.iteration}.json`):files('initial-brief.json');
+    const redo=s.phase!=='PLAN';
+    return step({step:'begin: send the brief to the worker',action:'begin',command_line:line('begin'),
+      input_from:brief,input_note:redo?'Add lead_feedback to that brief: "@review" forwards the review findings, or write concrete orders ({file,line,comment} allowed).':'Use the init brief as is.',
+      ...(s.phase==='ALTERNATIVE_REQUIRED'?{choose:'executor: name a different worker, or omit to let the router pick'}:{}),
+      ...(s.phase==='TAKEOVER_REQUIRED'?{choose:'takeover_reason is required'}:{}),
+      then:'run the command in the begin output once, then finish'});}
+  case 'EXECUTING':
+    if(!s.writer)return step({step:'no writer lease: recover',action:'recover',command_line:line('recover'),input:{quiescent:true,reason:'<why it is safe>'}});
+    return step({step:'run the worker bridge once, confirm the processes stopped, then finish',run:bridge(),
+      then:{action:'finish',command_line:line('finish'),input:{token:s.writer.token,quiescent:true},
+        note:s.owner==='lead'?'Lead takeover needs an explicit result.':'The result is read from result-N.json; do not paste it.'}});
+  case 'REVIEW':{
+    const delegated=s.configuration.review?.by==='delegate';
+    return delegated
+      ?step({step:'delegate-review: another model reviews read-only',action:'delegate-review',command_line:line('delegate-review'),input:{},
+        then:'run the bridge in the output once, then consult-finish with {"quiescent":true}'})
+      :step({step:'review the diff yourself',action:'review',command_line:line('review'),
+        input:{verdict:'<pass|redo|alternative|decision>',rationale:'<text>',blocking_criteria:['<AC id: reason>'],commands_run:['git diff'],independent_diff_review:true}});}
+  case 'LEAD_DECISION_REQUIRED':{
+    const packet=s.lead_packet?.file?files(s.lead_packet.file):null;
+    return step({step:'read the lead packet, then decide',...(packet?{read_first:packet}:{}),action:'lead-decision',command_line:line('lead-decision'),
+      input:{decision:'<APPROVE|REDO|REASSIGN_TO_SONNET|REASSIGN_OTHER|ESCALATE|BLOCK>',rationale:'<text>',baseline_digest:s.post_digest,contract_change:false},
+      for_approve_when_you_read_the_diff:{diff_reviewed:true,tests_checked:['<test you read>'],changed_scope:['<change you read>']},
+      recommendation:s.lead_packet?.recommendation??null,pass_forbidden:s.lead_packet?.pass_forbidden??null});}
+  case 'VERIFY':{
+    const brief=c.optional(`brief-${s.iteration}.json`);
+    return step({step:'verify: the controller reruns the acceptance commands itself',action:'verify',command_line:line('verify'),
+      input:brief?.acceptance_commands?{acceptance_satisfied:true}:{acceptance_satisfied:true,tests:[{command:'<what you ran>',status:'pass'}]}});}
+  case 'DECISION_REQUIRED':
+    return step({step:'record the architecture decision',action:'decide',command_line:line('decide'),input:{decision:'<text>'}});
+  case 'RECOVERY_REQUIRED':
+    return step({step:'stop the leftover processes yourself, then recover',action:'recover',command_line:line('recover'),
+      input:{quiescent:true,reason:'<what you stopped and checked>'},last_errors:s.last_errors??[]});
+  default:
+    return step({step:'finished or blocked: read the report',action:'report',command_line:`node "${SELF}" report "${root}"`,
+      ...(s.last_errors?.length?{last_errors:s.last_errors}:{})});
+  }
+}
+
 const ACTIONS={consult,'consult-finish':consultFinish,begin,finish,review,decide,verify,recover,'grant-implement':grantImplement,'lead-decision':leadDecision};
 
 export function run(root,action,input={}) {
@@ -1431,7 +1489,7 @@ function dispatch(c,action,input) {
     c.s.phase='RECOVERY_REQUIRED';
     c.s.last_errors=['ACCEPTANCE_NOT_QUIESCENT: interrupted or unproven acceptance run; confirm stopped processes before recovery'];
     c.save();
-    if(!['recover','archive','status','report'].includes(action))throw Error(c.s.last_errors[0]);
+    if(!['recover','archive','status','report','next'].includes(action))throw Error(c.s.last_errors[0]);
   }
   if(action==='init')return init(c,input);
   if(!c.s)throw Error('Initialize first');
@@ -1445,6 +1503,7 @@ function dispatch(c,action,input) {
     throw Error('LEGACY_STATE: inspect status; confirm stopped writers then archive with a reason before creating an Opus-led task');
   }
   if(action==='status')return status(c,input);
+  if(action==='next')return nextStep(c);
   if(action==='report')return report(c.root,input.task_id??c.s.task_id);
 
   // 상담 중에는 다음 수를 두지 않는다. 결과를 보고 판단한다.
@@ -1469,7 +1528,9 @@ async function cli() {
   try {
     const [action,root,...rest]=process.argv.slice(2);
     const file=rest[0]&&!rest[0].startsWith('--')?rest.shift():undefined;
-    const flags=rest;
+    // --full은 출력 보기만 바꾼다(기본은 리드가 읽는 것만 남긴 compact 보기).
+    const full=rest.includes('--full');
+    const flags=rest.filter(flag=>flag!=='--full');
     if(!action||!root)throw Error('Usage: node fusion-state.mjs ACTION REPO_ROOT [INPUT.json] [--executor NAME]');
     // migrate는 상태가 없어도 되고 컨트롤러 잠금도 쓰지 않는다(옮기는 대상이 잠금 폴더 자체이기 때문).
     if(action==='migrate'){
@@ -1511,7 +1572,7 @@ async function cli() {
       input.executor=flags[1];
     }
     const out=action==='autopilot'?await (await import('./autopilot.mjs')).autopilot(root,input):run(root,action,input);
-    console.log(JSON.stringify(out,null,2));
+    console.log(JSON.stringify(full?out:compactView(action,out),null,2));
     }
   } catch(e){
     printError(e);
