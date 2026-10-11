@@ -87,6 +87,12 @@ export function consultResult(v,task_id,consult_id,member,mode) {
  requireThat(Array.isArray(v.findings)&&v.findings.every(f=>f&&reportedPath(f.file)&&Number.isInteger(f.line)&&f.line>=0&&['blocker','major','minor','nit'].includes(f.severity)&&str(f.issue)&&typeof f.suggestion==='string'),'Invalid consult findings');
  return v;
 }
+// 반려 근거. LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. redo/alternative는 줄 위치가 있는
+// blocker·major 지적이 하나 이상 있어야 그대로 적용한다. 없으면 리드가 읽고 정하는 참고 의견으로 내린다.
+export function rejectionEvidence(verdict,findings) {
+ if(verdict!=='redo'&&verdict!=='alternative')return true;
+ return (findings??[]).some(f=>f&&['blocker','major'].includes(f.severity)&&Number.isInteger(f.line)&&f.line>=1&&str(f.issue));
+}
 // 반려 사유를 비교할 열쇠. AC1 같은 수용 기준 ID가 있으면 그 ID만 본다(표현이 바뀌어도 같은 사유).
 // ID가 없으면 대소문자·문장부호·공백을 걸러낸 문장으로 비교한다.
 export function criterionKeys(text) {

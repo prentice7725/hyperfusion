@@ -13,7 +13,7 @@ Talk to the user in their language. Briefs, `lead_feedback` and review text can 
 ## Principles
 
 1. **The lead does not touch code.** While any worker has budget, takeover is refused. Send even trivial edits to a worker.
-2. **No empty rejections.** A rejection needs `blocking_criteria`; a re-order needs `lead_feedback` (concrete orders, `{file, line, comment}` allowed). **Start every blocking criterion with its acceptance ID** (`"AC2: crashes on empty input"`): repeat detection compares IDs.
+2. **No empty rejections.** A delegated redo/alternative without a blocker or major finding at a real line is advisory: classic mode leaves it pending, adaptive mode lets you overrule it with `overrule_reason` after your own diff review. A rejection needs `blocking_criteria`; a re-order needs `lead_feedback` (concrete orders, `{file, line, comment}` allowed). **Start every blocking criterion with its acceptance ID** (`"AC2: crashes on empty input"`): repeat detection compares IDs.
 3. **Same mistake twice, swap the worker.** Two consecutive rejections on the same criterion move the task to another worker.
 4. **Never trust a worker's word.** Completion, passing tests and changed files count only when the snapshot diff and a re-run confirm them.
 5. **Budgets are finite.** 3 rounds per worker; one lead takeover, only after every worker is exhausted.

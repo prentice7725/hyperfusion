@@ -516,11 +516,13 @@ function applyAdaptiveReview(c,open,results) {
     if(!result)return {executor,ok:false,verdict:null,digest:open.digest,consult_id:open.id};
     let verdict=result.recommended_verdict;
     let blocking=Array.isArray(result.blocking_criteria)?result.blocking_criteria:[];
+    let evidence=contract.rejectionEvidence(verdict,result.findings);
     if(verdict==='pass'&&raw.status!=='complete'){
       verdict='redo';
       blocking=['worker reported '+raw.status];
+      evidence=true;
     }
-    return {executor,ok:true,verdict,blocking_criteria:blocking,summary:result.summary,confidence:result.confidence,findings:result.findings??[],digest:open.digest,consult_id:open.id,
+    return {executor,ok:true,verdict,evidence,blocking_criteria:blocking,summary:result.summary,confidence:result.confidence,findings:result.findings??[],digest:open.digest,consult_id:open.id,
       ...((plan.substitutes??[]).includes(executor)?{substitute:true,substitution_reason:plan.substitution_reason}:{})};
   });
   const records=[...kept,...fresh];
@@ -538,6 +540,12 @@ function applyAdaptiveReview(c,open,results) {
     recommendation={pass:'APPROVE',redo:'REDO',alternative:'REASSIGN_OTHER',decision:'ESCALATE'}[decision.verdict]??null;
     pass_forbidden=decision.verdict!=='pass';
     note=pass_forbidden?'the panel is not a unanimous pass; APPROVE is refused':'unanimous pass on the round digest; a lead-decision is required and APPROVE does not CLOSE';
+  }
+  // 위치가 있는 blocker·major 지적이 없는 반려는 추천으로 올리지 않는다. 리드가 읽고 REDO하거나 직접 리뷰 후 overrule한다.
+  const unsupported=records.filter(r=>r.ok&&r.evidence===false).map(r=>r.executor);
+  if(unsupported.length){
+    if(records.filter(r=>r.ok&&r.verdict!=='pass').every(r=>r.evidence===false))recommendation=null;
+    note+=`; rejection without file:line blocker/major evidence from ${unsupported.join(', ')} is advisory: read it, then REDO or overrule after your own diff review`;
   }
   return openLeadGate(c,{recommendation,pass_forbidden,reviewers:listed,panel_status:decision.status,verdict:decision.status==='unanimous'?decision.verdict:null,consult_id:open.id,note});
 }
@@ -581,7 +589,7 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
     base_commit:s.base_commit,baseline_digest:s.post_digest,changed_files:validation?.changed??[],
     acceptance:acceptance?{status:acceptance.status,quiescent:acceptance.quiescent===true,file:`acceptance-${n}-finish.json`}:{status:'not_recorded'},
     criteria:(brief?.success_criteria??[]).slice(0,36).map(text=>String(text).slice(0,180)),panel_status,
-    review_gaps:coverage.gaps,repeated_criteria:repeated,planned_reviewers:plan.reviewers,substitutes:coverage.substitutes,same_family_reviewers:coverage.same_family,
+    review_gaps:coverage.gaps,repeated_criteria:repeated,unsupported_rejections:(s.review_results?.[n]??[]).filter(r=>r.ok&&r.evidence===false).map(r=>r.executor),planned_reviewers:plan.reviewers,substitutes:coverage.substitutes,same_family_reviewers:coverage.same_family,
     quota:quotaReport(c.root),usage:runs.map(r=>({executor:r.executor,role:r.role,tokens:r.tokens,cost_usd:r.cost_usd,file:r.file})),
     decision_authority:{source:'host-controller',observed_model:s.lead_model??null,model_verified:false},
     recommendation,pass_forbidden,note,consult_id,reviewers,evidence:[...new Set(evidence)]};
@@ -612,11 +620,18 @@ function applyDelegatedReview(c,open,member,result) {
     verdict='redo';
     blocking=['worker reported '+raw.status];
   }
+  const evidence=blocking!==result.blocking_criteria||contract.rejectionEvidence(verdict,result.findings);
   const delegated={
     verdict,rationale:result.summary,blocking_criteria:blocking,
     commands_run:['delegated read-only review by '+member.executor],independent_diff_review:true,
     reviewed_by:member.executor,consult_id:open.id,confidence:result.confidence,findings:result.findings
   };
+  // 위치가 있는 blocker·major 지적이 없는 반려는 auto_apply여도 바로 적용하지 않고 리드에게 넘긴다.
+  if(!evidence){
+    s.pending_review={...delegated,evidence:false};
+    return {status:'pending',reason:'rejection_without_evidence',
+      next_action:'read the findings; review {"adopt":true} to apply the rejection anyway, or give your own verdict'};
+  }
   if(!s.configuration.review.auto_apply){
     s.pending_review=delegated;
     return {status:'pending',next_action:'review with {"adopt":true} or your own verdict'};
@@ -1178,7 +1193,7 @@ function leadDecision(c,input) {
   const plan=planReview(s.owner,s.assignment);
   const direct=plan.reviewers.length===1&&plan.reviewers[0]==='lead';
   const records=s.review_results?.[s.iteration]??[];
-  let grant=null,next_executor=null,required_reviewer=null,phase,lead_filled=null,keep_owner=null;
+  let grant=null,next_executor=null,required_reviewer=null,phase,lead_filled=null,keep_owner=null,overruled=null;
   if(normalized==='APPROVE'){
     if(input.contract_change===true)throw Error('LEAD_DECISION: APPROVE is refused when the contract changed');
     const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
@@ -1189,13 +1204,22 @@ function leadDecision(c,input) {
       if(!namedEvidence(input.changed_scope))throw Error('LEAD_DECISION: APPROVE requires changed_scope naming the change that was read');
     } else {
       // 끝낸 리뷰어 중 하나라도 pass가 아니면 승인하지 않는다. 자리가 비었으면(한도·장애) 리드가 직접 diff를 읽고 채울 수 있다.
+      // 근거 없는 반려(evidence:false)만은 리드가 직접 diff를 읽고 overrule_reason을 남겨 뒤집을 수 있다. 뒤집힌 자리는 리드가 채운 것으로 센다.
       const finished=records.filter(r=>r.ok);
-      const coverage=reviewCoverage(plan,records,s.post_digest);
-      if(finished.some(r=>r.verdict!=='pass'||r.digest!==s.post_digest)){
-        throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest');
+      const leadReviewed=s.owner!=='lead'&&input.diff_reviewed===true&&namedEvidence(input.tests_checked)&&namedEvidence(input.changed_scope);
+      const against=finished.filter(r=>r.verdict!=='pass'||r.digest!==s.post_digest);
+      if(against.length){
+        const reason=typeof input.overrule_reason==='string'?input.overrule_reason.trim():'';
+        const overrulable=against.every(r=>r.evidence===false&&r.digest===s.post_digest);
+        if(!(overrulable&&reason&&leadReviewed)){
+          throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest'
+            +(overrulable?'; a rejection without file:line evidence can be overruled with overrule_reason, diff_reviewed, tests_checked and changed_scope':''));
+        }
+        overruled={executors:against.map(r=>r.executor),reason};
       }
+      const coverage=reviewCoverage(plan,records.filter(r=>!overruled?.executors.includes(r.executor)),s.post_digest);
       if(!coverage.covered){
-        const direct_fill=s.owner!=='lead'&&input.diff_reviewed===true&&namedEvidence(input.tests_checked)&&namedEvidence(input.changed_scope);
+        const direct_fill=leadReviewed;
         if(!direct_fill)throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest; '
           +'for a missing reviewer ('+coverage.gaps.join(', ')+') delegate-review a substitute or name diff_reviewed, tests_checked and changed_scope');
         lead_filled=coverage.gaps;
@@ -1246,7 +1270,8 @@ function leadDecision(c,input) {
     ...(input.changed_scope!==undefined?{changed_scope:input.changed_scope}:{}),
     ...(grant?{implement_grant_revision:grant.revision}:{}),
     ...(lead_filled?{lead_filled_seats:lead_filled}:{}),
-    ...(keep_owner?{keep_owner_reason:keep_owner}:{})
+    ...(keep_owner?{keep_owner_reason:keep_owner}:{}),
+    ...(overruled?{overruled_reviews:overruled}:{})
   };
   const file=`lead-decision-${s.iteration}.json`;
   if(grant){
