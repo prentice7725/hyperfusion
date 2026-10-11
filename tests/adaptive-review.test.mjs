@@ -7,6 +7,7 @@ import {run} from '../scripts/fusion-state.mjs';
 import {consult} from '../scripts/executor-bridge.mjs';
 import {read,atomic} from '../scripts/artifact.mjs';
 import {measure} from '../scripts/metrics.mjs';
+import {config} from '../scripts/executor-config.mjs';
 
 const adaptive=(t,{executor='grok',criticality,strategy,reason,review={},executors}={})=>{
  const f=fixture(t,{initialize:false,executor});
@@ -305,4 +306,28 @@ test('a rejection with a located blocker cannot be overruled',async t=>{
  assert.equal(f.state().review_results[1][0].evidence,true);
  assert.deepEqual(read(task(f,'lead-packet-1.json')).unsupported_rejections,[]);
  assert.throws(()=>decide(f,{overrule_reason:'disagree',diff_reviewed:true,tests_checked:['t'],changed_scope:['a.txt']}),/every mandatory review passed on the round digest$/);
+});
+
+test('a round that touches a risk path gets both reviewers and needs the lead\'s own diff review',async t=>{
+ const f=adaptive(t,{reason:'risk',review:{risk_paths:['a.txt']}});
+ f.mode('edit');f.begin();await f.bridge();f.mode('ok');
+ assert.deepEqual(read(task(f,'validation-1.json')).changed,['a.txt']);
+ const {c}=await delegate(f);
+ assert.deepEqual(c.members.map(m=>m.executor),['sol','sonnet']);
+ assert.deepEqual(read(task(f,'review-plan-1.json')).risk,['a.txt']);
+ assert.equal(read(task(f,'assignment.json')).criticality,'standard');
+ assert.deepEqual(read(task(f,'lead-packet-1.json')).risk_paths,['a.txt']);
+ assert.throws(()=>decide(f),/risk paths/);
+ assert.equal(decide(f,{diff_reviewed:true,tests_checked:['tests/a.test.mjs'],changed_scope:['a.txt']}).phase,'VERIFY');
+});
+
+test('risk_paths is validated and an empty list turns it off',async t=>{
+ const f=adaptive(t,{reason:'off',review:{risk_paths:[]}});
+ f.begin();f.finish();
+ const {c}=await delegate(f);
+ assert.deepEqual(c.members.map(m=>m.executor),['sol']);
+ for(const bad of [['/abs/**'],['**'],['a/../b'],'auth/**']){
+  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{by:'delegate',strategy:'lead-gated-adaptive',risk_paths:bad}}));
+  assert.throws(()=>config(f.root),/Invalid/);
+ }
 });

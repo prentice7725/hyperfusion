@@ -39,6 +39,8 @@ v0.3 신규 작업용 설정은 [hyperfusion.v03.config.example.json](../hyperfu
 
 `"review": {"by": "lead" | "delegate", "reviewers": ["sol","sonnet","antigravity","grok","luna","haiku"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. `strategy: "lead-gated-adaptive"`에서는 `auto_apply`가 판정을 VERIFY로 넘기지 않는다. Codex 팀원 설정은 `executors.sol` / `executors.luna`의 `model`과 `reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 기본 모델은 sol `gpt-6.1-sol`, luna `gpt-6-luna`이다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
 
+`review.risk_paths`는 바뀌면 리드가 직접 확인해야 하는 경로 글롭이다. 기본은 `["**/auth/**","**/migrations/**","**/*.sql","**/security/**",".github/workflows/**"]`, `[]`이면 끈다. 라운드의 변경 파일이 하나라도 맞으면 classic에서는 위임 리뷰의 pass를 `auto_apply`여도 바로 적용하지 않고, adaptive에서는 그 라운드를 중요 작업처럼(Grok/AGY는 Sol + Sonnet) 리뷰하고 APPROVE에 리드의 직접 리뷰(`diff_reviewed`, `tests_checked`, `changed_scope`)를 요구한다. 설정은 init 때 고정되며 기록된 작업 등급(`assignment.json`)은 바꾸지 않는다.
+
 ## 기억 계층
 
 `"memory": {"workspace": "<프로젝트별 이름>", "recall_limit": 8, "enabled": true}`. workspace가 없으면 꺼진다. 외부 서버 없이 `~/.hyperfusion/memory/<workspace>.json`에 저장한다(`HF_MEMORY_DIR`로 위치 변경). 자세한 건 [memory.md](memory.md).

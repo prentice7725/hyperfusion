@@ -17,8 +17,8 @@ export async function processTable() {
  if(isWin){
   // Load the system module explicitly: automatic module discovery can stall in
   // a filtered environment on hosted Windows runners. Do not resolve a repo module.
-  query=await command('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Import-Module (Join-Path $PSHOME 'Modules\\CimCmdlets\\CimCmdlets.psd1') -ErrorAction Stop; CimCmdlets\\Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,@{n='created';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}}} | ConvertTo-Json -Compress"]);
-  const parsed=JSON.parse(query.out);rows=(Array.isArray(parsed)?parsed:[parsed]).map(p=>({pid:p.ProcessId,parent:p.ParentProcessId,created:p.created}));
+  query=await command('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Import-Module (Join-Path $PSHOME 'Modules\\CimCmdlets\\CimCmdlets.psd1') -ErrorAction Stop; CimCmdlets\\Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,@{n='created';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}}} | ConvertTo-Json -Compress"]);
+  const parsed=JSON.parse(query.out);rows=(Array.isArray(parsed)?parsed:[parsed]).map(p=>({pid:p.ProcessId,parent:p.ParentProcessId,created:p.created,...(typeof p.Name==='string'?{name:p.Name}:{})}));
  } else {
   query=await command('ps',['-eo','pid=,ppid=,stat=,lstart=']);
   rows=query.out.trim().split('\n').filter(Boolean).map(line=>{
@@ -74,9 +74,9 @@ export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETT
    if(!pid||!exited||aborted)return {quiescent:false,reason:'Executor termination was not confirmed'};
    try{
     if(error)return {quiescent:false,reason:error};
-    let remaining=[],checks=0;
+    let remaining=[],checks=0,owned=[];
     for(;;){
-     const rows=await readTable(),live=descendants(rows,pid,tracked);checks++;
+     const rows=await readTable(),live=descendants(rows,pid,tracked);checks++;owned=live;
      // Same PID with a different creation time is a reused PID, not our process.
      remaining=live.filter(p=>p.pid!==pid||!tracked.has(pid)||tracked.get(pid)===p.created);
      if(baseline){
@@ -87,7 +87,8 @@ export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETT
      await sleep(settle.delayMs);
     }
     return {quiescent:remaining.length===0,reason:remaining.length?'Supervised processes remain':'Supervised process tree stopped',
-     tracked:tracked.size,checks,remaining:remaining.map(p=>({pid:p.pid,created:p.created})),checked_at:new Date().toISOString(),platform:process.platform};
+     tracked:tracked.size,checks,// 실패 원인을 남긴 쪽이 우리 명령의 자손인지, 출처를 알 수 없는 새 프로세스인지 보이게 한다.
+     remaining:remaining.map(p=>({pid:p.pid,parent:p.parent,created:p.created,...(p.name?{name:p.name}:{}),orphan_check:!owned.some(x=>x.pid===p.pid)})),checked_at:new Date().toISOString(),platform:process.platform};
    }catch(e){return {quiescent:false,reason:e.code??'PROCESS_TABLE_UNAVAILABLE'};}
   }
  };
