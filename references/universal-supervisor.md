@@ -21,6 +21,14 @@
 
 기본 리뷰어가 한도 소진이나 장애로 끝내지 못하면 게이트(`LEAD_DECISION_REQUIRED`)에서 `delegate-review`를 다시 부른다. 끝난 리뷰는 남고 빈 자리만 채운다. 기본 리뷰어가 아닌 모델을 넣으려면 `executors`와 `substitution_reason`을 적는다(예: `{"executors":["haiku"],"substitution_reason":"Codex 한도 소진, 01:56 해제"}`). 작성자 자신과 리드는 위임 리뷰어가 될 수 없다. 라운드당 위임 상한(2회)은 그대로다. 남은 리뷰어가 없으면 리드가 `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적고 빈 자리를 직접 채워 APPROVE할 수 있으며 `lead_filled_seats`로 기록된다. 끝낸 리뷰어가 pass가 아니면 직접 채움만으로는 뒤집지 못한다. 반려를 다시 검토하려면 게이트에서 구현자와 이미 판정한 리뷰어를 뺀 모델을 `executors`로, 사유를 `substitution_reason`으로 적어 `delegate-review`를 다시 연다. 반려는 `superseded`로 남고, 대체 리뷰어가 pass하면 리드가 직접 diff를 읽고 `overrule_reason`과 함께 APPROVE한다. 대체 리뷰어도 반려하면 승인되지 않는다. 패킷에는 `planned_reviewers`, `substitutes`, `review_gaps`, 같은 회사 모델끼리 리뷰했으면 `same_family_reviewers`가 남는다(교차 검증이 약하다는 표시).
 
+## 위임 승인 (소유자 결정, 아직 구현 전)
+
+소유자는 2026-10-11에 다음을 허용했다. **리드가 상황을 보고 작업 단위로 재량권을 줄 수 있다.** 이 재량권 아래에서는 컨트롤러가 사전에 승인된 정책에 따라 라운드를 승인하고 VERIFY까지 이어 갈 수 있다. "모든 라운드를 리드가 직접 최종 판정한다"는 기존 원칙은 이 예외 하나로만 바뀐다.
+- 재량권은 리드가 init에서만 준다(`assignment`, `implement_grant`처럼 컨트롤러가 남기는 승인 기록). 저장소 설정, 일꾼 출력, brief 본문으로는 만들 수 없다.
+- 자동 승인 기록은 `delegated-policy`로 표시하며 리드가 직접 검토한 것처럼 보이지 않게 한다.
+- 위험 경로, important, apex 작업과 조건 하나라도 부족한 라운드는 지금처럼 리드 게이트에서 멈춘다. 조건은 수용 테스트 PASS, red-first 증명, `acceptance_map`이 모든 AC를 덮음, 필요한 독립 리뷰 전부 같은 digest에서 PASS, 범위 이탈 없음, 프로세스 종료 증명이다.
+- 구현은 0.17의 다음 단계(B)다. 이 문서의 위 규칙은 현재 코드에 아직 적용되지 않는다.
+
 컨트롤러 명령을 호출한 호스트가 실제 Opus인지 프로세스 출력이나 모델 이름 문자열로 인증할 수는 없다. 모델 신원은 호스트 통합이 보증해야 한다. 현재 기록은 `authority.model_verified:false`, 실제로 관측하지 않은 모델은 null이며, boolean 입력만으로 '실제 Opus 독립 기술 리뷰 완료'라고 인증하지 않는다. 제어 폴더는 작업 폴더 밖에 두지만 이는 OS 수준 접근 격리의 대체물이 아니다.
 
 ## 로컬 감시

@@ -21,8 +21,11 @@
 | consult-finish | quiescent:true → 위원별 결과. 트리가 바뀌었으면 답변 폐기 후 RECOVERY_REQUIRED |
 | status | 기본은 전체 상태. `--summary`면 task_id·phase·owner·remaining·next_action만 출력하고 감시 필드는 넣지 않는다. `--monitor`는 별도 보기이며 `declares_success:false`와 라운드 모니터만 낸다. 두 플래그는 함께 쓸 수 없다 |
 | monitor | 작업 디렉터리의 모니터를 읽기 전용으로 출력. `--once`(생략 가능) 또는 `--watch`. 잠금을 잡지 않고, 진행률을 내지 않으며, 작업 성공을 선언하지 않는다 |
+| next | 지금 단계에서 칠 다음 명령 한 줄(`command_line`)과, token·baseline_digest처럼 컨트롤러가 아는 값을 미리 채운 입력 틀. 읽기 전용이고 상태를 바꾸지 않는다. 비워 둔 칸(`<...>`)만 채워 표준입력(`-`)으로 넘긴다 |
 | report | 현재 작업의 라운드별 담당·판정·소요 시간·비용. 과거 작업은 입력에 task_id 지정 |
-| autopilot | 초기화된 작업에서 begin → 브리지 → finish → 독립 위임 리뷰 → consult-finish를 반복. `acceptance_commands`와 `review.auto_apply:true` 필수. VERIFY·LEAD_DECISION_REQUIRED·DECISION_REQUIRED·BLOCKED·TAKEOVER_REQUIRED 및 안전 확인 실패에서 리드에게 제어 반환. 입력 `{"max_steps":64}`(1~256, 기본 64). [운영 설명](operations.md#오토파일럿) |
+| autopilot | 초기화된 작업에서 begin → 브리지 → finish → 독립 위임 리뷰 → consult-finish를 반복. `acceptance_commands` 필수이고, classic 모드는 `review.auto_apply:true`도 필요하다. `review.strategy:"lead-gated-adaptive"`에서는 `auto_apply`를 요구하지 않는다(어차피 리드 게이트에서 멈춘다). VERIFY·LEAD_DECISION_REQUIRED·DECISION_REQUIRED·BLOCKED·TAKEOVER_REQUIRED 및 안전 확인 실패에서 리드에게 제어 반환. 입력 `{"max_steps":64}`(1~256, 기본 64). [운영 설명](operations.md#오토파일럿) |
+
+명령줄 출력은 기본이 compact 보기다. `init`, `begin`, `finish`, `review`, `decide`, `verify`, `recover`, `grant-implement`, `lead-decision`, `consult-finish`는 리드가 다음 수를 두는 데 필요한 것만 남긴다(`begin`의 일꾼 지시문 전문과 프로브 결과, 상태의 설정·라우팅·세션 전체 등). 빠진 내용은 `omitted`에 적히고 `state.json`, `dispatch-N.json`에 그대로 있으며, 전부 보려면 `--full`을 붙인다. 한 작업의 init~lead-decision 출력은 약 23,500자에서 약 4,300자로 준다. `status`, `report`와 `run()` 반환값(오토파일럿, 테스트)은 바뀌지 않는다.
 
 일꾼 begin은 lease와 시도를 쓰기 전에 CLI를 프로브한다. 반환된 `command`/`args`(executor-bridge)를 라운드당 한 번 실행한다. RESULT_READY 후에도 lease는 유지되고, 리드가 정지 확인 후 finish 한다.
 
