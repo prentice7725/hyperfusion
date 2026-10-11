@@ -6,7 +6,7 @@ import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
 import {read} from '../scripts/artifact.mjs';
 import * as contract from '../scripts/contracts.mjs';
-import {globRegex,runCommands} from '../scripts/acceptance.mjs';
+import {globRegex,runCommands,operatorIgnoredAllow} from '../scripts/acceptance.mjs';
 
 // a.txt가 'fixed'가 아니면 실패한다. 대역 일꾼은 edit 모드에서만 a.txt를 고친다.
 const CHECK=`node -e "const s=require('fs').readFileSync('a.txt','utf8');if(s!=='fixed'){console.error('a.txt is '+s);process.exit(3)}"`;
@@ -84,6 +84,69 @@ test('test outputs in known artifact folders do not block acceptance',async t=>{
  fs.writeFileSync(path.join(f.root,'coverage/old.json'),'{"new":1}');fs.writeFileSync(path.join(f.root,'debug.log'),'x');
  await f.bridge();
  assert.equal(f.state().acceptance.status,'pass');
+});
+
+const withEnv=(t,value)=>{
+ const old=process.env.HF_ACCEPTANCE_IGNORED_ALLOW;
+ if(value===undefined)delete process.env.HF_ACCEPTANCE_IGNORED_ALLOW;else process.env.HF_ACCEPTANCE_IGNORED_ALLOW=value;
+ t.after(()=>{if(old===undefined)delete process.env.HF_ACCEPTANCE_IGNORED_ALLOW;else process.env.HF_ACCEPTANCE_IGNORED_ALLOW=old;});
+};
+const ALLOW='dist/**,node_modules/.vite/vitest/**';
+// 일꾼의 npm test가 vitest 기록을, 빌드가 dist/를 다시 쓰고, 같은 라운드에 의존성 코드도 바뀐 상황.
+const roundWithRegeneratedOutputs=async(t,{planted=false}={})=>{
+ const f=fixture(t,{initialize:false});
+ withIgnored(f,['node_modules/','dist/'],{'node_modules/.vite/vitest/results.json':'{}','node_modules/dep/index.js':'module.exports=1','dist/index.js':'old'});
+ run(f.root,'init',{...f.brief,executor:'grok'});
+ f.brief.acceptance_commands=[CHECK];
+ f.mode('edit');f.begin();
+ fs.writeFileSync(path.join(f.root,'node_modules/.vite/vitest/results.json'),'{"new":1}');
+ fs.writeFileSync(path.join(f.root,'dist/index.js'),'rebuilt');
+ if(planted)fs.writeFileSync(path.join(f.root,'node_modules/dep/index.js'),'require("child_process");module.exports=2');
+ await f.bridge();
+ return f;
+};
+
+test('without the operator setting, regenerated vitest records and dist/ stop the run, and the reason says how to allow them',async t=>{
+ withEnv(t,undefined);
+ const f=await roundWithRegeneratedOutputs(t);
+ assert.equal(f.state().acceptance.status,'skipped');
+ assert.deepEqual(accepted(f).ignored_changes,['dist/index.js','node_modules/.vite/vitest/results.json']);
+ assert.match(accepted(f).reason,/HF_ACCEPTANCE_IGNORED_ALLOW/);
+ assert.equal(accepted(f).operator_ignored_allow,undefined);
+});
+
+test('the operator allowlist lets exactly dist/ and the vitest record through, while dependency code still stops the run',async t=>{
+ withEnv(t,ALLOW);
+ const ok=await roundWithRegeneratedOutputs(t);
+ assert.equal(ok.state().acceptance.status,'pass');
+ assert.deepEqual(accepted(ok).operator_ignored_allow,['dist/**','node_modules/.vite/vitest/**']);
+ const planted=await roundWithRegeneratedOutputs(t,{planted:true});
+ assert.equal(planted.state().acceptance.status,'skipped');
+ assert.deepEqual(accepted(planted).ignored_changes,['node_modules/dep/index.js']);
+});
+
+test('turning the allowlist on in the middle of a task does not trip the baseline recorded without it',async t=>{
+ withEnv(t,undefined);
+ const f=fixture(t,{initialize:false});
+ withIgnored(f,['node_modules/','dist/'],{'node_modules/.vite/vitest/results.json':'{}','dist/index.js':'old'});
+ run(f.root,'init',{...f.brief,executor:'grok'});
+ f.brief.acceptance_commands=[CHECK];
+ f.mode('edit');f.begin();
+ // 기준 기록(ignored-base)은 허용 목록 없이 만들어졌다. 그 뒤 운영자가 켠다.
+ process.env.HF_ACCEPTANCE_IGNORED_ALLOW=ALLOW;
+ fs.writeFileSync(path.join(f.root,'node_modules/.vite/vitest/results.json'),'{"new":1}');
+ fs.writeFileSync(path.join(f.root,'dist/index.js'),'rebuilt');
+ await f.bridge();
+ assert.equal(f.state().acceptance.status,'pass');
+});
+
+test('the operator allowlist refuses globs that would cover dependency code or the whole tree',t=>{
+ const allow=value=>operatorIgnoredAllow({HF_ACCEPTANCE_IGNORED_ALLOW:value});
+ assert.deepEqual(allow(undefined),[]);assert.deepEqual(allow(' '),[]);
+ assert.deepEqual(allow('dist/**, node_modules/.vite/vitest/**'),['dist/**','node_modules/.vite/vitest/**']);
+ for(const bad of ['node_modules/**','node_modules/dep/**','node_modules/*/x/**','**','*','dist/*','dist/index.js','*/dist/**','src/**/dist/**','../x/**','/abs/**','C:/x/**','dist\\**'])
+  assert.throws(()=>allow(bad),/HF_ACCEPTANCE_IGNORED_ALLOW: refused/,bad);
+ assert.throws(()=>allow(Array.from({length:9},(_,i)=>`out${i}/**`).join(',')),/at most 8/);
 });
 
 test('an ignored change after a passing run forces a rerun, and a failure at VERIFY goes back to the worker',async t=>{

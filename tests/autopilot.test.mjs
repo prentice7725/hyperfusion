@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
@@ -157,4 +159,15 @@ test('a just-exited process that lingers briefly in the process table is waited 
  stuck.start(100);await new Promise(r=>setTimeout(r,10));
  const failed=await stuck.finish({exited:true});
  assert.equal(failed.quiescent,false);assert.equal(failed.checks,3);
+});
+
+test('fusion-state.mjs autopilot runs from the command line instead of exiting on an unsettled top-level await',t=>{
+ const f=setup(t);
+ // autopilot.mjs가 fusion-state.mjs를 import하므로 최상위 await로 부르면 서로 기다리다 종료 코드 13으로 끝난다.
+ const r=spawnSync(process.execPath,[fileURLToPath(new URL('../scripts/fusion-state.mjs',import.meta.url)),'autopilot',f.root],{encoding:'utf8',env:process.env,timeout:120000});
+ assert.equal(r.status,0,r.stderr);
+ assert.doesNotMatch(r.stderr,/unsettled top-level await/);
+ const out=JSON.parse(r.stdout);
+ assert.equal(out.phase,'VERIFY',r.stdout);
+ assert.equal(f.state().phase,'VERIFY');
 });

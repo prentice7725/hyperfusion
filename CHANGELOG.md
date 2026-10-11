@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.16.2
+
+- `fusion-state.mjs autopilot`가 아무 일도 하지 않고 종료 코드 13(`unsettled top-level await`)으로 끝나던 문제: `autopilot.mjs`가 `fusion-state.mjs`를 import하는데, `fusion-state.mjs`가 모듈 최상위에서 autopilot을 await해 서로 기다렸다. 명령줄 진입점을 함수로 빼서 모듈 평가가 먼저 끝나게 했다. 이제 `fusion-state.mjs autopilot <저장소>`가 그대로 동작한다.
+- 수용 테스트가 일꾼의 `npm test`가 매 라운드 바꾸는 vitest 기록과 `dist/` 때문에 자주 건너뛰어지던 문제: 운영자가 환경변수 `HF_ACCEPTANCE_IGNORED_ALLOW`(쉼표로 구분한 디렉터리 하위 glob)를 켜면 그 경로만 무시된 파일 비교에서 뺀다. 예: `dist/**,node_modules/.vite/vitest/**`. 저장소 설정 파일로는 켤 수 없고, `node_modules` 전체·의존성 폴더·와일드카드 디렉터리·`/**`로 끝나지 않는 glob은 거절한다. 그 밖의 무시 파일 변경은 지금처럼 건너뛴다. 켠 라운드의 수용 기록에 `operator_ignored_allow`가 남고, 작업 도중에 켜도 기존 기준 기록과 어긋나지 않는다. 기본 비교 대상은 바꾸지 않았다.
+
 ## 0.16.1
 
 - Sol 리뷰 결과 형식이 OpenAI에서 400(`invalid_json_schema`, `properties.task_id`에 `type` 없음)으로 거절되던 문제: 결과 형식의 모든 `const`·`enum` 항목에 `type`(`string`/`integer`)을 함께 넣는다. Luna 구현 형식, 상담 형식도 같은 규칙이다.
