@@ -68,13 +68,18 @@ test('timeout terminates the acceptance tree before starting another command',t=
 });
 
 test('expired finish budget never starts acceptance and safely releases the worker lease',t=>{
- const f=fixture(t);f.brief.acceptance_commands=[CHECK];f.begin();fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');expire(f);
+ const f=fixture(t);f.brief.acceptance_commands=[CHECK];f.begin();begun(f);fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');expire(f);
  const s=f.finish(f.result(['a.txt']));assert.equal(s.phase,'BLOCKED');assert.equal(s.writer,null);
  assert.equal(evidence(f).results[0].status,'not_run');assert.equal(evidence(f).results[0].code,'BUDGET_EXCEEDED');
 });
 
+// begin이 수용 기준선에서 멈추면(writer 없음) 다음 finish가 TypeError로 터져 원인이 사라진다. 기준선 기록을 그대로 보인다.
+const begun=f=>{const s=f.state();if(s.phase==='EXECUTING'&&s.writer)return;
+ const dir=path.join(f.control,'tasks',f.brief.task_id),files=fs.existsSync(dir)?fs.readdirSync(dir).filter(n=>n.startsWith('acceptance-baseline-')):[];
+ assert.fail(`begin did not start the round: phase=${s.phase} errors=${JSON.stringify(s.last_errors)} baseline=${files.map(n=>JSON.stringify(read(path.join(dir,n)).results?.map(r=>({code:r.code,status:r.status,quiescence:r.quiescence})))).join(' ')}`);};
+
 test('VERIFY cannot reuse passing evidence after the task budget expires',t=>{
- const f=fixture(t);f.brief.acceptance_commands=[CHECK];f.begin();fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');f.finish(f.result(['a.txt']));
+ const f=fixture(t);f.brief.acceptance_commands=[CHECK];f.begin();begun(f);fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');f.finish(f.result(['a.txt']));
  f.review('pass');expire(f);
  assert.equal(run(f.root,'verify',{acceptance_satisfied:true}).phase,'BLOCKED');
  assert.equal(fs.existsSync(path.join(f.control,'tasks',f.brief.task_id,'verification.json')),false);
