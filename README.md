@@ -1,6 +1,6 @@
 # HyperFusion
 
-> **버전 표기.** 패키지 릴리스는 `0.16.0`(`package.json`)이고, **v0.3**은 그 위에 얹은 새 운영 프로필(External-First + 범용 감시)의 이름이다. 아직 릴리스되지 않은 변경은 [CHANGELOG](CHANGELOG.md)의 Unreleased에 있다. 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자이며 정본 상수는 `scripts/versions.mjs`다.
+> **버전 표기.** 패키지 릴리스는 `0.16.1`(`package.json`)이고, **v0.3**은 그 위에 얹은 새 운영 프로필(External-First + 범용 감시)의 이름이다. 아직 릴리스되지 않은 변경은 [CHANGELOG](CHANGELOG.md)의 Unreleased에 있다. 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자이며 정본 상수는 `scripts/versions.mjs`다.
 
 한국어 | [日本語](README.ja.md)
 

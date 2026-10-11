@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.16.1
+
+- Sol 리뷰 결과 형식이 OpenAI에서 400(`invalid_json_schema`, `properties.task_id`에 `type` 없음)으로 거절되던 문제: 결과 형식의 모든 `const`·`enum` 항목에 `type`(`string`/`integer`)을 함께 넣는다. Luna 구현 형식, 상담 형식도 같은 규칙이다.
+- agy 리뷰가 셸 명령을 시도해 빈 응답으로 끝나던 문제: "읽기 전용 셸 명령 허용" 문장은 Codex(Sol·Luna)에게만 주고, Antigravity에는 파일 보기 도구만 쓰고 셸 명령은 쓰지 말라고 지시한다. 그 밖의 일꾼에는 셸 문장 없이 파일 읽기 도구로 읽으라고만 한다.
+
 ## 0.16.0
 
 - 수용 명령 정지 실패(`ACCEPTANCE_NOT_QUIESCENT`) 오류에 남은 프로세스의 이름·PID·부모와 출처 불명 여부를 최대 5개 표시한다. 리드가 무엇을 멈출지 바로 알 수 있다.

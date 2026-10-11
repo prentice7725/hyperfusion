@@ -8,20 +8,20 @@ import {PROTOCOL,VERSION} from '../versions.mjs';
 // 외부 일꾼(Grok, Antigravity)이 공통으로 따르는 결과 계약과 지시문.
 export function resultSchema(task_id,round) {
  const strings={type:'array',items:{type:'string'}};
- const properties={task_id:{const:task_id},round:{const:round},status:{enum:['complete','blocked','needs_decision','failed']},summary:{type:'string'},files_read:strings,files_changed:strings,commands_run:strings,tests:{type:'array',items:{type:'object',properties:{command:{type:'string'},status:{enum:['pass','fail','not_run']}},required:['command','status'],additionalProperties:false}},unresolved:strings,risks:strings,needs_lead_decision:{type:'boolean'},recommended_next_action:{type:'string'}};
+ const properties={task_id:{type:'string',const:task_id},round:{type:'integer',const:round},status:{type:'string',enum:['complete','blocked','needs_decision','failed']},summary:{type:'string'},files_read:strings,files_changed:strings,commands_run:strings,tests:{type:'array',items:{type:'object',properties:{command:{type:'string'},status:{type:'string',enum:['pass','fail','not_run']}},required:['command','status'],additionalProperties:false}},unresolved:strings,risks:strings,needs_lead_decision:{type:'boolean'},recommended_next_action:{type:'string'}};
  const required=Object.keys(properties);
  // 선택 항목: 다음 세션·다른 일꾼이 알아야 할 교훈. 리드가 승인해야 기억에 저장된다.
- properties.memory_candidates={type:'array',maxItems:3,items:{type:'object',properties:{type:{enum:['error','procedure','episode','fact']},content:{type:'string'},keywords:strings},required:['type','content'],additionalProperties:false}};
+ properties.memory_candidates={type:'array',maxItems:3,items:{type:'object',properties:{type:{type:'string',enum:['error','procedure','episode','fact']},content:{type:'string'},keywords:strings},required:['type','content'],additionalProperties:false}};
  return {type:'object',properties,required,additionalProperties:false};
 }
 
 // 상담(advisor/committee) 결과 계약. 코드를 고치지 않고 판단 근거만 낸다.
 export function consultSchema(brief) {
  const c=brief.consult;
- const finding={type:'object',properties:{file:{type:'string'},line:{type:'integer',minimum:0},severity:{enum:['blocker','major','minor','nit']},issue:{type:'string'},suggestion:{type:'string'}},required:['file','line','severity','issue','suggestion'],additionalProperties:false};
- const properties={task_id:{const:brief.task_id},consult_id:{const:c.id},member:{const:c.member},summary:{type:'string'},findings:{type:'array',items:finding},root_cause:{type:'string'},plan:{type:'array',items:{type:'string'}},recommended_verdict:{enum:['pass','redo','alternative','decision','none']},confidence:{enum:['low','medium','high']}};
+ const finding={type:'object',properties:{file:{type:'string'},line:{type:'integer',minimum:0},severity:{type:'string',enum:['blocker','major','minor','nit']},issue:{type:'string'},suggestion:{type:'string'}},required:['file','line','severity','issue','suggestion'],additionalProperties:false};
+ const properties={task_id:{type:'string',const:brief.task_id},consult_id:{type:'string',const:c.id},member:{type:'string',const:c.member},summary:{type:'string'},findings:{type:'array',items:finding},root_cause:{type:'string'},plan:{type:'array',items:{type:'string'}},recommended_verdict:{type:'string',enum:['pass','redo','alternative','decision','none']},confidence:{type:'string',enum:['low','medium','high']}};
  // 위임 리뷰는 판정이 그대로 적용되므로 'none'을 허용하지 않고, 반려 사유 목록을 따로 받는다.
- if(c.mode==='review'){properties.recommended_verdict={enum:['pass','redo','alternative','decision']};properties.blocking_criteria={type:'array',items:{type:'string'}};}
+ if(c.mode==='review'){properties.recommended_verdict={type:'string',enum:['pass','redo','alternative','decision']};properties.blocking_criteria={type:'array',items:{type:'string'}};}
  return {type:'object',properties,required:Object.keys(properties),additionalProperties:false};
 }
 export const schemaFor=brief=>brief.consult?consultSchema(brief):resultSchema(brief.task_id,brief.round);
@@ -63,16 +63,23 @@ const CONSULT_ORDERS={
 };
 export const ACCEPTANCE='After you finish, the controller itself runs every command in brief.acceptance_commands. If any fails, the round comes straight back to you with the output. Run them yourself before reporting complete, and leave the tree clean: no new untracked files, and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
 // 쓰기 금지를 "셸 금지"로 읽은 Codex 리뷰어가 파일을 하나도 열지 못한 일이 있었다. Codex에는 셸 말고 읽기 도구가 없으므로
-// 읽기 전용 명령은 허용한다고 분명히 적는다. 쓰기는 각 CLI의 read-only 샌드박스·plan 모드와 리드의 트리 비교가 막는다.
-const READ_ONLY=['This is a READ-ONLY consultation. Do not create, edit, move or delete any file. Do not run builds, tests, installers, formatters or any command that writes to disk. The lead diffs the whole tree afterwards; any change voids your answer and counts against you.',
- 'Reading is expected, not optional: open every changed file before you judge it. If your only way to read files is a shell, you MAY run read-only commands such as cat, type, head, tail, sed -n, ls, dir, find, rg, grep, wc, git diff, git show, git log, git status and git ls-files. Never redirect their output into a file.'];
+// Codex에게만 읽기 전용 셸 명령을 허용한다고 적는다. 쓰기는 각 CLI의 read-only 샌드박스·plan 모드와 리드의 트리 비교가 막는다.
+// Antigravity는 헤드리스에서 허용 목록 밖의 셸 명령이 자동 거부되고, 한 번이라도 거부되면 결과 없이 끝나므로 셸 문장을 주지 않는다.
+const READ_ONLY_BASE='This is a READ-ONLY consultation. Do not create, edit, move or delete any file. Do not run builds, tests, installers, formatters or any command that writes to disk. The lead diffs the whole tree afterwards; any change voids your answer and counts against you.';
+const READ_SHELL='Reading is expected, not optional: open every changed file before you judge it. If your only way to read files is a shell, you MAY run read-only commands such as cat, type, head, tail, sed -n, ls, dir, find, rg, grep, wc, git diff, git show, git log, git status and git ls-files. Never redirect their output into a file.';
+const READ_TOOLS='Reading is expected, not optional: open every changed file before you judge it, using only your file view tools. Run no shell commands at all (not even git diff, cat or ls): headless mode auto-denies them and one denied command ends this run with no result.';
+const READ_GENERIC='Reading is expected, not optional: open every changed file with your file read tools before you judge it.';
+const SHELL_READERS=['sol','luna'];
+export function readOnlyOrders(owner) {
+ return [READ_ONLY_BASE,SHELL_READERS.includes(owner)?READ_SHELL:owner==='antigravity'?READ_TOOLS:READ_GENERIC];
+}
 
 export function prompt(brief,lease) {
  if(brief.consult){
   const c=brief.consult;
   return JSON.stringify({protocol:PROTOCOL+'/consult',package_version:VERSION,lead:'Claude Opus 5.5',worker:lease.owner,brief,
    result_template:{task_id:brief.task_id,consult_id:c.id,member:c.member,summary:'Describe what you checked and concluded',findings:[],root_cause:'',plan:[],recommended_verdict:c.mode==='review'?'redo':'none',confidence:'low',...(c.mode==='review'?{blocking_criteria:[]}:{})},
-   result_rules:CONSULT_RULES,instructions:[...CONSULT_ORDERS[c.mode],...READ_ONLY,PRIOR]});
+   result_rules:CONSULT_RULES,instructions:[...CONSULT_ORDERS[c.mode],...readOnlyOrders(lease.owner),PRIOR]});
  }
  return JSON.stringify({protocol:PROTOCOL,package_version:VERSION,lead:'Claude Opus 5.5',worker:lease.owner,brief,
  result_template:{task_id:brief.task_id,round:brief.round,status:'complete',summary:'Describe actual outcome',files_read:[],files_changed:[],commands_run:[],tests:[],unresolved:[],risks:[],needs_lead_decision:false,recommended_next_action:'review'},
