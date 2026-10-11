@@ -27,8 +27,11 @@ import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation} from './review-plan.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
-// 상담 위원에게 직접 넣어 주는 diff의 최대 길이.
-const CONTEXT_DIFF_MAX=12000;
+// 상담 위원에게 직접 넣어 주는 diff의 최대 길이. 12,000자로는 리뷰어가 변경 대부분을 보지 못했다.
+// 프롬프트를 명령줄로 넘기는 일꾼(agy)은 Windows 길이 제한 때문에 어댑터가 더 작은 contextDiffMax를 준다.
+const CONTEXT_DIFF_MAX=100000;
+// 위원에게 넘기는 수용 명령 출력 꼬리의 길이.
+const CONTEXT_OUTPUT_TAIL=1500;
 
 // Opus 리드 상태 기계. 원칙: 일꾼에게 예산이 남아 있는 한 리드는 코드를 만지지 않는다.
 //
@@ -357,8 +360,11 @@ function consult(c,input) {
   const explicit=input.executors!==undefined;
   let picks,panel=null;
   if(s.phase==='LEAD_DECISION_REQUIRED'){
-    // 게이트에서 다시 위임할 수 있는 건 리뷰어가 끝내지 못한 라운드뿐이다(한도·장애). 판정이 난 패널은 다시 돌리지 않는다.
-    if(!adaptive||!(s.review_results?.[s.iteration]??[]).some(r=>!r.ok))throw Error('Invalid phase LEAD_DECISION_REQUIRED for delegate-review: no mandatory reviewer failed this round');
+    // 게이트에서 다시 위임할 수 있는 건 리뷰어가 끝내지 못한 자리(한도·장애)와, 리드가 다시 보고 싶은 반려다.
+    // 반려는 리드가 사유를 적고 다른 모델에게 다시 맡길 수 있다(구현자 제외, 같은 리뷰어 재사용 금지).
+    const records=s.review_results?.[s.iteration]??[];
+    const reopenable=explicit&&typeof input.substitution_reason==='string'&&input.substitution_reason.trim()&&records.some(r=>r.ok&&!r.superseded&&r.verdict!=='pass');
+    if(!adaptive||!(records.some(r=>!r.ok)||reopenable))throw Error('Invalid phase LEAD_DECISION_REQUIRED for delegate-review: no mandatory reviewer failed this round; to get a second opinion on a rejection, name executors with a substitution_reason');
   }
   if(adaptive){
     const recorded=c.optional('assignment.json');
@@ -369,8 +375,14 @@ function consult(c,input) {
     }
     if(adaptivePlan.reviewers.includes(s.owner))throw Error('ADAPTIVE_REVIEW: self-review is refused');
     // 끝난 리뷰는 남기고, 빈 자리만 기본 리뷰어나 리드가 고른 다른 모델로 채운다.
-    const kept=(s.review_results?.[s.iteration]??[]).filter(r=>r.ok).map(r=>r.executor);
-    panel=panelSeats(adaptivePlan,{asked:explicit?input.executors:undefined,kept,failed:s.review_failed?.[s.iteration]??[],reason:input.substitution_reason});
+    const records=(s.review_results?.[s.iteration]??[]).filter(r=>r.ok&&!r.superseded);
+    // 반려한 리뷰어(근거가 있어도)는 리드가 이름과 사유를 적으면 다른 모델로 교체할 수 있다. 교체된 판정은 지우지 않고 superseded로 남긴다.
+    const replaces=explicit&&typeof input.substitution_reason==='string'&&input.substitution_reason.trim()&&s.phase==='LEAD_DECISION_REQUIRED'
+      ?records.filter(r=>r.verdict!=='pass').map(r=>r.executor):[];
+    const kept=records.filter(r=>!replaces.includes(r.executor)).map(r=>r.executor);
+    const reviewed=(s.review_results?.[s.iteration]??[]).filter(r=>r.ok).map(r=>r.executor);
+    panel=panelSeats(adaptivePlan,{asked:explicit?input.executors:undefined,kept,reviewed,failed:[...(s.review_failed?.[s.iteration]??[]),...replaces],reason:input.substitution_reason});
+    panel.replaces=replaces;
     for(const e of panel.reviewers)if(!REVIEWERS.includes(e))throw Error('Consult executors must be named from '+REVIEWERS.join(', '));
     picks=panel.reviewers;
     size=picks.length;
@@ -427,19 +439,22 @@ function consult(c,input) {
   const diff=changed.length?git(c.root,['diff',...SAFE_DIFF,'HEAD','--',...changed]):'';
   const context={
     round:n,last_worker:s.owner,last_result:n?c.optional(`raw-result-${n}.json`):null,changed_files:changed,
-    diff:diff.slice(0,CONTEXT_DIFF_MAX),diff_truncated:diff.length>CONTEXT_DIFF_MAX,
-    diff_note:'git diff HEAD of changed files; untracked new files are not shown, read them directly',
+    ...(n?{controller_acceptance:acceptanceContext(c,latest)}:{}),
     recent_reviews:s.reviews.slice(-3).map(r=>({owner:r.owner,round:r.round,verdict:r.verdict,blocking_criteria:r.blocking_criteria,rationale:r.rationale}))
   };
 
   // 모든 위원의 dispatch를 먼저 만든다. 하나라도 실패하면(예: Windows 명령줄 길이) 상태를 바꾸지 않는다.
   const requests=members.map(m=>{
     const a=adapter(m.executor);
+    const max=Math.min(CONTEXT_DIFF_MAX,a.contextDiffMax??Infinity),cut=diff.length>max;
+    const memberContext={...context,diff:diff.slice(0,max),diff_truncated:cut,
+      diff_note:'git diff HEAD of changed files; untracked new files are not shown, read them directly'
+        +(cut?`. The diff was cut at ${max} characters: read the rest of each changed file directly (or run git diff HEAD -- <file>) before judging it`:'')};
     const brief={
       task_id:s.task_id,round:n,repo_root:c.root,objective:latest.objective,scope:latest.scope,
       constraints:latest.constraints,success_criteria:latest.success_criteria,allowed_actions:['read'],
       ...(latest.prior_experience?{prior_experience:latest.prior_experience}:{}),
-      consult:{id,mode,member:m.member,question:input.question,focus:input.focus??[],context}
+      consult:{id,mode,member:m.member,question:input.question,focus:input.focus??[],context:memberContext}
     };
     const d=a.dispatch(brief,{token:'consult',owner:m.executor},{
       session:a.newSession(),resume:false,probe:m.cli,
@@ -458,7 +473,7 @@ function consult(c,input) {
       if(!samePlan(prior,storedPlan)||prior.baseline_digest!==base.digest)throw Error('ADAPTIVE_REVIEW: frozen review plan does not match this round snapshot');
     }else c.art(`review-plan-${n}.json`,storedPlan);
     // 파일의 계획은 기본 리뷰어로 고정하고, 이번 위임에서 실제로 앉힌 리뷰어는 따로 남긴다.
-    storedPlan={...storedPlan,reviewers:[...panel.reviewers],effort:panel.effort,planned:[...adaptivePlan.reviewers],kept:panel.kept,substitutes:panel.substitutes,substitution_reason:panel.substitution_reason};
+    storedPlan={...storedPlan,reviewers:[...panel.reviewers],effort:panel.effort,planned:[...adaptivePlan.reviewers],kept:panel.kept,substitutes:panel.substitutes,substitution_reason:panel.substitution_reason,...(panel.replaces?.length?{replaces:panel.replaces}:{})};
   }
   const roster=members.map(({member,executor})=>({member,executor}));
   c.art(`consult-${id}-base.json`,base);
@@ -521,7 +536,11 @@ function applyAdaptiveReview(c,open,results) {
   const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
   const byExecutor=new Map(results.filter(Boolean).map(r=>[r.executor,r]));
   // 앞선 위임에서 끝난 리뷰는 그대로 두고, 이번 자리의 결과를 붙인다.
-  const kept=(s.review_results?.[s.iteration]??[]).filter(r=>r.ok);
+  // 이번 위임이 교체한 반려는 판정에서 빼되 기록에는 superseded로 남긴다(리드 승인 때 다시 본다).
+  const replaced=plan.replaces??[];
+  const prior=s.review_results?.[s.iteration]??[];
+  const superseded=prior.filter(r=>r.superseded||r.ok&&replaced.includes(r.executor)).map(r=>({...r,superseded:true}));
+  const kept=prior.filter(r=>r.ok&&!r.superseded&&!replaced.includes(r.executor));
   const fresh=plan.reviewers.map(executor=>{
     const result=byExecutor.get(executor);
     if(!result)return {executor,ok:false,verdict:null,digest:open.digest,consult_id:open.id};
@@ -537,7 +556,7 @@ function applyAdaptiveReview(c,open,results) {
       ...((plan.substitutes??[]).includes(executor)?{substitute:true,substitution_reason:plan.substitution_reason}:{})};
   });
   const records=[...kept,...fresh];
-  s.review_results={...(s.review_results??{}),[s.iteration]:records};
+  s.review_results={...(s.review_results??{}),[s.iteration]:[...superseded,...records]};
   const decision=aggregateVerdicts(records);
   const listed=records.map(r=>({executor:r.executor,verdict:r.verdict,digest:r.digest}));
   let recommendation=null,pass_forbidden=true,note;
@@ -551,6 +570,9 @@ function applyAdaptiveReview(c,open,results) {
     recommendation={pass:'APPROVE',redo:'REDO',alternative:'REASSIGN_OTHER',decision:'ESCALATE'}[decision.verdict]??null;
     pass_forbidden=decision.verdict!=='pass';
     note=pass_forbidden?'the panel is not a unanimous pass; APPROVE is refused':'unanimous pass on the round digest; a lead-decision is required and APPROVE does not CLOSE';
+  }
+  if(superseded.length){
+    note+=`; ${superseded.map(r=>r.executor).join(', ')} rejected this round and was replaced on the lead's request: APPROVE needs a substitute pass plus your own diff review and overrule_reason`;
   }
   // 위치가 있는 blocker·major 지적이 없는 반려는 추천으로 올리지 않는다. 리드가 읽고 REDO하거나 직접 리뷰 후 overrule한다.
   const unsupported=records.filter(r=>r.ok&&r.evidence===false).map(r=>r.executor);
@@ -923,6 +945,22 @@ function acceptanceBaseline(c,brief) {
   s.acceptance_baseline={key,status:green?'green-acknowledged':'red',file,...(green?{reason:brief.acceptance_baseline_green}:{})};
 }
 
+// 리뷰어가 테스트를 다시 돌리지 못해도 판단할 수 있게, 컨트롤러가 이 라운드에 직접 돌린 수용 명령 결과를 넘긴다.
+// 그 뒤로 트리나 무시된 파일이 바뀌었으면 current:false다(오토파일럿이 증거를 넘길 때와 같은 기준).
+function acceptanceContext(c,brief) {
+  const s=c.s,a=s.acceptance;
+  if(!brief?.acceptance_commands?.length)return null;
+  const record=a?.round===s.iteration&&a.file?c.optional(a.file):null;
+  if(!record)return {source:'controller',status:'not_run_this_round'};
+  const ignored=a.ignored_after?c.optional(a.ignored_after):null;
+  const current=a.tree_digest===snapshot(c.root).digest&&!!ignored&&!ignoredChanges(ignored,ignoredManifest(c.root,brief.acceptance_artifacts)).length;
+  return {source:'controller',stage:record.stage,status:record.status,quiescent:record.quiescent===true,current,
+    note:'The controller itself ran these commands on the worker\'s tree; they are not worker claims. current:true means the tree has not changed since. A pass proves only what the commands test: still check every success criterion in the code.',
+    ...(record.reason?{reason:record.reason}:{}),
+    results:(record.results??[]).map(r=>({command:r.command,status:r.status,exit_code:r.exit_code,timed_out:r.timed_out===true,
+      output_tail:String(r.output_tail??'').slice(-CONTEXT_OUTPUT_TAIL)}))};
+}
+
 // 수용 테스트를 실행하고 기록한다. reference는 비교할 무시된 파일 목록(라운드 시작 또는 직전 실행 후).
 // 그 뒤로 무시된 파일이 바뀌었으면 trust 없이는 실행하지 않는다. 실행이 트리를 바꿨으면 tree_changed에 남긴다.
 function acceptanceRun(c,brief,stage,reference,{trust=false}={}) {
@@ -1238,12 +1276,15 @@ function leadDecision(c,input) {
       const finished=records.filter(r=>r.ok);
       const leadReviewed=s.owner!=='lead'&&input.diff_reviewed===true&&namedEvidence(input.tests_checked)&&namedEvidence(input.changed_scope);
       const against=finished.filter(r=>r.verdict!=='pass'||r.digest!==s.post_digest);
+      // 근거 있는 반려도, 리드가 다른 모델에게 다시 맡겨(교체) 그 모델이 같은 digest에서 pass했다면 리드가 직접 읽고 뒤집을 수 있다.
+      const secondOpinion=finished.some(r=>!r.superseded&&r.substitute&&r.verdict==='pass'&&r.digest===s.post_digest&&r.executor!==s.owner);
       if(against.length){
         const reason=typeof input.overrule_reason==='string'?input.overrule_reason.trim():'';
-        const overrulable=against.every(r=>r.evidence===false&&r.digest===s.post_digest);
+        const overrulable=against.every(r=>(r.evidence===false||r.superseded&&secondOpinion)&&r.digest===s.post_digest);
         if(!(overrulable&&reason&&leadReviewed)){
           throw Error('LEAD_DECISION: APPROVE is refused unless every mandatory review passed on the round digest'
-            +(overrulable?'; a rejection without file:line evidence can be overruled with overrule_reason, diff_reviewed, tests_checked and changed_scope':''));
+            +(overrulable?'; a rejection without file:line evidence, or one replaced by a passing substitute reviewer, can be overruled with overrule_reason, diff_reviewed, tests_checked and changed_scope'
+              :'; to contest a rejection, delegate-review a different model with substitution_reason, then overrule after your own diff review'));
         }
         overruled={executors:against.map(r=>r.executor),reason};
       }

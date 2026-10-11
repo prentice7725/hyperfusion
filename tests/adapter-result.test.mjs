@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {extractResult,resultSchema,consultSchema} from '../scripts/adapters/common.mjs';
+import {extractResult,resultSchema,consultSchema,prompt,ACCEPTANCE} from '../scripts/adapters/common.mjs';
 import {strictSchema} from '../scripts/adapters/codex.mjs';
 import {commandOrders} from '../scripts/adapters/antigravity.mjs';
 
@@ -46,11 +46,26 @@ const base=JSON.stringify({instructions:['existing order']});
 test('Antigravity prompt names the only commands it may run',()=>{
  const p=JSON.parse(commandOrders(base,['Bash(npm test*)','Bash(git diff*)'],{}));
  assert.equal(p.instructions[0],'existing order');
- const order=p.instructions.at(-1);
+ const order=p.instructions.find(x=>/auto-denies/.test(x));
  assert.match(order,/"npm test", "git diff"/);
  assert.match(order,/Never run any other shell command/);
 });
 test('Antigravity prompt forbids shell commands when the brief allows none, and consults are untouched',()=>{
- assert.match(JSON.parse(commandOrders(base,[],{})).instructions.at(-1),/Run no shell commands at all/);
+ assert.ok(JSON.parse(commandOrders(base,[],{})).instructions.some(x=>/Run no shell commands at all/.test(x)));
  assert.equal(commandOrders(base,[],{consult:{id:'c'}}),base);
+});
+test('Antigravity rounds run commands synchronously and leave acceptance commands to the controller',()=>{
+ const withTests=JSON.parse(commandOrders(JSON.stringify({instructions:['existing order',ACCEPTANCE]}),['Bash(npm test*)'],{acceptance_commands:['npm test']}));
+ assert.ok(!withTests.instructions.includes(ACCEPTANCE));
+ assert.ok(withTests.instructions.some(x=>/foreground and wait until it exits/.test(x)));
+ assert.ok(withTests.instructions.some(x=>/Do not run brief\.acceptance_commands yourself/.test(x)));
+ const without=JSON.parse(commandOrders(base,[],{}));
+ assert.ok(without.instructions.some(x=>/never wait for a completion notification/.test(x)));
+ assert.ok(!without.instructions.some(x=>/acceptance_commands/.test(x)));
+});
+test('read-only consults allow read-only shell commands so a shell-only reviewer can open files',()=>{
+ const brief={task_id:'t',consult:{id:'c1',member:'m1',mode:'review'}};
+ const text=JSON.parse(prompt(brief,{owner:'sol'})).instructions.join('\n');
+ assert.match(text,/Do not create, edit, move or delete any file/);
+ assert.match(text,/MAY run read-only commands such as cat.*rg.*git diff/);
 });

@@ -61,8 +61,11 @@ const CONSULT_ORDERS={
   'Verdict: redo when the same worker can fix it, alternative when the approach itself is wrong, decision only when requirements or architecture are ambiguous and the lead must choose.'],
  committee:['You are one member of a two-member committee hired by the lead because the task is stuck. Step back: identify the root cause of the repeated failure and propose a concrete plan the next worker can execute.','The other member is a different model. Think independently; do not assume the last attempt was on the right track.']
 };
-const ACCEPTANCE='After you finish, the controller itself runs every command in brief.acceptance_commands. If any fails, the round comes straight back to you with the output. Run them yourself before reporting complete, and leave the tree clean: no new untracked files, and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
-const READ_ONLY=['This is a READ-ONLY consultation. Do not create, edit, move or delete any file. Do not run builds, tests, installers or any command that writes to disk. The lead diffs the whole tree afterwards; any change voids your answer and counts against you.'];
+export const ACCEPTANCE='After you finish, the controller itself runs every command in brief.acceptance_commands. If any fails, the round comes straight back to you with the output. Run them yourself before reporting complete, and leave the tree clean: no new untracked files, and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
+// 쓰기 금지를 "셸 금지"로 읽은 Codex 리뷰어가 파일을 하나도 열지 못한 일이 있었다. Codex에는 셸 말고 읽기 도구가 없으므로
+// 읽기 전용 명령은 허용한다고 분명히 적는다. 쓰기는 각 CLI의 read-only 샌드박스·plan 모드와 리드의 트리 비교가 막는다.
+const READ_ONLY=['This is a READ-ONLY consultation. Do not create, edit, move or delete any file. Do not run builds, tests, installers, formatters or any command that writes to disk. The lead diffs the whole tree afterwards; any change voids your answer and counts against you.',
+ 'Reading is expected, not optional: open every changed file before you judge it. If your only way to read files is a shell, you MAY run read-only commands such as cat, type, head, tail, sed -n, ls, dir, find, rg, grep, wc, git diff, git show, git log, git status and git ls-files. Never redirect their output into a file.'];
 
 export function prompt(brief,lease) {
  if(brief.consult){

@@ -78,7 +78,7 @@ export function draftInputs(dir,state) {
   for(const f of optional(`validation-${n}.json`)?.changed??[])changed.add(f);
   const review=state.reviews.filter(r=>r.round===n).at(-1);
   const lead=optional(`lead-decision-${n}.json`);
-  const panel=(state.review_results?.[n]??[]).filter(r=>r.ok).map(r=>`${r.executor}:${r.verdict}`).join(', ');
+  const panel=(state.review_results?.[n]??[]).filter(r=>r.ok).map(r=>`${r.executor}:${r.verdict}${r.superseded?' (replaced)':''}`).join(', ');
   rounds.push({round:n,owner:optional(`dispatch-${n}.json`)?.executor??(n===state.iteration?state.owner:null),
    verdict:lead?.decision??review?.verdict??(n===state.iteration?'pass':null),reviewed_by:panel||review?.reviewed_by||null});
  }

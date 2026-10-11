@@ -57,7 +57,7 @@ export function measure(root,observations=null) {
    const plan=read(planFile),results=s.review_results?.[n]??[];
    // 자리로 센다. 바꿔 낀 리뷰어나 리드가 직접 채운 자리는 공백이 아니다.
    const filled=s.lead_decision?.round===n?(s.lead_decision.lead_filled_seats?.length??0):0;
-   return results.filter(r=>r.ok&&r.executor!==plan.owner).length+filled<plan.reviewers.filter(e=>e!=='lead').length;
+   return results.filter(r=>r.ok&&!r.superseded&&r.executor!==plan.owner).length+filled<plan.reviewers.filter(e=>e!=='lead').length;
   }):[],
   task_kind:s.routing?.task_kind??null,difficulty:s.routing?.difficulty??null,diff_lines:diffLines(root,s),routing_mode:s.routing?.mode??null,routed_executor:s.routing?.executor??null,final_owner:s.owner??null,
   // router 학습용. 어떤 일꾼이 어떤 판정을 받았는지.

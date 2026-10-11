@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Codex 리뷰어가 파일을 읽지 못하던 문제: 상담·리뷰 지시문이 "디스크에 쓰는 명령 금지"만 적어 Sol이 셸 전체를 금지로 해석했다. 읽기는 필수이며 `cat`, `rg`, `git diff` 같은 읽기 전용 명령은 허용한다고 명시한다.
+- 리뷰 근거 확대: 위원에게 넣는 diff 한도를 12,000자에서 100,000자로 올린다(Antigravity는 명령줄 길이 때문에 12,000자 유지, 잘리면 직접 읽으라고 안내). 이 라운드에 컨트롤러가 직접 돌린 수용 명령 결과(`controller_acceptance`)도 함께 넘긴다.
+- adaptive 반려 재검토: 리드가 사유를 적고 다른 모델에게 다시 리뷰를 맡길 수 있다. 교체된 반려는 `superseded`로 남고, 대체 리뷰어가 pass하면 리드가 직접 검토한 뒤 뒤집어 승인할 수 있다. 구현한 모델은 여전히 리뷰하지 못한다.
+- Antigravity 헤드리스 라운드: 명령은 끝날 때까지 기다리게 하고(백그라운드 실행·완료 알림 대기 금지), 수용 명령은 직접 돌리지 말고 컨트롤러에 맡기게 한다.
 - 위험 경로 정책 `review.risk_paths`(기본: auth, migrations, `*.sql`, security, `.github/workflows`). 라운드가 이 경로를 바꾸면 classic은 위임 pass를 자동 적용하지 않고, adaptive는 중요 작업처럼 이중 리뷰하며 APPROVE에 리드의 직접 리뷰를 요구한다.
 - 반려 근거 요구: 위임 리뷰의 redo/alternative는 줄 위치가 있는 blocker·major 지적이 있어야 그대로 적용한다. 없으면 classic은 자동 적용하지 않고 리드에게 넘기고, adaptive는 참고 의견으로 표시해 리드가 직접 리뷰 후 `overrule_reason`으로 뒤집을 수 있다.
 - 리드 가드에 Stop 훅 추가: 리드 차례 단계(PLAN·REVIEW·VERIFY·REDO·ALTERNATIVE_REQUIRED·LEAD_DECISION_REQUIRED·열린 상담)에 작업을 둔 채 턴을 끝내려 하면 한 번 막고 다음 동작을 알려 준다. `npm run guard:settings` 출력에 함께 들어 있다.

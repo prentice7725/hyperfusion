@@ -254,12 +254,40 @@ test('with no reviewer left, the lead fills the seat only by naming its own diff
  assert.deepEqual(measure(f.root).mandatory_review_gaps,[]);
 });
 
-test('a reviewer redo cannot be outvoted by a substitute or a lead fill',async t=>{
+test('a reviewer redo is outvoted only by a substitute pass plus the lead\'s own review',async t=>{
  const f=adaptive(t,{criticality:'important',reason:'payments'});
  f.begin();f.finish();f.mode('review-redo');
  await delegate(f);
- assert.throws(()=>decide(f,{diff_reviewed:true,tests_checked:['t'],changed_scope:['a.txt']}),/every mandatory review/);
- assert.throws(()=>run(f.root,'delegate-review',{executors:['haiku'],substitution_reason:'second opinion'}),/no mandatory reviewer failed/);
+ const lead={diff_reviewed:true,tests_checked:['t'],changed_scope:['a.txt']};
+ // 리드가 직접 읽었다는 것만으로는 위치가 있는 반려를 뒤집지 못한다.
+ assert.throws(()=>decide(f,{...lead,overrule_reason:'disagree'}),/every mandatory review/);
+ // 다른 모델에게 다시 맡기려면 사유가 필요하고, 이미 판정한 리뷰어나 구현자에게는 맡길 수 없다.
+ assert.throws(()=>run(f.root,'delegate-review',{executors:['haiku','luna']}),/no mandatory reviewer failed/);
+ assert.throws(()=>run(f.root,'delegate-review',{executors:['sol','luna'],substitution_reason:'second opinion'}),/already reviewed/);
+ assert.throws(()=>run(f.root,'delegate-review',{executors:['grok','luna'],substitution_reason:'second opinion'}),/self-review/);
+ f.mode('ok');
+ const {c}=await delegate(f,{executors:['haiku','luna'],substitution_reason:'sol and sonnet could not open the files'});
+ assert.deepEqual(c.members.map(m=>m.executor),['haiku','luna']);
+ const records=f.state().review_results[1];
+ assert.deepEqual(records.filter(r=>r.superseded).map(r=>r.executor),['sol','sonnet']);
+ assert.match(read(task(f,`lead-packet-1-${c.consult_id}.json`)).note,/replaced on the lead's request/);
+ // 교체된 반려는 기록에 남고, 승인에는 여전히 리드의 직접 검토와 overrule_reason이 필요하다.
+ assert.throws(()=>decide(f,lead),/overrule_reason/);
+ assert.throws(()=>decide(f,{overrule_reason:'substitutes passed'}),/every mandatory review/);
+ const approved=decide(f,{...lead,overrule_reason:'read it; AC1 is met and both substitutes passed'});
+ assert.equal(approved.phase,'VERIFY');
+ assert.deepEqual(approved.lead_decision.overruled_reviews.executors,['sol','sonnet']);
+ assert.equal(approved.lead_decision.lead_filled_seats,undefined);
+});
+
+test('a rejection stays binding when the substitute also rejects',async t=>{
+ const f=adaptive(t,{reason:'twice'});
+ f.begin();f.finish();f.mode('review-redo');
+ await delegate(f);
+ await delegate(f,{executors:['luna'],substitution_reason:'second opinion'});
+ assert.throws(()=>decide(f,{overrule_reason:'disagree',diff_reviewed:true,tests_checked:['t'],changed_scope:['a.txt']}),/every mandatory review passed on the round digest; to contest/);
+ // 라운드당 위임 리뷰 한도는 그대로다.
+ assert.throws(()=>run(f.root,'delegate-review',{executors:['haiku'],substitution_reason:'third opinion'}),/cap reached/);
 });
 
 test('a second rejection on the same AC recommends another worker and REDO needs a reason',async t=>{
@@ -305,7 +333,7 @@ test('a rejection with a located blocker cannot be overruled',async t=>{
  await delegate(f);
  assert.equal(f.state().review_results[1][0].evidence,true);
  assert.deepEqual(read(task(f,'lead-packet-1.json')).unsupported_rejections,[]);
- assert.throws(()=>decide(f,{overrule_reason:'disagree',diff_reviewed:true,tests_checked:['t'],changed_scope:['a.txt']}),/every mandatory review passed on the round digest$/);
+ assert.throws(()=>decide(f,{overrule_reason:'disagree',diff_reviewed:true,tests_checked:['t'],changed_scope:['a.txt']}),/every mandatory review passed on the round digest; to contest/);
 });
 
 test('a round that touches a risk path gets both reviewers and needs the lead\'s own diff review',async t=>{
@@ -330,4 +358,22 @@ test('risk_paths is validated and an empty list turns it off',async t=>{
   fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{by:'delegate',strategy:'lead-gated-adaptive',risk_paths:bad}}));
   assert.throws(()=>config(f.root),/Invalid/);
  }
+});
+
+test('reviewers get the controller acceptance run and a diff well past 12,000 characters, and agy stays within the command line',async t=>{
+ const f=fixture(t,{initialize:false});
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{by:'delegate',strategy:'lead-gated-adaptive'}}));
+ // 수용 명령은 손대지 않은 트리에서 실패하고(red-first), 큰 수정 뒤에만 통과한다.
+ const cmd=`node -e "process.exit(require('fs').readFileSync('a.txt','utf8').length>20000?0:1)"`;
+ run(f.root,'init',{...f.brief,executor:'grok',acceptance_commands:[cmd]});
+ f.begin({acceptance_commands:[cmd]});fs.writeFileSync(path.join(f.root,'a.txt'),'x\n'.repeat(15000));f.finish(f.result(['a.txt']));
+ const {c}=await delegate(f);
+ const sent=JSON.parse(read(task(f,`consult-${c.consult_id}-m1.json`)).prompt).brief.consult.context;
+ assert.ok(sent.diff.length>20000&&!sent.diff_truncated);
+ assert.equal(sent.controller_acceptance.status,'pass');
+ assert.equal(sent.controller_acceptance.current,true);
+ assert.deepEqual(sent.controller_acceptance.results.map(r=>[r.command,r.status]),[[cmd,'pass']]);
+ // agy 위원은 프롬프트가 명령줄로 가므로 diff를 잘라 받고, 나머지는 직접 읽으라는 안내를 받는다.
+ const cut=await import('../scripts/adapters/antigravity.mjs');
+ assert.equal(cut.contextDiffMax,12000);
 });

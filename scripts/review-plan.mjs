@@ -43,7 +43,8 @@ export function reviewEffort(reviewers) {
 
 // 이번 위임에서 채울 자리와 리뷰어. 이미 끝난 리뷰(kept)는 다시 돌리지 않는다. 실패한 리뷰어는 기본값에서 빠지고, 다시 쓰려면 이름을 적는다.
 // 기본 리뷰어가 아닌 모델을 넣으면 substitution_reason이 필요하다. 작성자 자신과 리드는 위임 리뷰어가 될 수 없다.
-export function panelSeats(plan,{asked,kept=[],failed=[],reason}={}) {
+// reviewed는 이 라운드에 이미 판정을 낸 리뷰어 전체(교체된 반려 포함)다. 같은 모델에게 다시 묻지 않는다.
+export function panelSeats(plan,{asked,kept=[],reviewed=[],failed=[],reason}={}) {
  const owner=plan.owner;
  const seats=plan.reviewers.length-kept.length;
  if(seats<=0)throw Error('ADAPTIVE_REVIEW: mandatory review already finished for this round');
@@ -57,7 +58,7 @@ export function panelSeats(plan,{asked,kept=[],failed=[],reason}={}) {
  if(new Set(picks).size!==picks.length)throw Error('ADAPTIVE_REVIEW: reviewers must be distinct');
  if(picks.includes(owner))throw Error('ADAPTIVE_REVIEW: self-review is refused; '+owner+' implemented this round');
  if(picks.includes('lead'))throw Error('ADAPTIVE_REVIEW: the lead is not a delegated reviewer; use lead-decision');
- const reused=picks.filter(e=>kept.includes(e));
+ const reused=picks.filter(e=>kept.includes(e)||reviewed.includes(e));
  if(reused.length)throw Error('ADAPTIVE_REVIEW: already reviewed this round: '+reused.join(', '));
  const substitutes=picks.filter(e=>!plan.reviewers.includes(e));
  const why=typeof reason==='string'?reason.trim():'';
