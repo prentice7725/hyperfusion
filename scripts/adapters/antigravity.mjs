@@ -18,9 +18,9 @@ export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
  if(options.model&&!cli.supports?.['--model'])throw Error('MODEL_UNSUPPORTED: Antigravity requires --model support for a model override');
  if(options.reasoning_effort&&!cli.supports?.['--effort'])throw Error('EFFORT_UNSUPPORTED: Antigravity requires --effort support for a reasoning_effort setting');
  if(resume&&!session)throw Error('Antigravity resume requires a saved conversation_id');
- // agy에는 명령 단위 허용 규칙이 없다. 터미널 제한은 --sandbox로만 건다.
+ // agy에는 실행 단위 명령 허용 플래그가 없다. 터미널 제한은 --sandbox와 운영자의 agy settings.json(permissions.allow)뿐이다.
  const ignored=bashRules(brief);
- const text=prompt(brief,lease);
+ const text=commandOrders(prompt(brief,lease),ignored,brief);
  const args=['--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),...(options.model?['--model',options.model]:[]),...(options.reasoning_effort?['--effort',options.reasoning_effort]:[]),
   // 상담은 plan 모드(읽기·계획만), 구현은 accept-edits.
   ...(brief.consult?['--mode','plan']:brief.allowed_actions.includes('edit')?['--mode','accept-edits']:[]),'--add-dir',brief.repo_root,
@@ -29,6 +29,21 @@ export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
  // 프롬프트를 명령줄로 넘기므로 Windows 길이 제한을 lease 획득 전에 확인한다.
  assertCommandLine(cli.executable,[...(cli.prefix_args??[]),...args]);
  return {cli:{...cli,args,session_id:session??null,resume,ignored_bash_rules:ignored},prompt:text};
+}
+
+// 헤드리스 agy는 허용 목록 밖의 명령을 자동 거부하고, 거부가 한 번이라도 나면 결과 없이 끝난다
+// (agy 1.3.2 실측: 파일 바이트 확인용 powershell 한 줄 때문에 라운드 전체가 빈 응답).
+// 그래서 brief가 허용한 명령만 정확히 알려 주고, 확인은 파일 읽기 도구로 하게 한다.
+const ruleCommand=rule=>rule.replace(/^Bash\(/,'').replace(/\)$/,'').replace(/\*$/,'').trim();
+export function commandOrders(text,rules,brief) {
+ if(brief.consult)return text;
+ const allowed=rules.map(ruleCommand).filter(Boolean);
+ const order=allowed.length
+  ?`Headless mode auto-denies any shell command outside the operator allow-list, and one denied command ends this run with no result. Run only commands that start with one of: ${allowed.map(c=>JSON.stringify(c)).join(', ')}. Never run any other shell command (no powershell, node -e, cat, type or byte dumps); read and verify files with your file view tools. If a check needs a command outside this list, report it as not_run.`
+  :'Headless mode auto-denies shell commands, and one denied command ends this run with no result. Run no shell commands at all; read and verify files with your file view tools and report checks you could not run as not_run.';
+ const p=JSON.parse(text);
+ p.instructions=[...p.instructions,order];
+ return JSON.stringify(p);
 }
 
 export function parse(stdout,request) {

@@ -9,6 +9,16 @@ export const binary=()=>process.env.HF_CODEX_BIN||'codex';
 export const requiredFlags=['--sandbox','--output-schema','--cd'];
 export const EFFORTS=['minimal','low','medium','high','xhigh'];
 
+// OpenAI의 구조화 출력은 모든 객체에서 properties의 모든 키를 required로 요구한다(아니면 400 invalid_json_schema).
+// 선택 항목(memory_candidates, keywords)도 필수로 바꿔 보낸다. 일꾼은 없으면 빈 배열을 낸다.
+export function strictSchema(schema) {
+ if(Array.isArray(schema))return schema.map(strictSchema);
+ if(!schema||typeof schema!=='object')return schema;
+ const out=Object.fromEntries(Object.entries(schema).map(([k,v])=>[k,strictSchema(v)]));
+ if(out.type==='object'&&out.properties)out.required=Object.keys(out.properties);
+ return out;
+}
+
 function member(name,{model,canWrite}) {
  const probe=()=>probeCli(`Codex (${name})`,binary(),requiredFlags,['--ephemeral'],{help:['exec','--help']});
  function dispatch(brief,lease,{probe:cli,promptFile,options={},apexGrant=false}) {
@@ -27,7 +37,7 @@ function member(name,{model,canWrite}) {
    ...(options.reasoning_effort?['-c',`model_reasoning_effort="${options.reasoning_effort}"`]:[]),
    // 프롬프트는 stdin('-')으로 넘긴다. 명령줄 길이 제한과 따옴표 문제를 피한다.
    '-'];
-  return {cli:{...cli,args,session_id:null,resume:false,model:options.model??model,extra_files:[{path:schemaFile,content:JSON.stringify(schemaFor(brief))}]},prompt:text,stdin:text};
+  return {cli:{...cli,args,session_id:null,resume:false,model:options.model??model,extra_files:[{path:schemaFile,content:JSON.stringify(strictSchema(schemaFor(brief)))}]},prompt:text,stdin:text};
  }
  // codex exec는 진행 상황을 stderr로, 최종 메시지만 stdout으로 낸다. 세션은 라운드마다 새로 연다.
  const parse=stdout=>({session_id:null,result:extractResult(stdout),usage:{total_cost_usd:null,note:'codex exec reports usage on stderr only'}});
