@@ -63,11 +63,37 @@ test('Antigravity rounds run commands synchronously and leave acceptance command
  assert.ok(without.instructions.some(x=>/never wait for a completion notification/.test(x)));
  assert.ok(!without.instructions.some(x=>/acceptance_commands/.test(x)));
 });
-test('read-only consults allow read-only shell commands so a shell-only reviewer can open files',()=>{
+test('only Codex reviewers are told they may run read-only shell commands',()=>{
  const brief={task_id:'t',consult:{id:'c1',member:'m1',mode:'review'}};
- const text=JSON.parse(prompt(brief,{owner:'sol'})).instructions.join('\n');
- assert.match(text,/Do not create, edit, move or delete any file/);
- assert.match(text,/MAY run read-only commands such as cat.*rg.*git diff/);
+ const text=owner=>JSON.parse(prompt(brief,{owner})).instructions.join('\n');
+ for(const owner of ['sol','luna']){
+  assert.match(text(owner),/Do not create, edit, move or delete any file/);
+  assert.match(text(owner),/MAY run read-only commands such as cat.*rg.*git diff/);
+ }
+ // agy는 헤드리스에서 셸 명령이 자동 거부되어 빈 응답으로 끝난다. 파일 보기 도구만 쓰게 한다.
+ const agy=text('antigravity');
+ assert.match(agy,/using only your file view tools/);
+ assert.match(agy,/Run no shell commands at all/);
+ assert.doesNotMatch(agy,/MAY run read-only commands/);
+ for(const owner of ['sonnet','haiku','grok']){
+  assert.doesNotMatch(text(owner),/MAY run read-only commands/);
+  assert.match(text(owner),/file read tools/);
+ }
+});
+test('every const and enum in the result schemas carries a type, which OpenAI strict mode requires',()=>{
+ const missing=(node,path='$')=>{
+  if(Array.isArray(node))return node.flatMap((x,i)=>missing(x,`${path}[${i}]`));
+  if(!node||typeof node!=='object')return [];
+  const own=('const' in node||'enum' in node)&&!node.type?[path]:[];
+  return [...own,...Object.entries(node).flatMap(([k,v])=>missing(v,`${path}.${k}`))];
+ };
+ const implement=resultSchema('t',3),consult=consultSchema({task_id:'t',consult:{id:'c1',member:'m1',mode:'review'}});
+ const advisor=consultSchema({task_id:'t',consult:{id:'c1',member:'m1',mode:'advisor'}});
+ for(const schema of [implement,consult,advisor,strictSchema(implement),strictSchema(consult)])assert.deepEqual(missing(schema),[]);
+ assert.equal(implement.properties.task_id.type,'string');
+ assert.equal(implement.properties.round.type,'integer');
+ assert.equal(consult.properties.consult_id.type,'string');
+ assert.equal(consult.properties.member.type,'string');
 });
 test('Antigravity never accepts a previous run\'s structured_output as the current result',()=>{
  const req={task_id:'t',round:2};
