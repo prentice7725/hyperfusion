@@ -1,6 +1,6 @@
 # HyperFusion
 
-> **バージョン表記。** パッケージのリリースは`0.15.0`（`package.json`）で、**v0.3**はその上に載せた新しい運用プロファイル（External-First＋共通監視）の名前です。未リリースの変更は[CHANGELOG](CHANGELOG.md)のUnreleasedにあります。保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子で、正本の定数は`scripts/versions.mjs`です。
+> **バージョン表記。** パッケージのリリースは`0.16.0`（`package.json`）で、**v0.3**はその上に載せた新しい運用プロファイル（External-First＋共通監視）の名前です。未リリースの変更は[CHANGELOG](CHANGELOG.md)のUnreleasedにあります。保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子で、正本の定数は`scripts/versions.mjs`です。
 
 [한국어](README.md) | 日本語
 
@@ -34,7 +34,7 @@
 - **厳格な差し戻し。** 差し戻しには理由が必須で、再指示にはファイル・行単位の指示書が必須です。同じ受け入れ基準（AC1…）で2回差し戻されたらワーカーを交代します。ワーカーあたり3ラウンド、リードのtakeoverは全ワーカーが尽きた後の1回だけです。
 - **red-firstの受け入れテスト。** コントローラが受け入れコマンドを自分で実行します。開始時に手を付けていないツリーで失敗することを先に確かめ、最初から通ってしまう見せかけの関門を防ぎます。
 - **AC追跡表とPR下書き。** `acceptance_map`で受け入れ基準（AC1…）とそれを証明するコマンドを結びます。完了時にAC別の判定表とPR説明の下書き（`pr-draft.md`）を残します。コミット・プッシュは引き続きユーザーが指示します。
-- **レビュー委任。** ラウンドのレビューをSolなど別のモデルが読み取り専用で行い、判定を適用します。Opusがdiffを精読するトークンを節約できます。実装したモデルは自分のレビューができません。→ [review](references/review-protocol.md)
+- **レビュー委任。** ラウンドのレビューをSolなど別のモデルが読み取り専用で行い、判定を適用します。Opusがdiffを精読するトークンを節約できます。レビュアーにはdiff（最大100,000文字）とコントローラが自分で実行した受け入れテストの結果が渡され、シェルしかないCodexレビュアーも読み取り専用コマンドでファイルを開けます。実装したモデルは自分のレビューができません。→ [review](references/review-protocol.md)
 - **相談。** ワーカー1人（advisor）が先にdiffを検査するか、2人（committee）が繰り返す失敗の原因を分析します。読み取り専用で、相談前後のスナップショットで保証します。→ [consult](references/consult.md)
 - **内蔵の記憶層。** 試行錯誤（エラー、手順、経験）を外部サーバーなしでローカルに蓄積し、次のセッションや他のワーカーに引き継ぎます。書き込みも読み取りもリードの承認を通り、秘密値は保存しません。→ [memory](references/memory.md)
 - **単一writerと監査記録。** 同時に書くのは一人だけで、ラウンドごとにスナップショットと成果物が残ります。中断しても復旧手順で再開できます。自動のcommit・push・デプロイはありません。
@@ -48,7 +48,7 @@
 `hyperfusion.v03.config.example.json`を対象リポジトリの`hyperfusion.config.json`にコピーして明示的に有効化します。既存のclassic設定と実行中のタスクは自動変更されません。詳細は[universal-supervisor](references/universal-supervisor.md)（韓国語）、実装状況は[v03-implementation-status](references/v03-implementation-status.md)（韓国語）を参照してください。
 
 - **External-First配置。** 自動実装はGrok・Antigravity・Lunaが担当します。Sonnet（重要/再割り当てラウンド）とSol（APEXラウンド）はラウンドごとのgrantがある場合のみ実装し、自動フォールバックや新人優遇はこの2つを選びません。
-- **作者別のレビュー。** 原則は一つ、実装したモデルは自分のラウンドをレビューしません。既定はGrok/AGYの通常作業→Sol、Luna→Sonnet、重要作業→Sol＋Sonnetの二重PASS。レビュアーが上限や障害で止まったらリードが理由を書いて別のモデルに差し替え、残るレビュアーがいなければリードが自分でdiffを読んで埋めます。結果は`LEAD_DECISION_REQUIRED`で止まり、`auto_apply`・`review {adopt}`・オートパイロットでもホストリードの最終判断ゲートは飛ばせません。
+- **作者別のレビュー。** 原則は一つ、実装したモデルは自分のラウンドをレビューしません。既定はGrok/AGYの通常作業→Sol、Luna→Sonnet、重要作業→Sol＋Sonnetの二重PASS。レビュアーが上限や障害で止まったらリードが理由を書いて別のモデルに差し替え、残るレビュアーがいなければリードが自分でdiffを読んで埋めます。差し戻しに納得できなければ、リードが理由を書いて別のモデルに再レビューを頼み、代わりのレビュアーがpassすれば自分で確認したうえで覆せます。結果は`LEAD_DECISION_REQUIRED`で止まり、`auto_apply`・`review {adopt}`・オートパイロットでもホストリードの最終判断ゲートは飛ばせません。
 - **共通ローカル監視。** すべてのimplement/review/consult呼び出しを同じsupervisorが観測します（`status --monitor`、`monitor --once|--watch`）。無信号はQUIET警告にとどまり、進捗や成功を生成しません。監視でモデルは呼びません。
 - **使用量の計測。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で運用者の観測を記録します。
 - **既定の推論強度。** Sonnet high、Haiku max、Antigravity high、Grok xhigh、Luna xhigh、Sol medium。設定`reasoning_effort`で上書きでき、`null`ならフラグを渡しません。

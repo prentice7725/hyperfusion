@@ -73,7 +73,11 @@ if(prior&&(!fs.existsSync(HERE+'/fake-agy-session')||fs.readFileSync(HERE+'/fake
 const id=prior??'conv-'+Date.now();
 fs.writeFileSync(HERE+'/fake-agy-session',id);
 const result=finish(request,id);
-console.log(JSON.stringify({conversation_id:id,status:mode==='agy-fail'?'failed':'success',response:'done',structured_output:result,num_turns:2,usage:{total_tokens:20}}));
+// agy-stale: 재개한 대화에서 실제 agy처럼 structured_output에는 이전 결과를, 응답 텍스트에는 새 결과를 낸다.
+const last=HERE+'/fake-agy-last.json',previous=fs.existsSync(last)?JSON.parse(fs.readFileSync(last,'utf8')):null;
+fs.writeFileSync(last,JSON.stringify(result));
+const stale=mode==='agy-stale'&&prior&&previous;
+console.log(JSON.stringify({conversation_id:id,status:mode==='agy-fail'?'failed':'success',response:stale?JSON.stringify(result):'done',structured_output:stale?previous:result,num_turns:2,usage:{total_tokens:20}}));
 `;
 
 const FAKE_CODEX=FAKE_COMMON+`

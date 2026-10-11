@@ -1,6 +1,6 @@
 # HyperFusion
 
-> **버전 표기.** 패키지 릴리스는 `0.15.0`(`package.json`)이고, **v0.3**은 그 위에 얹은 새 운영 프로필(External-First + 범용 감시)의 이름이다. 아직 릴리스되지 않은 변경은 [CHANGELOG](CHANGELOG.md)의 Unreleased에 있다. 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자이며 정본 상수는 `scripts/versions.mjs`다.
+> **버전 표기.** 패키지 릴리스는 `0.16.0`(`package.json`)이고, **v0.3**은 그 위에 얹은 새 운영 프로필(External-First + 범용 감시)의 이름이다. 아직 릴리스되지 않은 변경은 [CHANGELOG](CHANGELOG.md)의 Unreleased에 있다. 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자이며 정본 상수는 `scripts/versions.mjs`다.
 
 한국어 | [日本語](README.ja.md)
 
@@ -34,7 +34,7 @@
 - **엄격한 반려.** 반려에는 사유가 필수고, 재지시에는 파일·줄 단위의 명령서가 필수다. 같은 수용 기준(AC1…)으로 두 번 반려되면 일꾼을 교체한다. 일꾼당 3라운드, 리드 takeover는 모든 일꾼이 소진된 뒤 1회뿐이다.
 - **red-first 수용 테스트.** 컨트롤러가 수용 명령을 직접 돌린다. 시작할 때 손대지 않은 트리에서 실패하는지 먼저 확인해서, 처음부터 통과하는 엉터리 관문을 막는다.
 - **AC 추적표와 PR 초안.** `acceptance_map`으로 수용 기준(AC1…)과 그걸 증명하는 명령을 잇는다. 끝나면 AC별 판정표와 PR 설명 초안(`pr-draft.md`)을 남긴다. 커밋·푸시는 여전히 사용자가 지시한다.
-- **리뷰 위임.** 라운드 리뷰를 Sol 같은 다른 모델이 읽기 전용으로 하고 판정을 적용한다. Opus가 diff를 정독하는 토큰을 아낀다. 구현한 모델은 자기 리뷰를 할 수 없다. → [review](references/review-protocol.md)
+- **리뷰 위임.** 라운드 리뷰를 Sol 같은 다른 모델이 읽기 전용으로 하고 판정을 적용한다. Opus가 diff를 정독하는 토큰을 아낀다. 리뷰어는 diff(최대 100,000자)와 컨트롤러가 직접 돌린 수용 테스트 결과를 받고, 셸밖에 없는 Codex 리뷰어도 읽기 전용 명령으로 파일을 연다. 구현한 모델은 자기 리뷰를 할 수 없다. → [review](references/review-protocol.md)
 - **상담.** 일꾼 한 명(advisor)이 diff를 먼저 검사하거나, 두 명(committee)이 반복 실패의 원인을 분석한다. 읽기 전용이며 상담 전후 스냅샷으로 보증한다. → [consult](references/consult.md)
 - **내장 기억 계층.** 시행착오(에러, 절차, 경험)를 외부 서버 없이 로컬에 쌓아 다음 세션과 다른 일꾼에게 넘긴다. 쓰기와 읽기 모두 리드의 승인을 거치고, 비밀값은 저장하지 않는다. → [memory](references/memory.md)
 - **단일 writer와 감사 기록.** 한 번에 한 일꾼만 쓰고, 라운드마다 스냅샷과 산출물이 남는다. 중단되면 복구 절차로 이어간다. 자동 commit·push·배포는 없다.
@@ -48,7 +48,7 @@
 `hyperfusion.v03.config.example.json`을 대상 저장소의 `hyperfusion.config.json`으로 복사해 명시적으로 켠다. 기존 classic 설정·진행 중 작업은 자동으로 바뀌지 않는다. 자세한 내용은 [universal-supervisor](references/universal-supervisor.md), 구현 현황은 [v03-implementation-status](references/v03-implementation-status.md).
 
 - **External-First 배치.** 자동 구현은 Grok·Antigravity·Luna가 맡는다. Sonnet(중요/재배정 라운드)과 Sol(APEX 라운드)은 라운드별 grant가 있을 때만 구현하며, 자동 폴백·신입 우대는 이 둘을 고르지 않는다.
-- **작성자별 리뷰.** 원칙은 하나, 구현한 모델은 자기 라운드를 리뷰하지 않는다. 기본은 Grok/AGY 일반 → Sol, Luna → Sonnet, 중요 작업 → Sol + Sonnet 이중 PASS. 리뷰어가 한도·장애로 막히면 리드가 사유를 적고 다른 모델로 바꿔 끼우고, 남은 리뷰어가 없으면 리드가 직접 diff를 읽고 채운다. 결과는 `LEAD_DECISION_REQUIRED`에서 멈추고, `auto_apply`·`review {adopt}`·autopilot도 호스트 리드의 최종 판정 게이트를 건너뛰지 못한다.
+- **작성자별 리뷰.** 원칙은 하나, 구현한 모델은 자기 라운드를 리뷰하지 않는다. 기본은 Grok/AGY 일반 → Sol, Luna → Sonnet, 중요 작업 → Sol + Sonnet 이중 PASS. 리뷰어가 한도·장애로 막히면 리드가 사유를 적고 다른 모델로 바꿔 끼우고, 남은 리뷰어가 없으면 리드가 직접 diff를 읽고 채운다. 반려에 동의하지 않으면 리드가 사유를 적고 다른 모델에게 재검토를 맡기고, 대체 리뷰어가 pass하면 직접 검토한 뒤 뒤집을 수 있다. 결과는 `LEAD_DECISION_REQUIRED`에서 멈추고, `auto_apply`·`review {adopt}`·autopilot도 호스트 리드의 최종 판정 게이트를 건너뛰지 못한다.
 - **범용 로컬 감시.** 모든 implement/review/consult 호출을 같은 supervisor가 관측한다(`status --monitor`, `monitor --once|--watch`). 무신호는 QUIET 경고일 뿐이며 진행률·성공을 만들어 내지 않는다. 호출 모델은 따로 부르지 않는다.
 - **사용량 계측.** 구현·검수·상담·실패 호출과 APEX Sol을 포함해 기록하고, 미측정은 `null`로 둔다. 쿼터는 `scripts/quota-policy.mjs`로 운영자 관측을 기록한다.
 - **기본 추론 강도.** Sonnet high, Haiku max, Antigravity high, Grok xhigh, Luna xhigh, Sol medium. 설정 `reasoning_effort`로 덮어쓰고 `null`이면 플래그를 넘기지 않는다.
