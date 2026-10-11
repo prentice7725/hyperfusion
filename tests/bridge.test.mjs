@@ -21,3 +21,10 @@ test('bridge refuses outside an executor round',async t=>{const f=fixture(t);awa
 
 test('Antigravity first round binds the CLI-issued conversation, redo resumes it',async t=>{const f=fixture(t,{executor:'antigravity'});const first=f.begin();assert.equal(first.executor,'antigravity');assert.equal(first.cli.session_id,null);await f.bridge();const id=f.state().sessions.antigravity;assert.match(id,/^conv-/);f.review('redo');const second=f.begin();assert.equal(second.cli.session_id,id);await f.bridge();const a=args(f,'agy');assert.equal(a[a.indexOf('--conversation')+1],id);assert.equal(a.at(-2),'-p');assert.ok(a.includes('--sandbox'));});
 test('Antigravity failed status is never success',async t=>{const f=fixture(t,{executor:'antigravity'});f.begin();f.mode('agy-fail');await assert.rejects(()=>execute(f.root),/status: failed/);assert.ok(f.state().writer);});
+test('a resumed Antigravity round uses the response text when structured_output still holds the previous round',async t=>{
+ const f=fixture(t,{executor:'antigravity'});f.mode('agy-stale');f.begin();await f.bridge();f.review('redo');f.begin();
+ const out=await execute(f.root);
+ // 재개한 대화의 structured_output은 1라운드 결과다. 응답 텍스트의 2라운드 결과가 쓰여야 한다.
+ assert.equal(read(out.result_file).round,2);
+ f.finish(read(out.result_file));assert.equal(f.state().phase,'REVIEW');
+});

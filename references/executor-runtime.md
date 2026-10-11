@@ -29,7 +29,8 @@
 - 설치된 agy가 `--print-timeout`을 지원하면 브리지 timeout보다 30초 짧게 넘긴다(기본 1170s). agy가 스스로 끝내면 강제 종료 대신 정상 envelope가 남는다.
 - agy는 Go 형식 도움말(`Usage of agy.EXE:`)을 stderr로 출력한다. 프로브는 stdout과 stderr를 합쳐서 확인한다.
 - agy에는 명령 단위 허용 규칙이 없어 `executor_bash_rules`는 dispatch에 `ignored_bash_rules`로 기록만 된다. 터미널 제한은 `--sandbox`뿐이다. `--dangerously-skip-permissions`는 쓰지 않는다. 권한 때문에 막히면 실패로 보고하고 우회하지 않는다.
-- `error` 필드, 실패성 `status`, `conversation_id` 부재는 실패. `structured_output`이 없으면 `response`에서 결과 JSON을 찾는다.
+- `error` 필드, 실패성 `status`, `conversation_id` 부재는 실패. `structured_output`이 없으면 `response`에서 결과 JSON을 찾는다. `--conversation`으로 재개하면 agy가 `structured_output`에 이전 라운드 결과를 그대로 돌려주므로, 그 라운드(상담이면 `consult_id`·`member`)가 현재 실행과 다르면 `response`의 JSON을 쓰고, 그것도 맞지 않으면 실패로 처리한다.
+- 헤드리스 agy에는 명령을 끝날 때까지 기다리라고 지시한다(백그라운드 실행·완료 알림 대기 금지). 수용 명령이 있는 라운드는 agy가 직접 돌리지 않고 `not_run`으로 보고하며, 컨트롤러가 끝난 직후 실행한다.
 - 비용은 보고되지 않으므로 null로 둔다.
 
 ## Sonnet (`claude --model claude-sonnet-5-5`)

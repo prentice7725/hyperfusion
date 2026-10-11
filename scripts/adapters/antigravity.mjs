@@ -59,6 +59,22 @@ export function parse(stdout,request) {
  if(typeof e.status==='string'&&/error|fail|cancel|timeout|denied|abort/i.test(e.status))throw Error('Antigravity run status: '+e.status);
  if(typeof e.conversation_id!=='string'||!e.conversation_id.trim())throw Error('Antigravity envelope has no conversation_id');
  if(request.cli.session_id&&e.conversation_id!==request.cli.session_id)throw Error('Antigravity session provenance mismatch');
- return {session_id:e.conversation_id,result:e.structured_output??extractResult(e.response),
+ return {session_id:e.conversation_id,result:currentResult(e,request),
   usage:{usage:e.usage??null,num_turns:e.num_turns??null,duration_seconds:e.duration_seconds??null,total_cost_usd:null}};
+}
+
+// --conversation로 재개하면 agy가 structured_output에 이전 라운드 결과를 그대로 돌려주고, 새 결과는 응답 텍스트에만 넣는다.
+// 현재 라운드(상담이면 consult_id·member)와 맞지 않는 structured_output은 버리고 응답 텍스트의 JSON을 쓴다.
+// 응답 텍스트에도 현재 결과가 없으면 이전 결과를 이번 라운드 결과로 받아들이지 않고 실패시킨다.
+export function currentResult(e,request) {
+ const fresh=r=>!!r&&typeof r==='object'&&(request.task_id===undefined||r.task_id===request.task_id)
+  &&(request.consult_id!==undefined?r.consult_id===request.consult_id&&r.member===request.member:r.round===request.round);
+ const structured=e.structured_output;
+ if(structured===undefined||structured===null)return extractResult(e.response);
+ if(fresh(structured))return structured;
+ let text;
+ try{text=extractResult(e.response);}catch{text=null;}
+ if(fresh(text))return text;
+ const seen=request.consult_id!==undefined?`consult ${structured?.consult_id}`:`round ${structured?.round}`;
+ throw Error(`Antigravity structured_output belongs to ${seen}, not this run, and the response text has no current result`);
 }

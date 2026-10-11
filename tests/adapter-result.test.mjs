@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {extractResult,resultSchema,consultSchema,prompt,ACCEPTANCE} from '../scripts/adapters/common.mjs';
 import {strictSchema} from '../scripts/adapters/codex.mjs';
-import {commandOrders} from '../scripts/adapters/antigravity.mjs';
+import {commandOrders,currentResult} from '../scripts/adapters/antigravity.mjs';
 
 // grok 1.0.50 실측: 중간 설명과 최종 JSON이 구분 없이 이어진 text
 const GROK_TEXT='I\'ll replace `hf-smoke.txt` with exactly `ok` and a newline, and leave everything else untouched.'
@@ -68,4 +68,16 @@ test('read-only consults allow read-only shell commands so a shell-only reviewer
  const text=JSON.parse(prompt(brief,{owner:'sol'})).instructions.join('\n');
  assert.match(text,/Do not create, edit, move or delete any file/);
  assert.match(text,/MAY run read-only commands such as cat.*rg.*git diff/);
+});
+test('Antigravity never accepts a previous run\'s structured_output as the current result',()=>{
+ const req={task_id:'t',round:2};
+ const r1={task_id:'t',round:1,status:'complete'},r2={task_id:'t',round:2,status:'complete'};
+ assert.deepEqual(currentResult({structured_output:r2,response:'done'},req),r2);
+ assert.deepEqual(currentResult({structured_output:r1,response:JSON.stringify(r2)},req),r2);
+ assert.throws(()=>currentResult({structured_output:r1,response:'done'},req),/belongs to round 1/);
+ assert.throws(()=>currentResult({structured_output:r1,response:JSON.stringify(r1)},req),/belongs to round 1/);
+ // 상담은 consult_id와 member로 맞춘다.
+ const c={task_id:'t',consult_id:'c2',member:'m1'};
+ assert.throws(()=>currentResult({structured_output:{...c,consult_id:'c1'},response:'x'},{task_id:'t',round:2,consult_id:'c2',member:'m1'}),/belongs to consult c1/);
+ assert.deepEqual(currentResult({structured_output:c,response:'x'},{task_id:'t',round:2,consult_id:'c2',member:'m1'}),c);
 });
