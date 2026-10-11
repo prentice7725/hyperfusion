@@ -44,6 +44,8 @@ test('a detached acceptance child blocks finish, retains the lease and cannot re
   assert.equal(s.phase,'RECOVERY_REQUIRED');assert.ok(s.writer);
   assert.equal(evidence(f).results[0].quiescence.quiescent,false);
   const pid=Number(fs.readFileSync(pidfile,'utf8'));assert.doesNotThrow(()=>process.kill(pid,0));
+  // 남은 프로세스를 PID로 짚어 줘야 리드가 무엇을 멈출지 안다.
+  assert.match(s.last_errors[0],new RegExp(`pid=${pid}\\b`));
   assert.throws(()=>run(f.root,'verify',{acceptance_satisfied:true}),/ACCEPTANCE_NOT_QUIESCENT/);
   assert.throws(()=>run(f.root,'init',{...f.brief,task_id:'another'}),/ACCEPTANCE_NOT_QUIESCENT/);
   assert.equal(f.state().phase,'RECOVERY_REQUIRED');

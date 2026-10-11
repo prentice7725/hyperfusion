@@ -1009,7 +1009,9 @@ function acceptanceHalt(c,evidence) {
   const unavailable=evidence?.results?.some(r=>r.code==='PROCESS_TABLE_UNAVAILABLE'||r.code==='PROCESS_TABLE_TIMEOUT');
   const budget=budgetStatus(c.root,s);
   if(unsafe||unavailable||evidence?.tree_changed?.length){
-    s.last_errors=[unsafe?`ACCEPTANCE_NOT_QUIESCENT: ${unsafe.quiescence?.reason??'Missing termination evidence'}; stop the processes before recovery`
+    // 무엇을 멈춰야 하는지 이름·PID로 보여 준다. 출처 불명(orphan_check) 여부도 함께 남긴다.
+    const left=(unsafe?.quiescence?.remaining??[]).slice(0,5).map(p=>`${p.name??'?'} pid=${p.pid} parent=${p.parent}${p.orphan_check?' unattributed':''}`).join(', ');
+    s.last_errors=[unsafe?`ACCEPTANCE_NOT_QUIESCENT: ${unsafe.quiescence?.reason??'Missing termination evidence'}${left?` (${left})`:''}; stop the processes before recovery`
       :unavailable?'ACCEPTANCE_UNAVAILABLE: process inventory unavailable; restore inventory access before recovery'
       :'Acceptance commands changed the tree: '+evidence.tree_changed.join(', ')+'; restore the tree before recovery'];
     s.phase='RECOVERY_REQUIRED';c.save();return true;

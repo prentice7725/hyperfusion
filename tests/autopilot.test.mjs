@@ -131,7 +131,7 @@ test('reported cost cap prevents a delegated review launch',async t=>{
 
 test('acceptance evidence from before supervision cannot be forwarded to a reviewer',async t=>{
  const f=setup(t);f.begin({acceptance_commands:f.brief.acceptance_commands});f.finish();
- const s=f.state();delete s.acceptance.quiescent;atomic(path.join(f.control,'state.json'),s);
+ const s=f.state();assert.equal(s.phase,'REVIEW',JSON.stringify({phase:s.phase,errors:s.last_errors}));delete s.acceptance.quiescent;atomic(path.join(f.control,'state.json'),s);
  const out=await autopilot(f.root);assert.equal(out.reason,'AUTOPILOT_ACCEPTANCE_UNVERIFIED');assert.equal(f.state().open_consult,undefined);
 });
 
