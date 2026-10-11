@@ -6,6 +6,8 @@
 - 반려 근거 요구: 위임 리뷰의 redo/alternative는 줄 위치가 있는 blocker·major 지적이 있어야 그대로 적용한다. 없으면 classic은 자동 적용하지 않고 리드에게 넘기고, adaptive는 참고 의견으로 표시해 리드가 직접 리뷰 후 `overrule_reason`으로 뒤집을 수 있다.
 - adaptive 모드에도 반복 반려 교체 규칙을 적용한다. 같은 일꾼이 같은 AC로 두 번 반려되면 lead-packet이 `REASSIGN_OTHER`를 권하고, 그래도 `REDO`하려면 `keep_owner_reason`이 필요하다.
 - 리뷰어 교체: 최소 원칙은 "구현한 모델은 그 라운드를 리뷰하지 않는다" 하나로 두고, 나머지는 한도·장애에 맞춰 바꾼다. 필수 리뷰어가 실패하면 게이트에서 `delegate-review`를 다시 불러 빈 자리만 다른 모델로 채운다(`executors` + `substitution_reason`). 남은 리뷰어가 없으면 리드가 diff·테스트·범위를 적고 직접 채워 승인한다(`lead_filled_seats`). 끝낸 리뷰어의 반려는 뒤집지 못하고, 패킷에 계획·대체·같은 회사 리뷰어를 남긴다.
+- AC 추적표: brief의 `acceptance_map`이 수용 기준 ID와 수용 명령을 잇는다. 실패한 명령은 AC ID가 붙은 반려 사유가 되고, CLOSE 때 AC별 판정(PASS/REVIEWED)을 남기며 매핑된 명령이 통과하지 않으면 닫지 않는다.
+- CLOSE 때 제어 폴더에 PR 설명 초안 `pr-draft.md`를 만든다(변경 파일, AC 표, 라운드, 남은 위험). 커밋·푸시는 하지 않는다.
 
 ## 0.15.0
 

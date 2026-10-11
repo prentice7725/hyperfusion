@@ -21,5 +21,6 @@ export function report(root,taskId) {
  const metrics=m?{success:m.success,wall_ms:m.wall_ms,worker_cost_estimate_usd:m.worker_cost_estimate_usd,
   lead_tokens_per_success:m.lead_tokens_per_success,delegation_count:m.delegation_count}:null;
  if(metrics){metrics.claude_tokens_per_success=m.claude_tokens_per_success??null;metrics.claude_usage=m.claude_usage??null;metrics.review_calls=m.review_calls??null;metrics.unreported_calls=m.unreported_calls??null;}
- return {task_id:taskId,rounds,metrics};
+ const draft=path.join(dir,'pr-draft.md');
+ return {task_id:taskId,rounds,metrics,ac_table:optional('verification.json')?.ac_table??null,pr_draft:fs.existsSync(draft)?draft:null};
 }
