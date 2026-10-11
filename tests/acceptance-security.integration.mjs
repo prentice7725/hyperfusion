@@ -80,8 +80,18 @@ const begun=f=>{const s=f.state();if(s.phase==='EXECUTING'&&s.writer)return;
  const dir=path.join(f.control,'tasks',f.brief.task_id),files=fs.existsSync(dir)?fs.readdirSync(dir).filter(n=>n.startsWith('acceptance-baseline-')):[];
  assert.fail(`begin did not start the round: phase=${s.phase} errors=${JSON.stringify(s.last_errors)} baseline=${files.map(n=>JSON.stringify(read(path.join(dir,n)).results?.map(r=>({code:r.code,status:r.status,quiescence:r.quiescence})))).join(' ')}`);};
 
+// finish가 수용 실행의 정지 확인에서 멈추면(RECOVERY_REQUIRED) 다음 호출이 '마커가 남았다'는 오류로만 터져 원인이 사라진다.
+// 정지 기록(남은 프로세스의 이름·PID·부모)을 실패 메시지에 그대로 보인다.
+const finishedClean=(f,result)=>{
+ const s=f.finish(result);
+ if(s.phase!=='RECOVERY_REQUIRED')return s;
+ const dir=path.join(f.control,'tasks',f.brief.task_id);
+ const evidence=s.acceptance?.file&&fs.existsSync(path.join(dir,s.acceptance.file))?read(path.join(dir,s.acceptance.file)):null;
+ assert.fail(`finish stopped for recovery: errors=${JSON.stringify(s.last_errors)} acceptance=${JSON.stringify(evidence?.results?.map(r=>({code:r.code,status:r.status,duration_ms:r.duration_ms,quiescence:r.quiescence})))}`);
+};
+
 test('VERIFY cannot reuse passing evidence after the task budget expires',t=>{
- const f=fixture(t);f.brief.acceptance_commands=[CHECK];f.begin();begun(f);fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');f.finish(f.result(['a.txt']));
+ const f=fixture(t);f.brief.acceptance_commands=[CHECK];f.begin();begun(f);fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');finishedClean(f,f.result(['a.txt']));
  f.review('pass');expire(f);
  assert.equal(run(f.root,'verify',{acceptance_satisfied:true}).phase,'BLOCKED');
  assert.equal(fs.existsSync(path.join(f.control,'tasks',f.brief.task_id,'verification.json')),false);
@@ -97,7 +107,7 @@ test('task deadline clamps a command timeout and suppresses later commands',t=>{
 });
 
 test('an interrupted acceptance marker forbids reusing an older pass',t=>{
- const f=fixture(t);f.brief.acceptance_commands=[CHECK];f.begin();fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');f.finish(f.result(['a.txt']));f.review('pass');
+ const f=fixture(t);f.brief.acceptance_commands=[CHECK];f.begin();begun(f);fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');finishedClean(f,f.result(['a.txt']));f.review('pass');
  atomic(path.join(f.control,'locks/acceptance.json'),{state:f.state(),brief:f.brief,stage:'verify'});
  assert.throws(()=>run(f.root,'verify',{acceptance_satisfied:true}),/ACCEPTANCE_NOT_QUIESCENT/);
  assert.equal(f.state().phase,'RECOVERY_REQUIRED');
