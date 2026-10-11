@@ -53,6 +53,16 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
    for(;;){
     const s=state();
     if(s.task_id!==task)throw failure('AUTOPILOT_TASK_CHANGED','The active task changed');
+    // 리드가 init에서 재량권(delegation)을 준 STANDARD 작업만: 컨트롤러가 조건을 전부 확인했을 때 승인하고 verify까지 이어 간다.
+    // 조건이 하나라도 부족하면 승인하지 않고 이유와 함께 리드 게이트에서 멈춘다. 승인 기록은 delegated-policy로 표시된다.
+    if(s.delegation&&s.phase==='LEAD_DECISION_REQUIRED'){
+     try{settle('policy-approve',{});}
+     catch(e){if(e.code==='POLICY_NOT_ELIGIBLE')return stop('LEAD_DECISION_REQUIRED',e);throw e;}
+     continue;
+    }
+    if(s.delegation&&s.phase==='VERIFY'&&s.lead_decision?.authority?.source==='delegated-policy'&&s.lead_decision.round===s.iteration){
+     settle('verify',{acceptance_satisfied:true});continue;
+    }
     if(STOPS.has(s.phase))return stop(s.phase);
     check();
     if(s.open_consult)throw failure('AUTOPILOT_EXISTING_CONSULT','An earlier consultation requires lead settlement; it will not be relaunched');

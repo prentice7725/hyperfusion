@@ -1,7 +1,7 @@
 export const TERMINAL_PHASES=['CLOSE','BLOCKED','ARCHIVED'];
 export const ACTION_PHASES={
  begin:['PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED'],
- finish:['EXECUTING'],review:['REVIEW'],'lead-decision':['LEAD_DECISION_REQUIRED'],
+ finish:['EXECUTING'],review:['REVIEW'],'lead-decision':['LEAD_DECISION_REQUIRED'],'policy-approve':['LEAD_DECISION_REQUIRED'],
  decide:['DECISION_REQUIRED'],verify:['VERIFY'],
  consult:['PLAN','REVIEW','REDO','ALTERNATIVE_REQUIRED','DECISION_REQUIRED'],
  // 게이트의 재위임은 리뷰어가 끝내지 못한 라운드만 컨트롤러가 받는다.

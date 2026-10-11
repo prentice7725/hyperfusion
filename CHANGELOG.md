@@ -7,7 +7,8 @@
 - 리드가 읽는 출력 줄이기: 명령줄 출력이 기본으로 compact 보기가 됐다. `begin`이 찍던 일꾼 지시문 전문(`prompt`)과 프로브 결과(`cli`), 상태형 출력의 설정·라우팅·세션 전체는 리드가 쓰지 않으므로 빼고 `omitted`에 알린다(`state.json`, `dispatch-N.json`에 그대로 있음). 전부 보려면 `--full`. 한 작업의 init~lead-decision 출력은 약 23,500자에서 약 4,300자(82% 감소). `status`, `report`, `run()` 반환값은 바뀌지 않는다.
 - `fusion-state.mjs next <저장소>`: 지금 단계에서 칠 명령 한 줄과, token·baseline_digest처럼 컨트롤러가 아는 값을 미리 채운 입력 틀을 돌려준다. 읽기 전용.
 - `review.strategy: "lead-gated-adaptive"`에서는 autopilot이 `review.auto_apply:true`를 요구하지 않는다. adaptive는 `auto_apply`를 판정에 쓰지 않는데도 값을 요구해서 샘플 설정(`auto_apply:false`)으로는 autopilot이 시작되지 않았다. classic은 그대로 요구한다.
-- 소유자 결정 기록: 리드가 작업 단위로 재량권을 주면 컨트롤러가 사전 승인된 정책에 따라 라운드를 승인할 수 있다(`delegated-policy`로 구분 표시). 구현은 다음 단계이며 `references/universal-supervisor.md`에 규칙을 적어 두었다.
+- 위임 승인(재량권): 리드가 init에서 `delegation: {policy:"standard-auto", reason, max_rounds?}`를 주면, STANDARD 작업의 라운드를 컨트롤러가 조건을 전부 확인했을 때 직접 승인하고(`policy-approve`) autopilot이 verify까지 이어 CLOSE에 닿는다. init에서만 받는 컨트롤러 기록이고, 이후 brief·저장소 설정·일꾼 출력으로는 못 만든다. adaptive 전략, STANDARD·external_primary, red-first, 모든 AC 매핑이 init 조건이다. 승인 조건은 위험 경로 없음, 필수 리뷰어 전원 같은 digest pass, 교체된 반려·같은 회사 리뷰·반복 반려 없음, 결과 complete, 컨트롤러 수용 테스트 PASS와 종료 증명, 계약 불변, 모든 AC 증명이다. 하나라도 부족하면 승인하지 않고 `POLICY_NOT_ELIGIBLE`과 이유를 돌려주며 리드 게이트에 남는다. 승인 기록은 `authority.source: delegated-policy`로 구분되고 PR 초안에도 표시된다. `next`가 승인 가능 여부와 이유를 보여 준다.
+- 소유자 결정 기록: 리드가 작업 단위로 재량권을 줄 수 있다. 규칙은 `references/universal-supervisor.md`.
 ## 0.16.2
 
 - `fusion-state.mjs autopilot`가 아무 일도 하지 않고 종료 코드 13(`unsettled top-level await`)으로 끝나던 문제: `autopilot.mjs`가 `fusion-state.mjs`를 import하는데, `fusion-state.mjs`가 모듈 최상위에서 autopilot을 await해 서로 기다렸다. 명령줄 진입점을 함수로 빼서 모듈 평가가 먼저 끝나게 했다. 이제 `fusion-state.mjs autopilot <저장소>`가 그대로 동작한다.

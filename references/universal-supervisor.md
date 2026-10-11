@@ -21,13 +21,27 @@
 
 기본 리뷰어가 한도 소진이나 장애로 끝내지 못하면 게이트(`LEAD_DECISION_REQUIRED`)에서 `delegate-review`를 다시 부른다. 끝난 리뷰는 남고 빈 자리만 채운다. 기본 리뷰어가 아닌 모델을 넣으려면 `executors`와 `substitution_reason`을 적는다(예: `{"executors":["haiku"],"substitution_reason":"Codex 한도 소진, 01:56 해제"}`). 작성자 자신과 리드는 위임 리뷰어가 될 수 없다. 라운드당 위임 상한(2회)은 그대로다. 남은 리뷰어가 없으면 리드가 `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적고 빈 자리를 직접 채워 APPROVE할 수 있으며 `lead_filled_seats`로 기록된다. 끝낸 리뷰어가 pass가 아니면 직접 채움만으로는 뒤집지 못한다. 반려를 다시 검토하려면 게이트에서 구현자와 이미 판정한 리뷰어를 뺀 모델을 `executors`로, 사유를 `substitution_reason`으로 적어 `delegate-review`를 다시 연다. 반려는 `superseded`로 남고, 대체 리뷰어가 pass하면 리드가 직접 diff를 읽고 `overrule_reason`과 함께 APPROVE한다. 대체 리뷰어도 반려하면 승인되지 않는다. 패킷에는 `planned_reviewers`, `substitutes`, `review_gaps`, 같은 회사 모델끼리 리뷰했으면 `same_family_reviewers`가 남는다(교차 검증이 약하다는 표시).
 
-## 위임 승인 (소유자 결정, 아직 구현 전)
+## 위임 승인 (재량권)
 
-소유자는 2026-10-11에 다음을 허용했다. **리드가 상황을 보고 작업 단위로 재량권을 줄 수 있다.** 이 재량권 아래에서는 컨트롤러가 사전에 승인된 정책에 따라 라운드를 승인하고 VERIFY까지 이어 갈 수 있다. "모든 라운드를 리드가 직접 최종 판정한다"는 기존 원칙은 이 예외 하나로만 바뀐다.
-- 재량권은 리드가 init에서만 준다(`assignment`, `implement_grant`처럼 컨트롤러가 남기는 승인 기록). 저장소 설정, 일꾼 출력, brief 본문으로는 만들 수 없다.
-- 자동 승인 기록은 `delegated-policy`로 표시하며 리드가 직접 검토한 것처럼 보이지 않게 한다.
-- 위험 경로, important, apex 작업과 조건 하나라도 부족한 라운드는 지금처럼 리드 게이트에서 멈춘다. 조건은 수용 테스트 PASS, red-first 증명, `acceptance_map`이 모든 AC를 덮음, 필요한 독립 리뷰 전부 같은 digest에서 PASS, 범위 이탈 없음, 프로세스 종료 증명이다.
-- 구현은 0.17의 다음 단계(B)다. 이 문서의 위 규칙은 현재 코드에 아직 적용되지 않는다.
+소유자 결정(2026-10-11): **리드가 상황을 보고 작업 단위로 재량권을 줄 수 있다.** 이 재량권 아래에서는 컨트롤러가 사전에 승인된 정책에 따라 STANDARD 라운드를 승인하고 verify까지 이어 갈 수 있다. "모든 라운드를 리드가 직접 최종 판정한다"는 기존 원칙은 이 예외 하나로만 바뀌고, 재량권이 없는 작업은 지금까지와 같다.
+
+**주는 법.** init 입력에 `delegation: {"policy":"standard-auto","reason":"<왜 이 작업은 리드 없이 승인해도 되는가>","max_rounds":2}`를 넣는다(`max_rounds`는 1~3, 기본 2). `assignment`, `implement_grant`처럼 init에서만 받는 컨트롤러 기록(`delegation.json`)이 되며, 이후 brief(`begin`), 저장소 설정(`hyperfusion.config.json`), 일꾼 출력으로는 만들거나 바꿀 수 없다. init이 다음을 모두 요구하고 하나라도 어긋나면 작업을 시작하지 않는다.
+- `review.strategy: "lead-gated-adaptive"`(대신하는 게이트가 있어야 한다)
+- STANDARD이고 `external_primary`인 작업(important·apex·Sonnet 구현·Sol 구현은 위임 불가). 구현자는 grok, antigravity, haiku, luna 중 하나
+- `acceptance_commands`가 있고 처음 트리에서 실패(red-first). `acceptance_baseline_green`으로 면제된 작업은 불가
+- `success_criteria`의 모든 AC ID가 `acceptance_map`에 있음
+
+**승인 조건.** `LEAD_DECISION_REQUIRED`에서 `policy-approve`(autopilot이 부르거나 리드가 직접 부른다)가 컨트롤러 기록만으로 아래를 전부 확인했을 때만 승인한다. 하나라도 부족하면 상태를 바꾸지 않고 `POLICY_NOT_ELIGIBLE`과 이유를 돌려주며, 작업은 지금처럼 리드 게이트에 남는다. `next`가 `delegated_policy`에 지금 승인 가능한지와 이유를 보여 준다.
+1. 위임·배정 기록이 컨트롤러 기록과 같음, 라운드 수 ≤ `max_rounds`, writer 없음, 라운드 뒤 트리 그대로, 예산 남음
+2. brief의 계약(`success_criteria`, `acceptance_*`, `scope.paths`)이 init 때와 같음
+3. 위험 경로 없음, 직접 리드 리뷰가 필요한 라운드 아님
+4. 필수 리뷰어가 전부 같은 digest에서 pass, 근거 없는 반려로 보류된 자리 없음, 교체된 반려(`superseded`) 없음, 구현자와 같은 회사 모델의 리뷰로 채우지 않음, 같은 기준의 반복 반려 없음
+5. 일꾼 결과가 `complete`, 미해결·실패 테스트·리드 결정 요청 없음
+6. 컨트롤러가 직접 돌린 수용 테스트 PASS, 프로세스 종료 증명, 그 뒤 트리·무시된 파일 그대로, 모든 AC가 통과한 명령으로 증명됨
+
+**기록.** 승인 기록(`lead-decision-N.json`)의 `authority.source`는 `delegated-policy`이고 `policy_checks`에 통과한 조건이 남는다. 리드가 직접 읽었다고 표시하지 않으며(`rationale`에 명시), `model_verified:false`다. CLOSE 때의 `pr-draft.md`에도 위임 정책으로 승인됐다는 문구가 붙는다.
+
+**autopilot.** 재량권이 있는 작업은 `LEAD_DECISION_REQUIRED`에서 `policy-approve`, 승인되면 `verify {acceptance_satisfied:true}`(컨트롤러가 수용 테스트를 다시 돌린다)까지 이어 CLOSE에 닿는다. 승인할 수 없으면 이유와 함께 게이트에서 멈춘다.
 
 컨트롤러 명령을 호출한 호스트가 실제 Opus인지 프로세스 출력이나 모델 이름 문자열로 인증할 수는 없다. 모델 신원은 호스트 통합이 보증해야 한다. 현재 기록은 `authority.model_verified:false`, 실제로 관측하지 않은 모델은 null이며, boolean 입력만으로 '실제 Opus 독립 기술 리뷰 완료'라고 인증하지 않는다. 제어 폴더는 작업 폴더 밖에 두지만 이는 OS 수준 접근 격리의 대체물이 아니다.
 
