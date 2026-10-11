@@ -98,3 +98,12 @@ test('HF_NOTIFY_URL receives a push when a worker finishes',async t=>{
  const f=fixture(t);f.begin();await execute(f.root);
  assert.equal(got.length,1);assert.equal(got[0].title,'HyperFusion HF-test');assert.match(got[0].body,/grok round 1 done \(complete\)/);
 });
+
+test('a committee member whose prompt goes on the command line gets a shorter diff and is told to read the rest',async t=>{
+ const f=fixture(t);f.begin();fs.writeFileSync(path.join(f.root,'a.txt'),'x\n'.repeat(15000));f.finish(f.result(['a.txt']));
+ const c=ask(f,{mode:'committee',executors:['antigravity','sonnet']});
+ const sent=member=>JSON.parse(read(path.join(f.control,`tasks/HF-test/consult-${c.consult_id}-${member}.json`)).prompt).brief.consult.context;
+ const [agy,sonnet]=['m1','m2'].map(sent);
+ assert.equal(agy.diff.length,12000);assert.equal(agy.diff_truncated,true);assert.match(agy.diff_note,/cut at 12000 characters: read the rest/);
+ assert.ok(sonnet.diff.length>20000);assert.equal(sonnet.diff_truncated,false);
+});

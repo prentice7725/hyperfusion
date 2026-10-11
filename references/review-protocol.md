@@ -48,7 +48,7 @@
 LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. 그래서 위임 리뷰의 `redo`·`alternative`는 **줄 위치가 있는(line ≥ 1) blocker 또는 major 지적**이 하나 이상 있어야 그대로 적용한다.
 
 - classic: 근거 없는 반려는 `auto_apply:true`여도 적용하지 않고 `pending_review`(`evidence:false`)로 남긴다. 리드가 `review {"adopt":true}`로 그대로 적용하거나 자기 판정을 낸다.
-- adaptive: 기록에 `evidence:false`가 붙고 패킷의 `unsupported_rejections`에 남는다. 근거 없는 반려뿐이면 추천이 비어 있다. 리드는 REDO하거나, 직접 diff를 읽고 `overrule_reason`, `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적어 APPROVE한다(`overruled_reviews`, 뒤집힌 자리는 `lead_filled_seats`). 근거가 있는 반려는 뒤집지 못한다.
+- adaptive: 기록에 `evidence:false`가 붙고 패킷의 `unsupported_rejections`에 남는다. 근거 없는 반려뿐이면 추천이 비어 있다. 리드는 REDO하거나, 직접 diff를 읽고 `overrule_reason`, `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적어 APPROVE한다(`overruled_reviews`, 뒤집힌 자리는 `lead_filled_seats`). 근거가 있는 반려는 리드 혼자 뒤집지 못한다. 다른 의견이 필요하면 `LEAD_DECISION_REQUIRED`에서 구현자와 이미 판정한 리뷰어를 뺀 모델을 `executors`로 지정하고 `substitution_reason`을 적어 `delegate-review`를 다시 연다(라운드당 위임 리뷰 2회 한도 안). 교체된 반려는 지우지 않고 `superseded:true`로 남는다. 대체 리뷰어가 같은 digest에서 pass하면, 리드가 직접 diff를 읽고 `overrule_reason`, `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적어 APPROVE할 수 있다. 대체 리뷰어도 반려하면 승인할 수 없다.
 - 일꾼이 미완료로 보고해 컨트롤러가 바꾼 반려와 수용 테스트 실패 반려는 그 자체가 근거다.
 
 ## 옵트인 Adaptive Review (`review.strategy: "lead-gated-adaptive"`)

@@ -1,4 +1,4 @@
-import {schemaFor,prompt,bashRules,probe as probeCli,extractResult} from './common.mjs';
+import {schemaFor,prompt,bashRules,probe as probeCli,extractResult,ACCEPTANCE} from './common.mjs';
 import {assertCommandLine} from '../platform.mjs';
 
 // Google Antigravity CLI(agy) 헤드리스 모드. 모든 플래그는 -p 앞에 와야 한다.
@@ -13,6 +13,8 @@ export const probe=(options={})=>probeCli('Antigravity',binary(),[...requiredFla
 // agy가 스스로 먼저 끝내도록 브리지 timeout보다 30초 짧게 잡는다. 그래야 강제 종료 대신 정상 envelope가 남는다.
 export const printTimeout=options=>Math.max(30,Math.floor(((options.timeout_ms??1200000)-30000)/1000))+'s';
 export const newSession=()=>null;
+// 프롬프트가 명령줄로 가므로(Windows 32,767자) 상담 위원에게 넣는 diff를 작게 유지한다. 나머지는 파일을 직접 읽는다.
+export const contextDiffMax=12000;
 
 export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
  if(options.model&&!cli.supports?.['--model'])throw Error('MODEL_UNSUPPORTED: Antigravity requires --model support for a model override');
@@ -41,8 +43,12 @@ export function commandOrders(text,rules,brief) {
  const order=allowed.length
   ?`Headless mode auto-denies any shell command outside the operator allow-list, and one denied command ends this run with no result. Run only commands that start with one of: ${allowed.map(c=>JSON.stringify(c)).join(', ')}. Never run any other shell command (no powershell, node -e, cat, type or byte dumps); read and verify files with your file view tools. If a check needs a command outside this list, report it as not_run.`
   :'Headless mode auto-denies shell commands, and one denied command ends this run with no result. Run no shell commands at all; read and verify files with your file view tools and report checks you could not run as not_run.';
+ // 헤드리스 agy는 오래 걸리는 명령을 비동기로 띄우고 완료 알림을 기다리다 결과 없이 끝난 적이 있다.
+ // 명령은 끝날 때까지 기다리게 하고, 수용 테스트는 직접 돌리지 말고 컨트롤러에 맡기게 한다.
+ const sync='Run every command in the foreground and wait until it exits before your next step. Never start a command in the background, never leave a process running, and never wait for a completion notification: headless mode cannot deliver one, so the run ends with no result.';
+ const tests='Do not run brief.acceptance_commands yourself in this headless mode. The controller runs every one of them right after you finish and sends any failure back to you with its output; list them in tests as not_run. Leave the tree clean: no new untracked files, and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
  const p=JSON.parse(text);
- p.instructions=[...p.instructions,order];
+ p.instructions=[...p.instructions.filter(x=>x!==ACCEPTANCE),order,sync,...(brief.acceptance_commands?.length?[tests]:[])];
  return JSON.stringify(p);
 }
 
