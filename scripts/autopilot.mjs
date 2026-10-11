@@ -90,8 +90,10 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
     if(!adaptive&&s.configuration.review.auto_apply!==true)throw failure('AUTOPILOT_REVIEW_REQUIRED','Autopilot requires review.auto_apply:true (or review.strategy "lead-gated-adaptive", which always stops at the lead gate)');
     // 오토파일럿의 실질적 관문은 수용 테스트다. 처음부터 통과하는 테스트로는 엉터리 결과도 통과하므로, 기준 트리에서 실패가 확인된(red) 명령만 받는다.
     const baseline=s.acceptance_baseline;
-    if(baseline?baseline.status!=='red':(s.phase!=='PLAN'||brief.acceptance_baseline_green))
-     throw failure('AUTOPILOT_ACCEPTANCE_NOT_RED',`Autopilot needs acceptance_commands proven to fail on the untouched tree (baseline: ${baseline?.status??'not checked'}); the lead must review this task`);
+    // 보존(preserve) 작업은 red-first 대신 "수정 전에도 통과 + 보호 경로 불변"이 증거다. 보호 경로는 컨트롤러가 finish·verify에서 지킨다.
+    const preserve=read(path.join(dir,'initial-brief.json')).verification?.kind==='preserve';
+    if(baseline?baseline.status!==(preserve?'green-acknowledged':'red'):(s.phase!=='PLAN'||brief.acceptance_baseline_green))
+     throw failure('AUTOPILOT_ACCEPTANCE_NOT_RED',preserve?`A preserve task needs acceptance_commands recorded as already passing (baseline: ${baseline?.status??'not checked'}); the lead must review this task`:`Autopilot needs acceptance_commands proven to fail on the untouched tree (baseline: ${baseline?.status??'not checked'}); the lead must review this task`);
     if(['PLAN','REDO','ALTERNATIVE_REQUIRED'].includes(s.phase)){
      const input={...brief};delete input.executor;
      if(s.phase!=='PLAN')input.lead_feedback=s.last_auto_recovery?.round===s.iteration

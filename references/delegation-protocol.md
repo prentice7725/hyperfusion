@@ -22,6 +22,8 @@
 
 `prior_experience`(선택, 최대 12개 `{type, content, id?, assertion?}`)는 리드가 AnchorMind에서 찾아 SOT·Git과 대조한 과거 기억이다. 일꾼에게는 brief·저장소·lead_feedback보다 우선순위가 낮다고 명시해 전달된다. 기각된 기억과 비밀값은 넣을 수 없다([memory.md](memory.md)).
 
+`verification`(선택, 리팩터링용): `{"kind":"preserve","protect":["spec/**"]}`. 수정 전에도 수용 명령이 통과하는 작업에서 red-first 대신 쓰는 증거 계약이다. `protect`는 테스트·픽스처 같은 보호 경로(앞쪽 디렉터리가 리터럴인 glob, 1~10개)이고, 작업 범위(`scope.paths`)와 겹치면 안 되며 실제 파일에 맞아야 한다. `acceptance_commands`와 `acceptance_baseline_green`(왜 이미 통과하는지)이 함께 필요하고, 명령이 실패하면 보존이 아니라 red-first 작업이므로 거절된다. 컨트롤러는 작업을 시작했을 때와 비교해 보호 경로의 파일이 하나라도 바뀌면(리드가 범위 밖 변경을 받아들였어도) 그 라운드를 막고 verify도 거절한다. init의 brief가 정본이라 이후 brief로는 풀 수 없다.
+
 `acceptance_commands`(선택, 한 줄 명령 1~10개)를 적으면 컨트롤러가 finish 직후와 VERIFY에서 직접 실행하고 종료 코드와 출력 해시를 기록한다. 실패하면 리뷰 전에 실패 출력과 함께 같은 일꾼에게 되돌린다. `acceptance_timeout_ms`(명령당, 기본 600000)와 `acceptance_artifacts`(실행되지 않는 테스트 산출물 글롭)를 함께 줄 수 있다. 명령은 brief에서만 받는다. 자세한 동작과 무시된 파일 검사는 [operations.md](operations.md#수용-테스트-자동-실행).
 
 `task_kind`/`difficulty`는 배치 힌트다([routing.md](routing.md)). 종류가 섞인 작업은 쪼갠다.

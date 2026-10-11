@@ -41,6 +41,13 @@ export function brief(v) {
  requireThat(v.acceptance_artifacts===undefined||(strs(v.acceptance_artifacts)&&v.acceptance_artifacts.length<=20&&v.acceptance_artifacts.every(g=>reportedPath(g.replace(/\*\*?|\?/g,'x'))&&!/^(?:\*\*\/)*\*{1,2}$/.test(g))),'Invalid acceptance_artifacts (repository-relative globs, not "**")');
  requireThat(v.acceptance_baseline_green===undefined||(str(v.acceptance_baseline_green)&&v.acceptance_baseline_green.length<=300),'acceptance_baseline_green must be a short reason (why the commands already pass before any change)');
  requireThat(v.acceptance_commands!==undefined||(v.acceptance_timeout_ms===undefined&&v.acceptance_artifacts===undefined&&v.acceptance_baseline_green===undefined),'acceptance options need acceptance_commands');
+ // 보존(preserve) 검증: 수정 전에도 통과하는 명령(리팩터링)에서, 보호 경로의 파일이 바뀌지 않았음을 컨트롤러가 증거로 삼는다.
+ requireThat(v.verification===undefined||(v.verification&&typeof v.verification==='object'&&!Array.isArray(v.verification)
+  &&Object.keys(v.verification).every(k=>['kind','protect'].includes(k))&&v.verification.kind==='preserve'
+  &&strs(v.verification.protect)&&v.verification.protect.length>=1&&v.verification.protect.length<=10
+  &&v.verification.protect.every(g=>reportedPath(g.replace(/\*\*?|\?/g,'x'))&&!/^(?:\*\*\/)*\*{1,2}$/.test(g)&&!g.endsWith('/'))),'Invalid verification: {kind:"preserve", protect:[1-10 repository-relative globs]}');
+ requireThat(v.verification===undefined||v.acceptance_commands!==undefined,'verification needs acceptance_commands');
+ requireThat(v.verification===undefined||str(v.acceptance_baseline_green),'verification preserve needs acceptance_baseline_green: say why the commands already pass before any change');
  // AC 추적: 어떤 수용 명령이 어떤 수용 기준(AC ID)을 증명하는지. 선택 항목이다.
  checkAcceptanceMap(v);
  checkPrior(v.prior_experience);
