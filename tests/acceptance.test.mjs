@@ -86,6 +86,30 @@ test('test outputs in known artifact folders do not block acceptance',async t=>{
  assert.equal(f.state().acceptance.status,'pass');
 });
 
+test('vitest caches do not block acceptance, but a regenerated dist/ does until the brief lists it',async t=>{
+ const run1=async(artifacts)=>{
+  const f=fixture(t,{initialize:false});
+  withIgnored(f,['node_modules/','dist/'],{'node_modules/.vite/vitest/results.json':'{}','node_modules/.vitest/cache':'a','dist/index.js':'old'});
+  run(f.root,'init',{...f.brief,executor:'grok'});
+  f.brief.acceptance_commands=[CHECK];
+  if(artifacts)f.brief.acceptance_artifacts=artifacts;
+  f.mode('edit');f.begin();
+  fs.writeFileSync(path.join(f.root,'node_modules/.vite/vitest/results.json'),'{"new":1}');
+  fs.writeFileSync(path.join(f.root,'node_modules/.vitest/cache'),'b');
+  fs.writeFileSync(path.join(f.root,'dist/index.js'),'rebuilt');
+  await f.bridge();
+  return f;
+ };
+ // dist/는 실행될 수 있는 산출물이라 기본으로는 비교에서 빼지 않는다. vitest 캐시만 뺀다.
+ const skipped=await run1();
+ assert.equal(skipped.state().acceptance.status,'skipped');
+ assert.deepEqual(accepted(skipped).ignored_changes,['dist/index.js']);
+ assert.match(accepted(skipped).reason,/acceptance_artifacts/);
+ // 리드가 brief에 dist/**를 적으면 건너뛰지 않는다.
+ const listed=await run1(['dist/**']);
+ assert.equal(listed.state().acceptance.status,'pass');
+});
+
 test('an ignored change after a passing run forces a rerun, and a failure at VERIFY goes back to the worker',async t=>{
  const f=fixture(t,{initialize:false});
  withIgnored(f,['cache/'],{});

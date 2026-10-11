@@ -971,7 +971,7 @@ function acceptanceRun(c,brief,stage,reference,{trust=false}={}) {
   const name=`acceptance-${n}-${stage}${stage==='finish'?'':'-'+Date.now()}`;
   if(touched.length&&!trust){
     Object.assign(record,{status:'skipped',ignored_changes:touched.slice(0,50),
-      reason:'gitignored files changed since the reference point, so repository code may not be what the snapshot shows; inspect them, then verify with acceptance_trust_ignored:true'});
+      reason:'gitignored files changed since the reference point, so repository code may not be what the snapshot shows; inspect them, then verify with acceptance_trust_ignored:true. If they are only test or build outputs that never run as code (a cache or a dist/ your build regenerates), list their globs in the brief\'s acceptance_artifacts so they are not compared'});
   } else {
     const before=snapshot(c.root);
     record.results=supervisedAcceptance(c,brief,stage);
@@ -1462,7 +1462,9 @@ function dispatch(c,action,input) {
   return handler(c,input);
 }
 
-if(isMain(import.meta.url)) {
+// 명령줄 진입점. 모듈 최상위에서 await하면 안 된다: autopilot.mjs가 이 파일을 import하므로, 이 파일이 평가를 끝내기 전에
+// autopilot을 await하면 서로 기다리다 'unsettled top-level await'(종료 코드 13)로 아무 일도 못 하고 끝난다.
+async function cli() {
   try {
     const [action,root,...rest]=process.argv.slice(2);
     const file=rest[0]&&!rest[0].startsWith('--')?rest.shift():undefined;
@@ -1514,3 +1516,4 @@ if(isMain(import.meta.url)) {
     printError(e);
   }
 }
+if(isMain(import.meta.url))void cli();

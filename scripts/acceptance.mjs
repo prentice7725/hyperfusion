@@ -14,7 +14,7 @@ import {workerEnv} from './worker-env.mjs';
 // 명령은 리드가 쓴 brief에서만 온다. 저장소 안의 설정 파일은 일꾼이 고칠 수 있으므로 명령 출처로 쓰지 않는다.
 
 // 테스트가 만드는 산출물 중 실행되지 않는 것. 비교에서 뺀다. 실행될 수 있는 산출물(dist/, __pycache__ 등)은 넣지 않는다.
-export const DEFAULT_ARTIFACTS=['coverage/**','.nyc_output/**','**/.pytest_cache/**','test-results/**','node_modules/.cache/**','**/*.log','.coverage','.coverage.*'];
+export const DEFAULT_ARTIFACTS=['coverage/**','.nyc_output/**','**/.pytest_cache/**','test-results/**','node_modules/.cache/**','node_modules/.vitest/**','node_modules/.vite/vitest/**','**/*.log','.coverage','.coverage.*'];
 export const MAX_IGNORED=200000;
 const RUNNER=fileURLToPath(new URL('./acceptance-runner.mjs',import.meta.url));
 
