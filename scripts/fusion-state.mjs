@@ -22,7 +22,7 @@ import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
 import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
 import {ensureControl,isLegacy,migrate,controlRoot,controlPath,acquireLock} from './control-dir.mjs';
-import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex} from './acceptance.mjs';
+import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex,operatorIgnoredAllow} from './acceptance.mjs';
 import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation} from './review-plan.mjs';
 
@@ -967,11 +967,12 @@ function acceptanceRun(c,brief,stage,reference,{trust=false}={}) {
   const s=c.s,n=s.iteration;
   const ignoredNow=ignoredManifest(c.root,brief.acceptance_artifacts);
   const touched=reference?ignoredChanges(reference,ignoredNow):['(no ignored-file baseline for this round)'];
-  const record={stage,round:n,at:new Date().toISOString(),commands:brief.acceptance_commands};
+  const allow=operatorIgnoredAllow();
+  const record={stage,round:n,at:new Date().toISOString(),commands:brief.acceptance_commands,...(allow.length?{operator_ignored_allow:allow}:{})};
   const name=`acceptance-${n}-${stage}${stage==='finish'?'':'-'+Date.now()}`;
   if(touched.length&&!trust){
     Object.assign(record,{status:'skipped',ignored_changes:touched.slice(0,50),
-      reason:'gitignored files changed since the reference point, so repository code may not be what the snapshot shows; inspect them, then verify with acceptance_trust_ignored:true. If they are only test or build outputs that never run as code (a cache or a dist/ your build regenerates), list their globs in the brief\'s acceptance_artifacts so they are not compared'});
+      reason:'gitignored files changed since the reference point, so repository code may not be what the snapshot shows; inspect them, then verify with acceptance_trust_ignored:true. If they are only test or build outputs that never run as code (a cache or a dist/ your build regenerates), list their globs in the brief\'s acceptance_artifacts (or have the operator set HF_ACCEPTANCE_IGNORED_ALLOW) so they are not compared'});
   } else {
     const before=snapshot(c.root);
     record.results=supervisedAcceptance(c,brief,stage);

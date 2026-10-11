@@ -14,8 +14,28 @@ import {workerEnv} from './worker-env.mjs';
 // 명령은 리드가 쓴 brief에서만 온다. 저장소 안의 설정 파일은 일꾼이 고칠 수 있으므로 명령 출처로 쓰지 않는다.
 
 // 테스트가 만드는 산출물 중 실행되지 않는 것. 비교에서 뺀다. 실행될 수 있는 산출물(dist/, __pycache__ 등)은 넣지 않는다.
-export const DEFAULT_ARTIFACTS=['coverage/**','.nyc_output/**','**/.pytest_cache/**','test-results/**','node_modules/.cache/**','node_modules/.vitest/**','node_modules/.vite/vitest/**','**/*.log','.coverage','.coverage.*'];
+export const DEFAULT_ARTIFACTS=['coverage/**','.nyc_output/**','**/.pytest_cache/**','test-results/**','node_modules/.cache/**','**/*.log','.coverage','.coverage.*'];
 export const MAX_IGNORED=200000;
+
+// 운영자가 환경변수로만 켜는 "무시된 파일 변경 허용 목록". 저장소 설정 파일이나 일꾼 출력으로는 켜지 못한다
+// (일꾼이 고칠 수 있는 파일이 자기 감시를 풀면 안 된다). 테스트가 읽지 않는 산출물(예: dist/**, node_modules/.vite/vitest/**)만 넣는다.
+// 값은 쉼표로 구분한 glob. 의존성 코드가 바뀌는 것을 막아야 하므로 node_modules 전체나 와일드카드로 시작하는 경로는 거절한다.
+export const OPERATOR_IGNORED_ALLOW_ENV='HF_ACCEPTANCE_IGNORED_ALLOW';
+export function operatorIgnoredAllow(env=process.env) {
+ const raw=env[OPERATOR_IGNORED_ALLOW_ENV];
+ if(raw===undefined||!raw.trim())return [];
+ const list=raw.split(',').map(x=>x.trim()).filter(Boolean);
+ if(list.length>8)throw Error(`${OPERATOR_IGNORED_ALLOW_ENV}: at most 8 globs`);
+ for(const g of list){
+  const bad=why=>Error(`${OPERATOR_IGNORED_ALLOW_ENV}: refused "${g}" (${why})`);
+  if(g.includes('\\')||g.startsWith('/')||/^[A-Za-z]:/.test(g)||g.split('/').includes('..'))throw bad('must be a relative path with forward slashes');
+  if(!g.endsWith('/**'))throw bad('must name a directory subtree ending in /**');
+  const dir=g.slice(0,-3).split('/');
+  if(dir.some(seg=>!seg||/[*?]/.test(seg)))throw bad('directory segments must be literal, with no wildcards');
+  if(dir[0]==='node_modules'&&!(dir.length>=2&&dir[1].startsWith('.')))throw bad('dependency code under node_modules stays watched; only a hidden cache directory such as node_modules/.vite/vitest is allowed');
+ }
+ return list;
+}
 const RUNNER=fileURLToPath(new URL('./acceptance-runner.mjs',import.meta.url));
 
 export function globRegex(glob) {
@@ -36,7 +56,7 @@ export function globRegex(glob) {
 // 무시된 파일의 목록과 메타데이터(크기, 수정·변경 시각, 모드, inode). 내용 해시는 node_modules 크기 때문에 쓰지 않는다.
 // 변경 시각(ctime)은 utimes로 되돌릴 수 없어서 수정 시각만 되돌린 위장도 잡힌다.
 export function ignoredManifest(root,artifacts=[]) {
- const skip=[...DEFAULT_ARTIFACTS,...artifacts].map(globRegex);
+ const skip=[...DEFAULT_ARTIFACTS,...artifacts,...operatorIgnoredAllow()].map(globRegex);
  const names=git(root,['ls-files','-z','--others','--ignored','--exclude-standard']).split('\0').filter(Boolean);
  if(names.length>MAX_IGNORED)return {overflow:true,count:names.length,files:{}};
  const files={};
@@ -52,7 +72,9 @@ export function ignoredManifest(root,artifacts=[]) {
 
 export function ignoredChanges(a,b) {
  if(!a||!b||a.overflow||b.overflow)return ['(ignored files exceed the watch limit of '+MAX_IGNORED+')'];
- return [...new Set([...Object.keys(a.files),...Object.keys(b.files)])].filter(k=>a.files[k]!==b.files[k]).sort();
+ // 작업 도중 허용 목록을 켜도 진행 중인 작업이 막히지 않게, 예전 기준 기록에 들어 있던 허용 경로는 양쪽에서 같이 뺀다.
+ const allowed=operatorIgnoredAllow().map(globRegex);
+ return [...new Set([...Object.keys(a.files),...Object.keys(b.files)])].filter(k=>a.files[k]!==b.files[k]&&!allowed.some(r=>r.test(k))).sort();
 }
 
 // 명령을 차례로 실행한다. 일꾼과 같은 걸러진 환경변수를 쓴다(리드의 비밀값을 테스트 코드에 넘기지 않는다).
