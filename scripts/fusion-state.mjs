@@ -18,7 +18,7 @@ import {SCHEMA_VERSION,ARCHITECTURE,VERSION} from './versions.mjs';
 import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
 import {compactView} from './lead-view.mjs';
-import {takeDelegation,sameDelegation,contractChanged,DELEGABLE_OWNERS} from './delegation.mjs';
+import {takeDelegation,sameDelegation,contractChanged,DELEGABLE_OWNERS,AUTO_RECOVERY_CAP,NON_RETRYABLE} from './delegation.mjs';
 import {acTable,failureCriteria,prDraft,draftInputs} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
@@ -26,6 +26,7 @@ import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
 import {ensureControl,isLegacy,migrate,controlRoot,controlPath,acquireLock} from './control-dir.mjs';
 import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex,operatorIgnoredAllow} from './acceptance.mjs';
 import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
+import {sameFamily} from './review-plan.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation} from './review-plan.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
@@ -1445,6 +1446,65 @@ function policyApprove(c) {
   return {status:'decided',decision:'APPROVE',authority:'delegated-policy',phase:s.phase,lead_decision:s.lead_decision};
 }
 
+// 재량권(delegation) 아래에서, 일꾼 실행이 결과 없이 실패했을 때 컨트롤러가 가볍게 되돌린다(recover → REDO).
+// 증거는 전부 컨트롤러 기록이다: 실패한 실행의 프로세스 종료 증명, 결과 파일 없음, 트리가 라운드 시작과 같음.
+// 일꾼이 아무것도 바꾸지 않은 일시 장애(네트워크, 한도 초과가 아닌 종료 코드, 시간 초과, 형식 오류)만 대상이다.
+// 권한 거부, 인증·한도, 변조·출처 불일치는 다시 시도해도 같으므로 리드에게 올린다. 횟수는 작업당 AUTO_RECOVERY_CAP번.
+function autoRecover(c,input) {
+  const s=c.s,n=s.iteration,why=[];
+  const d=s.delegation;
+  if(!d||!sameDelegation(c.optional('delegation.json'),d))throw Object.assign(Error('AUTO_RECOVER_REFUSED: no discretion was granted at init'),{code:'AUTO_RECOVER_REFUSED'});
+  if(s.phase!=='EXECUTING'||!c.writerHeld())why.push('there is no failed running round to recover');
+  const message=typeof input.error==='string'?input.error.replace(/\s+/g,' ').slice(0,300):'';
+  if(!message)why.push('the failure message is missing');
+  // 분류는 오류 문구만이 아니라 실행 기록(envelope)의 종료 사유와 stderr 끝부분도 본다. 컨트롤러가 남긴 기록이다.
+  const envelope=c.optional(`envelope-${n}.json`);
+  const evidence=[message,envelope?.reason,String(envelope?.stderr??'').slice(-2000)].filter(Boolean).join(' ');
+  if(NON_RETRYABLE.test(evidence))why.push('this failure will not change on a retry (permission, authentication, quota or provenance)');
+  if((s.auto_recoveries??0)>=AUTO_RECOVERY_CAP)why.push(`${AUTO_RECOVERY_CAP} automatic recoveries were already used on this task`);
+  if(c.optional(`result-${n}.json`))why.push('the worker produced a result; finish it instead');
+  if(!c.optional(`envelope-${n}.json`))why.push('there is no record of a finished run');
+  if(c.optional(`quiescence-${n}.json`)?.quiescent!==true)why.push('process shutdown of the failed run is not proven');
+  const base=c.optional(`base-${n}.json`);
+  if(!base||snapshot(c.root).digest!==base.digest)why.push('the worker changed the tree before failing');
+  if(budgetStatus(c.root,s).reason)why.push('the task budget is exhausted');
+  if(why.length)throw Object.assign(Error('AUTO_RECOVER_REFUSED: '+why.join('; ')),{code:'AUTO_RECOVER_REFUSED',unmet:why});
+  // 실패한 라운드가 새로 열기로 한 일꾼 세션은 CLI가 만들기 전에 죽었을 수 있다(결과·세션 기록 없음). 그대로 두면 다음 라운드가 없는 세션을 이어받으려다 실패하므로 비운다.
+  const dispatched=c.optional(`dispatch-${n}.json`);
+  if(dispatched&&dispatched.cli?.resume===false&&!c.optional(`session-${n}.json`))s.sessions[s.owner]=null;
+  s.auto_recoveries=(s.auto_recoveries??0)+1;
+  s.last_auto_recovery={round:n,reason:message,at:new Date().toISOString()};
+  c.save();
+  return recover(c,{token:s.writer.token,quiescent:true,reason:'auto-recover (delegated, '+s.auto_recoveries+'/'+AUTO_RECOVERY_CAP+'): '+message});
+}
+
+// 재량권 아래에서, 리뷰어 자리가 비었을 때(한도·장애) 구현자와 다른 회사의 모델을 골라 delegate-review 입력을 만든다.
+// 이미 판정했거나 실패한 리뷰어, 구현자와 같은 회사 모델은 고르지 않는다. 라운드당 위임 리뷰 2회 한도는 그대로다.
+function autoSubstituteInput(c) {
+  const s=c.s,n=s.iteration;
+  const d=s.delegation;
+  const refuse=m=>Object.assign(Error('AUTO_SUBSTITUTE_REFUSED: '+m),{code:'AUTO_SUBSTITUTE_REFUSED'});
+  if(!d||!sameDelegation(c.optional('delegation.json'),d))throw refuse('no discretion was granted at init');
+  if(s.phase!=='LEAD_DECISION_REQUIRED')throw refuse('only a reviewer that did not finish at the lead gate can be replaced');
+  const all=s.review_results?.[n]??[];
+  if(!all.some(r=>!r.ok))throw refuse('every reviewer finished');
+  if((s.review_runs?.[n]??0)>=REVIEW_RUNS_PER_ROUND)throw refuse('the delegated review cap for this round is used up');
+  const plan=planReview(s.owner,s.assignment,{risk:roundRisk(c)});
+  if(plan.reviewers.includes('lead'))throw refuse('this round needs the lead\'s own review');
+  const kept=all.filter(r=>r.ok&&!r.superseded).map(r=>r.executor);
+  const seats=plan.reviewers.length-kept.length;
+  const used=new Set([s.owner,...all.map(r=>r.executor),...(s.review_failed?.[n]??[])]);
+  const picks=[];
+  for(const e of s.configuration.review.reviewers){
+    if(picks.length===seats)break;
+    if(used.has(e)||e==='lead'||sameFamily(e,s.owner))continue;
+    try{adapter(e).probe(s.configuration.executors[e]??{});}catch{continue;}
+    picks.push(e);
+  }
+  if(picks.length<seats)throw refuse(`no installed reviewer from another company is left for ${seats} seat(s)`);
+  return {executors:picks,substitution_reason:`auto-substitute (delegated): ${[...used].filter(e=>e!==s.owner).join(', ')||'the planned reviewer'} did not finish; ${picks.join(', ')} from another company takes the seat`};
+}
+
 // 한 라운드짜리 구현 승인. 워커를 띄우지 않고, 기존 writer가 있으면 거절한다.
 function grantImplement(c,input) {
   const s=c.s;
@@ -1529,7 +1589,7 @@ function nextStep(c) {
   }
 }
 
-const ACTIONS={'policy-approve':policyApprove,consult,'consult-finish':consultFinish,begin,finish,review,decide,verify,recover,'grant-implement':grantImplement,'lead-decision':leadDecision};
+const ACTIONS={'auto-recover':autoRecover,'policy-approve':policyApprove,consult,'consult-finish':consultFinish,begin,finish,review,decide,verify,recover,'grant-implement':grantImplement,'lead-decision':leadDecision};
 
 export function run(root,action,input={}) {
   root=repo(root);
@@ -1583,6 +1643,11 @@ function dispatch(c,action,input) {
   // 상담 중에는 다음 수를 두지 않는다. 결과를 보고 판단한다.
   if(c.s.open_consult&&action!=='consult-finish'){
     throw Error('Consult '+c.s.open_consult.id+' in progress; run its bridge, then consult-finish');
+  }
+  // 재량권(delegation) 아래의 자동 교체: 컨트롤러가 못 끝낸 리뷰어 자리를 다른 회사 모델로 채우는 delegate-review로 바꾼다.
+  if(action==='auto-substitute-review'){
+    input=autoSubstituteInput(c);
+    action='delegate-review';
   }
   assertAction(c.s.phase,action,input);
   // 위임 리뷰: 이번 라운드를 구현하지 않은 다른 모델이 읽기 전용으로 판정한다. 상담 장치를 그대로 쓴다.

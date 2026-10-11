@@ -48,6 +48,10 @@ const FAKE_GROK=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE grok for protocol tests');process.exit(0);}
 if(args.includes('--help')){console.log('--prompt-file --output-format --session-id --resume --cwd --max-turns --allow --deny --reasoning-effort');process.exit(0);}
 fs.writeFileSync(HERE+'/fake-grok-args.json',JSON.stringify(args));
+// fail-once: 첫 호출만 일시 장애로 실패한다(트리는 건드리지 않는다).
+if(mode==='fail-once'&&!fs.existsSync(HERE+'/fake-grok-failed')){fs.writeFileSync(HERE+'/fake-grok-failed','1');console.error('upstream 503');process.exit(2);}
+if(mode==='always-fail'){console.error('upstream 503');process.exit(2);}
+if(mode==='denied-once'&&!fs.existsSync(HERE+'/fake-grok-failed')){fs.writeFileSync(HERE+'/fake-grok-failed','1');console.error('permission denied: login required');process.exit(2);}
 const request=JSON.parse(fs.readFileSync(args[args.indexOf('--prompt-file')+1],'utf8'));
 if(mode==='hang'){setInterval(()=>{},1000);}else{
  const resume=args.includes('--resume'),id=args[args.indexOf(resume?'--resume':'--session-id')+1];
@@ -85,6 +89,8 @@ if(args.includes('--version')){console.log('FAKE codex for protocol tests');proc
 if(args[0]==='exec'&&args.includes('--help')){console.log('--sandbox --output-schema -C, --cd --ephemeral -m, --model');process.exit(0);}
 if(args.includes('--help')){console.log('Commands: exec');process.exit(0);}
 fs.writeFileSync(HERE+'/fake-codex-args.json',JSON.stringify(args));
+// reviewer-fail-once: 첫 Codex 호출만 실패한다(리뷰어 하나가 못 끝낸 상황).
+if(mode==='reviewer-fail-once'&&!fs.existsSync(HERE+'/fake-codex-failed')){fs.writeFileSync(HERE+'/fake-codex-failed','1');process.exit(1);}
 const schema=JSON.parse(fs.readFileSync(args[args.indexOf('--output-schema')+1],'utf8'));
 if(!schema.properties)process.exit(3);
 const request=JSON.parse(fs.readFileSync(0,'utf8'));

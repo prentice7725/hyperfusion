@@ -41,6 +41,10 @@
 
 **기록.** 승인 기록(`lead-decision-N.json`)의 `authority.source`는 `delegated-policy`이고 `policy_checks`에 통과한 조건이 남는다. 리드가 직접 읽었다고 표시하지 않으며(`rationale`에 명시), `model_verified:false`다. CLOSE 때의 `pr-draft.md`에도 위임 정책으로 승인됐다는 문구가 붙는다.
 
+**자동 복구와 리뷰어 교체(같은 재량권에 포함).** 재량권이 있는 작업에서만 autopilot이 다음 두 가지를 컨트롤러 증거로 직접 처리한다. 재량권이 없는 작업은 지금처럼 멈춘다.
+- `auto-recover`: 일꾼 실행이 결과 없이 실패했을 때, 실행 기록(`envelope`), 실패한 실행의 프로세스 종료 증명(`quiescence`), 결과 파일 없음, 트리가 라운드 시작(`base-N`)과 같음이 모두 맞으면 `recover`로 되돌려 REDO에서 다시 시도한다. 소모된 시도는 되돌리지 않고, 작업당 최대 2번이다(`auto_recoveries`). 오류 문구, 실행 기록의 종료 사유, stderr 끝부분에 권한·인증·한도·변조·출처 불일치가 보이면 다시 해도 같으므로 자동으로 하지 않는다. 일꾼이 트리를 바꾼 뒤 실패했거나 종료가 증명되지 않았으면 쓰기 권한을 쥔 채 멈춘다. 일꾼이 새로 열기로 했던 세션은 결과 기록이 없으면 비워서 다음 라운드가 없는 세션을 이어받지 않게 한다.
+- `auto-substitute-review`: 리뷰어가 한도·장애로 끝내지 못해 게이트에 선 라운드에서, 이미 판정했거나 실패한 리뷰어와 구현자 및 같은 회사 모델을 뺀 설치된 리뷰어(설정의 `review.reviewers` 순서)를 골라 `delegate-review`를 다시 연다. 라운드당 위임 리뷰 2회 한도는 그대로이고, 고를 모델이 없으면 이유와 함께 게이트에 남는다. 대체 리뷰어의 `substitution_reason`에 자동 교체였음이 남는다.
+
 **autopilot.** 재량권이 있는 작업은 `LEAD_DECISION_REQUIRED`에서 `policy-approve`, 승인되면 `verify {acceptance_satisfied:true}`(컨트롤러가 수용 테스트를 다시 돌린다)까지 이어 CLOSE에 닿는다. 승인할 수 없으면 이유와 함께 게이트에서 멈춘다.
 
 컨트롤러 명령을 호출한 호스트가 실제 Opus인지 프로세스 출력이나 모델 이름 문자열로 인증할 수는 없다. 모델 신원은 호스트 통합이 보증해야 한다. 현재 기록은 `authority.model_verified:false`, 실제로 관측하지 않은 모델은 null이며, boolean 입력만으로 '실제 Opus 독립 기술 리뷰 완료'라고 인증하지 않는다. 제어 폴더는 작업 폴더 밖에 두지만 이는 OS 수준 접근 격리의 대체물이 아니다.
