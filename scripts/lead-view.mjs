@@ -5,7 +5,7 @@
 import {nextAction} from './state-policy.mjs';
 
 // 상태를 통째로 돌려주는 액션과, 일꾼 실행 설명서를 돌려주는 액션. 그 밖(status, report, consult 등)은 그대로 둔다.
-export const COMPACT_ACTIONS=new Set(['init','begin','finish','review','decide','verify','recover','grant-implement','lead-decision','consult-finish']);
+export const COMPACT_ACTIONS=new Set(['init','begin','finish','review','decide','verify','recover','grant-implement','lead-decision','consult-finish','policy-approve']);
 
 // 상태에서 리드가 읽지 않는 큰 덩어리. 값은 state.json에 남아 있다.
 const STATE_BULK=['configuration','sessions','consults','review_results','routing','assignment','implementation_selection','limits'];
@@ -23,7 +23,7 @@ export function compactView(action,out) {
   if(descriptor&&(key==='cli'||key==='prompt')){dropped.push(key);continue;}
   if(out.phase&&out.schema_version!==undefined&&STATE_BULK.includes(key)){dropped.push(key);continue;}
   if(key==='lead_decision'&&value&&typeof value==='object'){
-   view[key]=pick(value,['decision','requested_decision','round','owner','required_reviewer','next_executor','file','lead_filled_seats','overruled_reviews','keep_owner_reason']);
+   view[key]=pick(value,['authority','decision','requested_decision','round','owner','required_reviewer','next_executor','file','lead_filled_seats','overruled_reviews','keep_owner_reason']);
    dropped.push('lead_decision.*');continue;
   }
   view[key]=value;

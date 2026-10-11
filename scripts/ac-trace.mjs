@@ -63,6 +63,7 @@ export function prDraft({state,brief,table,changed,rounds,risks}) {
   ...table.map(r=>`| ${r.id} | ${cell(r.criterion)} | ${r.status} | ${r.commands.map(x=>'`'+cell(x)+'`').join('<br>')||'-'} |`),'');
  const plain=brief.success_criteria.filter(t=>!criterionIds([t]).length);
  if(plain.length)lines.push('ID 없는 기준(리뷰로 확인):','',...plain.map(t=>`- ${t}`),'');
+ if(state?.lead_decision?.authority?.source==='delegated-policy')lines.push('> 승인: 위임 정책('+state.lead_decision.authority.policy+')이 컨트롤러 조건을 확인해 승인했다. 리드가 이 라운드를 직접 읽지 않았다.','');
  lines.push('## 진행','','| 라운드 | 작업자 | 판정 | 리뷰 |','|---|---|---|---|',
   ...rounds.map(r=>`| ${r.round} | ${r.owner??'-'} | ${r.verdict??'-'} | ${cell(r.reviewed_by??'-')} |`),'');
  if(risks.length)lines.push('## 남은 위험','',...risks.map(x=>`- ${x}`),'');

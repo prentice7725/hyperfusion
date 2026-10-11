@@ -18,6 +18,7 @@ import {SCHEMA_VERSION,ARCHITECTURE,VERSION} from './versions.mjs';
 import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
 import {compactView} from './lead-view.mjs';
+import {takeDelegation,sameDelegation,contractChanged,DELEGABLE_OWNERS} from './delegation.mjs';
 import {acTable,failureCriteria,prDraft,draftInputs} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
@@ -224,6 +225,7 @@ function init(c,input) {
   // 끝난 작업(완료, 막힘, 보관) 뒤에는 새 작업을 시작할 수 있다. 막힌 작업의 기록은 그대로 남는다.
   if(c.s&&!TERMINAL_PHASES.includes(c.s.phase))throw Error('Existing unfinished task; inspect/recover');
   const assignment=takeAssignment(configuration,input);
+  const delegation=takeDelegation(configuration,assignment,input);
   const grant=initialGrant(assignment);
   if(grant?.executor==='sol'&&requested!=='sol'&&requested!=='auto')throw Error('ROLE_GATE: sol_apex starts with Sol');
   if(grant?.executor==='sonnet'&&requested!=='sonnet'&&requested!=='auto')throw Error('ROLE_GATE: sonnet_implementation starts with Sonnet');
@@ -258,6 +260,7 @@ function init(c,input) {
     routing={...routing,executor,candidates,reason:routing.executor==='sonnet'||routing.executor==='sol'?`${routing.reason}; sonnet and sol are not automatic implementers`:routing.reason};
   }
   const executor=routing.executor;
+  if(delegation&&!DELEGABLE_OWNERS.includes(executor))throw Error(`DELEGATION: ${executor} is not an automatic implementer; delegate only grok, antigravity, haiku or luna rounds`);
   const base=snapshot(c.root);
   c.s={
     schema_version:SCHEMA_VERSION,architecture:ARCHITECTURE,package_version:VERSION,configuration,routing,limits,
@@ -266,6 +269,7 @@ function init(c,input) {
     sessions:Object.fromEntries(EXECUTORS.map(e=>[e,null])),
     task_id:input.task_id,phase:'PLAN',
     ...(assignment?{assignment}:{}),
+    ...(delegation?{delegation}:{}),
     ...(grant?{implement_grant:grant}:{}),
     lead:configuration.lead,lead_target_model:configuration.lead_model,lead_model:null,
     iteration:0,base_commit:base.head,baseline_dirty:!!base.status,
@@ -276,6 +280,7 @@ function init(c,input) {
   c.art('initial-brief.json',input);
   c.art('baseline.json',base);
   if(assignment)c.art('assignment.json',assignment);
+  if(delegation)c.art('delegation.json',delegation);
   if(grant)c.art(`implement-grant-${grant.revision}.json`,grant);
   c.save();
 
@@ -695,6 +700,7 @@ function applyDelegatedReview(c,open,member,result) {
 
 function begin(c,input) {
   const s=c.s;
+  if(input?.delegation!==undefined)throw Error('DELEGATION: the lead grants discretion only at init; it cannot be added or changed in a later brief');
   input=contract.brief(input);
   if(input.task_id!==s.task_id)throw Error('Task ID mismatch');
   if(c.writerHeld())throw Error('Writer still present; recover');
@@ -1372,6 +1378,73 @@ function leadDecision(c,input) {
   return {status:'decided',decision:normalized,phase:s.phase,lead_decision:s.lead_decision};
 }
 
+// 위임 승인 조건을 컨트롤러 기록만으로 확인한다. 상태를 바꾸지 않는다. 하나라도 부족하면 eligible:false와 이유를 돌려준다.
+// 일꾼·리뷰어의 말이 아니라 스냅샷, 수용 테스트 실행 기록, 리뷰 기록의 digest로만 판단한다.
+function policyEvaluation(c) {
+  const s=c.s,n=s.iteration,unmet=[],passed=[];
+  const need=(ok,name,why)=>{(ok?passed:unmet).push(ok?name:why);return ok;};
+  const d=s.delegation;
+  if(!d)return {eligible:false,unmet:['no discretion was granted at init'],passed};
+  if(!need(sameDelegation(c.optional('delegation.json'),d),'delegation record matches','the delegation record does not match the controller record'))return {eligible:false,unmet,passed};
+  need(sameAssignment(c.optional('assignment.json'),s.assignment),'assignment record matches','the assignment record does not match the controller record');
+  need(s.assignment?.criticality==='standard'&&s.assignment?.strategy==='external_primary','standard task','the task is not a STANDARD external_primary task');
+  need(DELEGABLE_OWNERS.includes(s.owner),'automatic implementer',`${s.owner} is not an automatic implementer`);
+  need(n<=d.max_rounds,'within the delegated round limit',`round ${n} is past the delegated limit of ${d.max_rounds}`);
+  need(!c.writerHeld(),'no writer','a writer is still present');
+  need(snapshot(c.root).digest===s.post_digest,'tree unchanged since the round','the tree changed after the round');
+  need(!budgetStatus(c.root,s).reason,'within budget','the task budget is exhausted');
+  const brief=c.optional(`brief-${n}.json`),initial=c.optional('initial-brief.json');
+  const changed=brief&&initial?contractChanged(initial,brief):['(brief missing)'];
+  need(!changed.length,'contract unchanged',`the contract changed since init: ${changed.join(', ')}`);
+  const plan=planReview(s.owner,s.assignment,{risk:roundRisk(c)});
+  need(plan.risk.length===0,'no risk paths',`the round touches risk paths: ${plan.risk.slice(0,3).join(', ')}`);
+  need(!plan.reviewers.includes('lead'),'delegated reviewers exist','this round requires the lead\'s own review');
+  const all=s.review_results?.[n]??[];
+  need(!all.some(r=>r.superseded),'no replaced rejection','a rejection was replaced; the lead has to read it');
+  const records=all.filter(r=>r.ok&&!r.superseded);
+  const coverage=reviewCoverage(plan,records,s.post_digest);
+  need(coverage.covered,'every mandatory review finished',`a mandatory review is missing (${coverage.gaps.join(', ')})`);
+  need(records.length>0&&records.every(r=>r.verdict==='pass'&&r.digest===s.post_digest&&r.evidence!==false),'every reviewer passed on this digest','not every reviewer passed on this round\'s digest');
+  need(coverage.same_family.length===0,'cross-company review','a reviewer from the implementer\'s own company passed (weak cross-check)');
+  need(!repeatedCriteria(s,panelBlocking(all)).length,'no repeated rejection','the same criterion was rejected twice');
+  const raw=c.optional(`raw-result-${n}.json`);
+  need(raw?.status==='complete'&&raw.needs_lead_decision!==true&&!(raw.unresolved?.length)&&(raw.tests??[]).every(t=>t.status!=='fail'),'worker reported complete with nothing unresolved','the worker result is incomplete, has unresolved items or a failed test');
+  need(s.acceptance_baseline?.status==='red','red-first proven','the acceptance commands were not proven to fail on the untouched tree');
+  const a=s.acceptance,evidence=a?.round===n&&a.file?c.optional(a.file):null;
+  const ignored=a?.ignored_after?c.optional(a.ignored_after):null;
+  const proven=!!evidence&&a.status==='pass'&&a.quiescent===true&&evidence.results?.length>0&&evidence.results.every(r=>r.quiescence?.quiescent===true);
+  need(proven,'controller acceptance run passed with process shutdown proof','there is no passing controller acceptance run with shutdown proof for this round');
+  need(proven&&a.tree_digest===s.post_digest&&!!ignored&&!ignoredChanges(ignored,ignoredManifest(c.root,brief?.acceptance_artifacts)).length,'acceptance evidence is current','the tree or ignored inputs changed after the acceptance run');
+  const table=brief&&proven?acTable(brief,evidence.results,{reviewed:false}):[];
+  need(table.length>0&&table.every(r=>r.status==='PASS'),'every AC proven by a passing command',`not every AC is proven by a passing command (${table.filter(r=>r.status!=='PASS').map(r=>r.id).join(', ')||'no AC table'})`);
+  return {eligible:unmet.length===0,unmet,passed};
+}
+
+// 컨트롤러가 위임 정책에 따라 STANDARD 라운드를 승인한다. 리드의 lead-decision APPROVE와 같은 VERIFY로 가며 CLOSE는 verify가 한다.
+function policyApprove(c) {
+  const s=c.s;
+  if(c.writerHeld())throw Error('Writer still present; recover');
+  if(s.configuration.review?.strategy!=='lead-gated-adaptive')throw Error('POLICY_NOT_ELIGIBLE: the lead gate is only for lead-gated-adaptive');
+  const check=policyEvaluation(c);
+  if(!check.eligible)throw Object.assign(Error('POLICY_NOT_ELIGIBLE: '+check.unmet.join('; ')),{code:'POLICY_NOT_ELIGIBLE',unmet:check.unmet});
+  const d=s.delegation;
+  const record={
+    decision:'APPROVE',requested_decision:'APPROVE',
+    rationale:`Approved by the delegated policy ${d.policy} (granted at init: ${d.reason}). ${check.passed.length} controller checks passed; the lead did not read this round.`,
+    baseline_digest:s.post_digest,contract_change:false,round:s.iteration,owner:s.owner,required_reviewer:null,next_executor:null,
+    consumed_usage:roundUsage(c),implementation_usage:roundUsage(c),decision_usage:null,
+    authority:{source:'delegated-policy',policy:d.policy,granted_by:d.granted_by,delegation_revision:d.revision,observed_model:null,model_verified:false},
+    policy_checks:check.passed
+  };
+  const file=`lead-decision-${s.iteration}.json`;
+  c.art(file,record);
+  s.lead_decision={...record,file};
+  s.pending_review=null;
+  s.phase='VERIFY';
+  c.save();
+  return {status:'decided',decision:'APPROVE',authority:'delegated-policy',phase:s.phase,lead_decision:s.lead_decision};
+}
+
 // 한 라운드짜리 구현 승인. 워커를 띄우지 않고, 기존 writer가 있으면 거절한다.
 function grantImplement(c,input) {
   const s=c.s;
@@ -1439,7 +1512,8 @@ function nextStep(c) {
     return step({step:'read the lead packet, then decide',...(packet?{read_first:packet}:{}),action:'lead-decision',command_line:line('lead-decision'),
       input:{decision:'<APPROVE|REDO|REASSIGN_TO_SONNET|REASSIGN_OTHER|ESCALATE|BLOCK>',rationale:'<text>',baseline_digest:s.post_digest,contract_change:false},
       for_approve_when_you_read_the_diff:{diff_reviewed:true,tests_checked:['<test you read>'],changed_scope:['<change you read>']},
-      recommendation:s.lead_packet?.recommendation??null,pass_forbidden:s.lead_packet?.pass_forbidden??null});}
+      recommendation:s.lead_packet?.recommendation??null,pass_forbidden:s.lead_packet?.pass_forbidden??null,
+      ...(s.delegation?{delegated_policy:policyEvaluation(c)}:{})});}
   case 'VERIFY':{
     const brief=c.optional(`brief-${s.iteration}.json`);
     return step({step:'verify: the controller reruns the acceptance commands itself',action:'verify',command_line:line('verify'),
@@ -1455,7 +1529,7 @@ function nextStep(c) {
   }
 }
 
-const ACTIONS={consult,'consult-finish':consultFinish,begin,finish,review,decide,verify,recover,'grant-implement':grantImplement,'lead-decision':leadDecision};
+const ACTIONS={'policy-approve':policyApprove,consult,'consult-finish':consultFinish,begin,finish,review,decide,verify,recover,'grant-implement':grantImplement,'lead-decision':leadDecision};
 
 export function run(root,action,input={}) {
   root=repo(root);
