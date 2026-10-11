@@ -4,6 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {git,hash} from './artifact.mjs';
 import {workerEnv} from './worker-env.mjs';
+import {emptyTableForTests} from './process-proof.mjs';
 
 // 수용 테스트: brief의 acceptance_commands를 컨트롤러가 직접 실행하고 종료 코드와 출력 해시를 남긴다.
 // 증거가 "리드가 적어 넣은 기록"이 아니라 "실제 실행 결과"가 된다.
@@ -61,8 +62,9 @@ export function runCommands(root,commands,{timeout_ms=600000,deadline_ms=null}={
  const env={...workerEnv('acceptance'),CI:'1',PYTHONDONTWRITEBYTECODE:'1'};
  // Keep the controller's synchronous API. The helper owns asynchronous tree
  // supervision and bounded command timers; killing only this helper is unsafe.
+ // 테스트 모드는 걸러진 환경변수 대신 입력으로 넘긴다. 수용 명령에는 테스트 환경변수가 새지 않는다.
  const r=spawnSync(process.execPath,[RUNNER],{cwd:root,env,windowsHide:true,
-  input:JSON.stringify({root,commands,options:{timeout_ms,deadline_ms}}),encoding:'utf8',maxBuffer:1024*1024});
+  input:JSON.stringify({root,commands,options:{timeout_ms,deadline_ms},...(emptyTableForTests()?{test_table:'empty'}:{})}),encoding:'utf8',maxBuffer:1024*1024});
  if(r.status===0&&!r.error){
   try{
    const results=JSON.parse(r.stdout);

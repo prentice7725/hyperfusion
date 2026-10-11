@@ -12,7 +12,12 @@ const command=(file,args)=>new Promise((resolve,reject)=>{
  child.stdin.end();
 });
 
+// 테스트 전용 빈 프로세스 목록. node --test가 띄운 프로세스(NODE_TEST_CONTEXT)에서 HF_TEST_PROCESS_TABLE=empty일 때만 켜진다.
+// 실제 실행에서는 이 변수를 무시한다. 종료 증명 자체를 검사하는 테스트는 이 모드를 끄고 실제 목록을 쓴다.
+export const emptyTableForTests=()=>!!process.env.NODE_TEST_CONTEXT&&process.env.HF_TEST_PROCESS_TABLE==='empty';
+
 export async function processTable() {
+ if(emptyTableForTests())return [];
  let rows,query;
  if(isWin){
   // Load the system module explicitly: automatic module discovery can stall in

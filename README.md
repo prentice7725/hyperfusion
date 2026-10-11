@@ -101,7 +101,7 @@ Claude Code에서 Opus 5.5를 고르고:
 npm test
 ```
 
-자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 20·24에서 실행하도록 구성돼 있다. 재감사 후속 수정과 남은 한계는 [수정 결과 보고서](references/reaudit-v0.10.0.md)에 정리했다. Windows에서는 테스트 파일을 순차 실행하고(다른 OS는 병렬도 2), 실제 고아 프로세스를 만드는 회귀 테스트는 병렬 테스트 뒤에 따로 돌려 프로세스 목록 간섭을 피한다.
+자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. `npm test`의 일반 묶음은 테스트 전용 빈 프로세스 목록을 써서 호스트의 다른 프로세스가 종료 확인을 흔들지 않게 하고, 종료 증명 통합 테스트는 실제 목록으로 돌린다(`HF_TEST_PROCESS_TABLE=real npm test`로 전체를 실제 목록으로 돌릴 수 있다). GitHub Actions는 Ubuntu·Windows × Node 20·24에서 실행하도록 구성돼 있다. 재감사 후속 수정과 남은 한계는 [수정 결과 보고서](references/reaudit-v0.10.0.md)에 정리했다. Windows에서는 테스트 파일을 순차 실행하고(다른 OS는 병렬도 2), 실제 고아 프로세스를 만드는 회귀 테스트는 병렬 테스트 뒤에 따로 돌려 프로세스 목록 간섭을 피한다.
 
 **테스트의 `grok`/`agy`/`claude`/`codex`는 대역 CLI다.** 실제 모델 호출, 인증, 이미지 생성은 이 저장소의 테스트로 검증되지 않았다. 설치된 CLI에 필요한 플래그가 없으면 실행 전에 `ADAPTER_UNAVAILABLE`로 거절한다. CLI 플래그는 [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), [Claude Code](https://code.claude.com/docs/en/headless) 문서를 기준으로 했다.
 

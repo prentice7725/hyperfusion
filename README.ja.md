@@ -101,7 +101,7 @@ Claude CodeでOpus 5.5を選び：
 npm test
 ```
 
-自動テストが、状態機械、ワーカーアダプタ、配置、レビュー委任、記憶層、プロジェクトの流れ、セキュリティ、マスキングとオートパイロットを確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 20・24で実行する構成です。再監査後の修正と残る制約は[修正結果の報告書（韓国語）](references/reaudit-v0.10.0.md)にまとめています。 Windowsではテストファイルを順次実行し（他のOSは並列度2）、実際に孤児プロセスを作る回帰テストは並列テストの後に別途実行して、プロセス一覧の干渉を避けます。
+自動テストが、状態機械、ワーカーアダプタ、配置、レビュー委任、記憶層、プロジェクトの流れ、セキュリティ、マスキングとオートパイロットを確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。`npm test`の通常スイートはテスト専用の空のプロセス一覧を使い、ホストの他のプロセスが終了確認を揺らさないようにします。終了証明の統合テストは実際の一覧で実行します（`HF_TEST_PROCESS_TABLE=real npm test`で全体を実際の一覧で実行できます）。GitHub ActionsはUbuntu・Windows × Node 20・24で実行する構成です。再監査後の修正と残る制約は[修正結果の報告書（韓国語）](references/reaudit-v0.10.0.md)にまとめています。 Windowsではテストファイルを順次実行し（他のOSは並列度2）、実際に孤児プロセスを作る回帰テストは並列テストの後に別途実行して、プロセス一覧の干渉を避けます。
 
 **テストの`grok`/`agy`/`claude`/`codex`は代役のCLIです。** 実際のモデル呼び出し、認証、画像生成は、このリポジトリのテストでは検証されていません。インストール済みCLIに必要なフラグがない場合は、実行前に`ADAPTER_UNAVAILABLE`で拒否します。CLIフラグは[Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)、[Antigravity CLI](https://antigravity.google/docs/cli/headless)、[Claude Code](https://code.claude.com/docs/en/headless)のドキュメントを基準にしています。
 

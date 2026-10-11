@@ -158,3 +158,15 @@ test('a just-exited process that lingers briefly in the process table is waited 
  const failed=await stuck.finish({exited:true});
  assert.equal(failed.quiescent,false);assert.equal(failed.checks,3);
 });
+
+test('the empty process table is a test-only switch and the real table stays in charge outside node --test',async()=>{
+ const {execFileSync}=await import('node:child_process');
+ const url=new URL('../scripts/process-proof.mjs',import.meta.url).href;
+ const probe=env=>JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',`import {processTable,emptyTableForTests} from '${url}';const rows=await processTable();console.log(JSON.stringify({on:emptyTableForTests(),rows:rows.length}));`],{encoding:'utf8',env}));
+ const base={...process.env};delete base.NODE_TEST_CONTEXT;
+ const outside=probe({...base,HF_TEST_PROCESS_TABLE:'empty'});
+ assert.equal(outside.on,false);assert.ok(outside.rows>0,'a real process table is read outside the test runner');
+ const inside=probe({...base,NODE_TEST_CONTEXT:'child',HF_TEST_PROCESS_TABLE:'empty'});
+ assert.deepEqual(inside,{on:true,rows:0});
+ assert.equal(probe({...base,NODE_TEST_CONTEXT:'child',HF_TEST_PROCESS_TABLE:'real'}).on,false);
+});

@@ -63,7 +63,9 @@ export async function supervisedCommands(root,commands,{timeout_ms=600000,deadli
 
 if(isMain(import.meta.url)){
  try{
-  const {root,commands,options}=JSON.parse(fs.readFileSync(0,'utf8'));
-  console.log(JSON.stringify(await supervisedCommands(root,commands,options)));
+  const {root,commands,options,test_table}=JSON.parse(fs.readFileSync(0,'utf8'));
+  // 컨트롤러가 node --test 아래에서만 넣는 값이다. 다른 값은 무시하고 실제 목록을 쓴다.
+  const extra=test_table==='empty'?{readTable:async()=>[]}:{};
+  console.log(JSON.stringify(await supervisedCommands(root,commands,{timeout_ms:options?.timeout_ms,deadline_ms:options?.deadline_ms,...extra})));
  }catch(e){console.error(e.message);process.exitCode=1;}
 }
