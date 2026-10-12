@@ -18,6 +18,7 @@ import {SCHEMA_VERSION,ARCHITECTURE,VERSION} from './versions.mjs';
 import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
 import {compactView} from './lead-view.mjs';
+import {isPreserve,checkPreserve,protectedChanges} from './preserve.mjs';
 import {takeDelegation,sameDelegation,contractChanged,DELEGABLE_OWNERS,AUTO_RECOVERY_CAP,NON_RETRYABLE} from './delegation.mjs';
 import {acTable,failureCriteria,prDraft,draftInputs} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
@@ -234,6 +235,7 @@ function init(c,input) {
   if(adaptive&&requested==='sol'&&grant?.executor!=='sol')throw Error('ROLE_GATE: Sol implements only an APEX round');
   if(requested==='sonnet'&&!grant&&!automaticImplementer(configuration,requested))throw Error('ROLE_GATE: Sonnet requires adaptive controller authorization');
   input=contract.brief(input);
+  if(input.verification)checkPreserve(c.root,input);
   const limits=validateLimits({...configuration.limits,...validateLimits(input.limits)});
   if(c.writerHeld())throw Error('Existing writer; recover first');
   if(fs.existsSync(path.join(c.dir,'tasks',input.task_id)))throw Error('Task ID already used');
@@ -278,6 +280,10 @@ function init(c,input) {
     ...(projectTask?{project:{name:projectTask.project,milestone:projectTask.milestone,task:projectTask.id}}:{})
   };
   if(acceptanceBaseline(c,input)===false)return c.s;
+  // 보존 작업은 수정 전에도 통과하는 명령이어야 한다. 실패하는 명령이면 보존이 아니라 red-first 작업이다.
+  if(isPreserve(input)&&c.s.acceptance_baseline?.status!=='green-acknowledged'){
+    throw Error('VERIFICATION: a preserve task needs acceptance_commands that already pass on the untouched tree; these fail, so use red-first (drop verification and acceptance_baseline_green)');
+  }
   c.art('initial-brief.json',input);
   c.art('baseline.json',base);
   if(assignment)c.art('assignment.json',assignment);
@@ -860,6 +866,8 @@ function finish(c,input) {
   if(lingering.length){
     errors.push(`Earlier out-of-scope changes still present: ${lingering.join(', ')}; revert them, or record them with recover allow_out_of_scope [{path, reason}]`);
   }
+  const guarded=protectedViolations(c,post);
+  if(guarded.length)errors.push(`Protected by verification.preserve (tests and fixtures must not change): ${guarded.join(', ')}; revert them`);
   if(post.head!==base.head||post.index_hash!==base.index_hash)errors.push('HEAD/index changed');
   if(!errors.length&&JSON.stringify([...new Set(input.result.files_changed)].sort())!==JSON.stringify(changed)){
     errors.push('Declared changes differ from snapshot');
@@ -1136,6 +1144,8 @@ function verify(c,input) {
     c.save();
     throw Error('Tree drift during verification');
   }
+  const guarded=protectedViolations(c,now);
+  if(guarded.length)throw Error(`VERIFICATION: protected files changed since the task started (${guarded.join(', ')}); a preserve task cannot close with them changed`);
   // 마지막 관문: 라운드 단위 검사를 다 통과했어도, 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 닫지 않는다.
   const before=s.scope_exceptions;
   s.scope_exceptions=[...(before??[]),...stampExceptions(accepted,s.iteration)];
@@ -1379,6 +1389,13 @@ function leadDecision(c,input) {
   return {status:'decided',decision:normalized,phase:s.phase,lead_decision:s.lead_decision};
 }
 
+// 보존 작업의 보호 경로가 작업을 시작한 뒤 하나라도 바뀌었는지. init의 brief가 정본이고 이후 brief로는 풀 수 없다.
+function protectedViolations(c,now=snapshot(c.root)) {
+  const v=c.optional('initial-brief.json')?.verification;
+  if(v?.kind!=='preserve')return [];
+  return protectedChanges(read(path.join(c.taskdir(),'baseline.json')),now,v.protect);
+}
+
 // 위임 승인 조건을 컨트롤러 기록만으로 확인한다. 상태를 바꾸지 않는다. 하나라도 부족하면 eligible:false와 이유를 돌려준다.
 // 일꾼·리뷰어의 말이 아니라 스냅샷, 수용 테스트 실행 기록, 리뷰 기록의 digest로만 판단한다.
 function policyEvaluation(c) {
@@ -1410,7 +1427,12 @@ function policyEvaluation(c) {
   need(!repeatedCriteria(s,panelBlocking(all)).length,'no repeated rejection','the same criterion was rejected twice');
   const raw=c.optional(`raw-result-${n}.json`);
   need(raw?.status==='complete'&&raw.needs_lead_decision!==true&&!(raw.unresolved?.length)&&(raw.tests??[]).every(t=>t.status!=='fail'),'worker reported complete with nothing unresolved','the worker result is incomplete, has unresolved items or a failed test');
-  need(s.acceptance_baseline?.status==='red','red-first proven','the acceptance commands were not proven to fail on the untouched tree');
+  if(isPreserve(initial)){
+    need(d.allow_preserve===true,'the lead allowed a preserve task','the lead did not allow a preserve (refactor) task for delegated approval at init');
+    need(s.acceptance_baseline?.status==='green-acknowledged','green baseline acknowledged','the preserve baseline was not recorded as already passing');
+    const guarded=protectedViolations(c);
+    need(!guarded.length,'protected files unchanged',`protected files changed: ${guarded.slice(0,3).join(', ')}`);
+  } else need(s.acceptance_baseline?.status==='red','red-first proven','the acceptance commands were not proven to fail on the untouched tree');
   const a=s.acceptance,evidence=a?.round===n&&a.file?c.optional(a.file):null;
   const ignored=a?.ignored_after?c.optional(a.ignored_after):null;
   const proven=!!evidence&&a.status==='pass'&&a.quiescent===true&&evidence.results?.length>0&&evidence.results.every(r=>r.quiescence?.quiescent===true);
