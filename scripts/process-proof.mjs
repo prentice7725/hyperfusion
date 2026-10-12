@@ -36,12 +36,24 @@ export async function processTable() {
 // process can look like our child. A real child cannot be created before its parent.
 const born=p=>{const t=Date.parse(p?.created);return Number.isFinite(t)?t:null;};
 const olderThanParent=(child,parent)=>{const c=born(child),p=born(parent);return c!==null&&p!==null&&c<p;};
-export function descendants(rows,pid,tracked=new Map()) {
+// 뿌리(감독하는 프로세스)가 이미 끝나 표에 없어도 "자손은 부모보다 먼저 태어날 수 없다"를 지켜야 한다.
+// 뿌리의 생성 시각은 표에 있으면 그 값, 없으면 처음 관측한 값(tracked), 그것도 없으면 감독을 시작한 시각(bornAfter)이다.
+// 이 제약이 없으면 Windows에서 이런 일이 생긴다: 부팅 때 죽은 프로세스의 PID를 우리 뿌리가 재사용하고, csrss·wininit 같은
+// 시스템 프로세스의 ParentProcessId가 아직 그 옛 PID를 가리킨다. 뿌리가 끝나 표에서 사라지면 부모의 생성 시각을 알 수 없어
+// 시스템 전체(svchost 수십 개 포함)가 우리 자손으로 잡히고, 수용 테스트가 "프로세스가 남았다"며 RECOVERY_REQUIRED로 멈춘다.
+export function descendants(rows,pid,tracked=new Map(),{bornAfter=null}={}) {
  const ids=new Set([pid]);
  for(const p of rows)if(tracked.get(p.pid)===p.created)ids.add(p.pid);
  const byPid=new Map(rows.map(p=>[p.pid,p]));
+ const rootBorn=born(byPid.get(pid))??born({created:tracked.get(pid)})??bornAfter;
+ const parentBorn=parent=>{
+  const row=byPid.get(parent);
+  if(row)return born(row);
+  return parent===pid?rootBorn:null;
+ };
+ const impossible=p=>{const c=born(p),b=parentBorn(p.parent);return c!==null&&b!==null&&c<b;};
  let changed=true;
- while(changed){changed=false;for(const p of rows)if(ids.has(p.parent)&&!ids.has(p.pid)&&!olderThanParent(p,byPid.get(p.parent))){ids.add(p.pid);changed=true;}}
+ while(changed){changed=false;for(const p of rows)if(ids.has(p.parent)&&!ids.has(p.pid)&&!impossible(p)){ids.add(p.pid);changed=true;}}
  return rows.filter(p=>ids.has(p.pid));
 }
 
@@ -52,10 +64,13 @@ export function descendants(rows,pid,tracked=new Map()) {
 // survivors after the last check still fail closed.
 const SETTLE=isWin?{tries:20,delayMs:500}:{tries:3,delayMs:200};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// 시작 시각 앞의 여유: Linux의 lstart는 초 단위로 잘리고, 시계 해상도도 플랫폼마다 다르다. 이 여유 안에서 태어난 프로세스는
+// 자손으로 인정하는 쪽(실패를 닫는 쪽)으로 기운다.
+const START_SLACK_MS=2000;
 export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETTLE,baseline=null}={}) {
- const tracked=new Map();let pid=null,timer=null,pending=Promise.resolve(),error=null,querying=false,stopped=false;
+ const tracked=new Map();let pid=null,timer=null,pending=Promise.resolve(),error=null,querying=false,stopped=false,bornAfter=null;
  const observe=async()=>{
-  try{const rows=await readTable();for(const p of descendants(rows,pid,tracked)){
+  try{const rows=await readTable();for(const p of descendants(rows,pid,tracked,{bornAfter})){
    if(!Number.isSafeInteger(p.pid)||p.pid<1||typeof p.created!=='string'||!p.created)throw Object.assign(Error('Process identity unavailable'),{code:'PROCESS_IDENTITY_UNAVAILABLE'});
    tracked.set(p.pid,p.created);
   }}
@@ -68,7 +83,7 @@ export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETT
   querying=true;pending=observe().finally(()=>{querying=false;});
  };
  return {
-  start(value){pid=value;poll();timer=setInterval(poll,pollMs);timer.unref();},
+  start(value){pid=value;bornAfter=Date.now()-START_SLACK_MS;poll();timer=setInterval(poll,pollMs);timer.unref();},
   async finish({exited,aborted=false}){
    stopped=true;clearInterval(timer);await pending;
    if(!pid||!exited||aborted)return {quiescent:false,reason:'Executor termination was not confirmed'};
@@ -76,7 +91,7 @@ export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETT
     if(error)return {quiescent:false,reason:error};
     let remaining=[],checks=0,owned=[];
     for(;;){
-     const rows=await readTable(),live=descendants(rows,pid,tracked);checks++;owned=live;
+     const rows=await readTable(),live=descendants(rows,pid,tracked,{bornAfter});checks++;owned=live;
      // Same PID with a different creation time is a reused PID, not our process.
      remaining=live.filter(p=>p.pid!==pid||!tracked.has(pid)||tracked.get(pid)===p.created);
      if(baseline){
