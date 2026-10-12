@@ -155,3 +155,44 @@ test('adaptive autopilot stops at the lead gate',async t=>{
  assert.equal(fs.existsSync(task(f,'verification.json')),false);
  assert.equal(read(task(f,'lead-packet-1.json')).recommendation,'APPROVE');
 });
+
+// 일꾼이 라운드 상한(CAP)에 닿으면 같은 일꾼 REDO를 받지 않고 교체를 요구한다.
+const exhaust=(f,owner)=>{const s=f.state();s.attempts[owner]=3;atomic(path.join(f.control,'state.json'),s);};
+
+test('a worker at its round cap cannot be sent back with REDO; the lead is told to replace it',async t=>{
+ const f=adaptive(t);
+ f.begin();f.finish();f.mode('review-redo');
+ await delegate(f);
+ // 리뷰가 REDO를 권해도, 상한에 닿은 일꾼이면 패킷은 교체를 권한다.
+ exhaust(f,'grok');
+ assert.equal(f.state().attempts.grok,3);
+ assert.throws(()=>decide(f,{decision:'REDO',rationale:'AC1 still fails'}),/grok has no round budget left.*REASSIGN_OTHER \(.*\).*ESCALATE, BLOCK/);
+ assert.throws(()=>decide(f,{decision:'REDO_SAME_OWNER',rationale:'again'}),/no round budget left/);
+ // 거절은 아무것도 남기지 않는다: 단계 그대로, 결정 기록 없음.
+ assert.equal(f.state().phase,'LEAD_DECISION_REQUIRED');
+ assert.equal(fs.existsSync(task(f,'lead-decision-1.json')),false);
+ assert.equal(f.state().reviews.length,0);
+ // 교체는 그대로 된다.
+ const out=decide(f,{decision:'REASSIGN_OTHER',rationale:'grok is out of rounds'});
+ assert.equal(out.phase,'ALTERNATIVE_REQUIRED');
+ const started=f.begin();
+ assert.notEqual(started.executor,'grok');
+});
+
+test('the lead packet recommends replacing a worker at its cap instead of REDO',async t=>{
+ const f=adaptive(t);
+ f.begin();f.finish();f.mode('review-redo');
+ exhaust(f,'grok');
+ await delegate(f);
+ const packet=read(task(f,'lead-packet-1.json'));
+ assert.equal(packet.recommendation,'REASSIGN_OTHER');
+ assert.match(packet.note,/grok has no round budget left, so REDO is not offered/);
+});
+
+test('REDO still works while the worker has rounds left',async t=>{
+ const f=adaptive(t);
+ f.begin();f.finish();f.mode('review-redo');
+ await delegate(f);
+ assert.equal(read(task(f,'lead-packet-1.json')).recommendation,'REDO');
+ assert.equal(decide(f,{decision:'REDO',rationale:'AC1 still fails'}).phase,'REDO');
+});
