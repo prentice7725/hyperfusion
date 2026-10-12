@@ -59,6 +59,7 @@ v0.3 신규 작업용 설정은 [hyperfusion.v03.config.example.json](../hyperfu
 | `HF_ENV_PASS` | 일꾼 프로세스에 추가로 넘길 환경변수 이름(쉼표 구분). 기본은 실행에 필요한 변수와 그 일꾼 벤더의 인증값(`XAI_*`, `ANTHROPIC_*`, `GOOGLE_*`, `OPENAI_*` 등)만 넘어간다. `GITHUB_TOKEN`, `AWS_*`, DB 주소는 넘어가지 않는다 |
 | `HF_BASH_POLICY=permissive` | `executor_bash_rules`의 "검증 명령 모양" 제한만 푼다. 셸 메타문자, 인터프리터, 네트워크 도구는 계속 거절 |
 | `HF_ALLOW_UNSANDBOXED=1` | `executors.antigravity.sandbox:false`를 받아들인다 |
+| `HF_AGY_ALLOW_UNLISTED_MODEL=1` | `executors.antigravity.model`이 `agy models` 목록에 없어도 실행한다(agy가 조용히 기본 모델로 돌 수 있다). 목록이 늦게 갱신되는 새 모델을 쓸 때만 켠다 |
 | `HF_NOTIFY_ALLOW_HTTP=1` | 로컬이 아닌 평문 http 알림 주소를 허용 |
 | `HF_ACCEPTANCE_IGNORED_ALLOW` | 수용 테스트의 "무시된 파일이 바뀌었는지" 비교에서 뺄 디렉터리 하위 glob(쉼표 구분, 최대 8개). 예: `dist/**,node_modules/.vite/vitest/**`. 저장소의 설정 파일로는 켤 수 없고 환경변수만 받는다(일꾼이 고칠 수 있는 파일이 자기 감시를 풀면 안 된다). `/**`로 끝나고 디렉터리 이름에 와일드카드가 없어야 하며, `node_modules` 전체나 의존성 폴더(`node_modules/dep/**`)는 거절한다. `node_modules/` 아래는 `.`으로 시작하는 캐시 폴더만 된다. 이 저장소에서만 켜려면 그 저장소의 세션 환경에만 넣는다 |
 

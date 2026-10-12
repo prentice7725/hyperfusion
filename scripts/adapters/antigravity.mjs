@@ -1,15 +1,45 @@
+import {spawnSync} from 'node:child_process';
 import {schemaFor,prompt,bashRules,probe as probeCli,extractResult,ACCEPTANCE} from './common.mjs';
 import {assertCommandLine} from '../platform.mjs';
+import {workerEnv} from '../worker-env.mjs';
 
 // Google Antigravity CLI(agy) 헤드리스 모드. 모든 플래그는 -p 앞에 와야 한다.
 // 대화 ID는 CLI가 발급하므로 첫 라운드 envelope의 conversation_id를 저장해 재개에 쓴다.
 export const name='antigravity';
 export const requiredFlags=['--output-format','--json-schema','--conversation','--mode','--add-dir','--print'];
 export const binary=()=>process.env.HF_AGY_BIN||'agy';
-// 샌드박스를 끌 수 있는 것은 운영자가 허용한 구현 라운드뿐이다. 상담과 리뷰는 설정과 상관없이 항상 --sandbox를 넘긴다
+// --sandbox는 agy의 터미널만 제한하고 파일 쓰기 도구(write_to_file)는 막지 못한다(외부 실측). 그래서 상담·리뷰의
+// 읽기 전용은 sandbox가 아니라 컨트롤러가 전후 스냅샷을 비교해 강제한다(저장소가 바뀌면 그 답변을 버린다).
+// 그래도 셸로 쓰는 길은 줄여 주므로, 끌 수 있는 것은 운영자가 허용한 구현 라운드뿐이고 상담과 리뷰는 항상 --sandbox를 넘긴다
 // (CLI가 그 플래그를 모르면 상담이 실패한다. 읽기 전용이어야 할 일꾼을 풀어 두는 것보다 낫다).
 const unsandboxed=(options,brief)=>options.sandbox===false&&!brief?.consult;
-export const probe=(options={})=>probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(options.model?['--model']:[]),...(options.reasoning_effort?['--effort']:[])],['--print-timeout','--model','--effort']);
+export const probe=(options={})=>{
+ const cli=probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(options.model?['--model']:[]),...(options.reasoning_effort?['--effort']:[])],['--print-timeout','--model','--effort']);
+ return options.model?{...cli,model_check:checkModel(cli,options.model)}:cli;
+};
+
+// agy는 모르는 --model을 받으면 오류 없이 기본 모델로 돈다(외부 실측). 어느 모델이 구현·리뷰했는지가 판정 근거이므로,
+// 설정한 모델이 `agy models` 목록에 없으면 실행 전에 막는다. agy 1.2부터 한 줄이 `slug<TAB>표시 이름`이고 --model은 둘 다 받는다.
+// 목록을 못 얻으면(옛 agy, 로그인 전, 시간 초과) 막지 않고 unverified로 남긴다. 운영자는 HF_AGY_ALLOW_UNLISTED_MODEL=1로 검사를 끌 수 있다.
+export const ALLOW_UNLISTED_ENV='HF_AGY_ALLOW_UNLISTED_MODEL';
+const modelKey=v=>String(v).toLowerCase().replace(/[^0-9a-z]/g,'');
+// 출력 형식이 버전마다 달랐다(표시 이름만, slug<TAB>표시 이름). 형식이 또 바뀌어도 맞는 모델을 막지 않도록
+// 줄 전체, 탭으로 나눈 열, 공백으로 나눈 낱말(slug에는 공백이 없다)을 모두 후보로 본다.
+export function listedModels(text) {
+ return String(text??'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean)
+  .flatMap(l=>[l,...l.split('\t'),...l.split(/\s+/)].map(x=>x.trim()).filter(x=>modelKey(x)));
+}
+const shownModels=text=>String(text??'').split(/\r?\n/).map(l=>l.split('\t')[0].trim()).filter(Boolean);
+export function checkModel(cli,model) {
+ if(process.env[ALLOW_UNLISTED_ENV]==='1')return {model,status:'skipped',reason:ALLOW_UNLISTED_ENV+'=1'};
+ const r=spawnSync(cli.executable,[...(cli.prefix_args??[]),'models'],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:workerEnv('antigravity')});
+ if(r.error||r.status!==0)return {model,status:'unverified',reason:'agy models '+(r.error?.code==='ETIMEDOUT'?'timed out':r.error?.message??`exited ${r.status}`)};
+ const names=listedModels(r.stdout);
+ if(!names.length)return {model,status:'unverified',reason:'agy models listed nothing'};
+ if(names.some(n=>modelKey(n)===modelKey(model)))return {model,status:'listed'};
+ throw Error(`MODEL_UNLISTED: executors.antigravity.model "${model}" is not listed by \`agy models\` (listed: ${shownModels(r.stdout).slice(0,6).join(', ')}${shownModels(r.stdout).length>6?', ...':''}). `
+  +`agy would silently run its default model instead. Fix the model name, or have the operator set ${ALLOW_UNLISTED_ENV}=1 to launch anyway`);
+}
 // agy가 스스로 먼저 끝내도록 브리지 timeout보다 30초 짧게 잡는다. 그래야 강제 종료 대신 정상 envelope가 남는다.
 export const printTimeout=options=>Math.max(30,Math.floor(((options.timeout_ms??1200000)-30000)/1000))+'s';
 export const newSession=()=>null;

@@ -28,10 +28,11 @@
 - 대화 ID는 CLI가 발급한다. 첫 라운드 envelope의 `conversation_id`를 `session-N.json`에 남기고 finish에서 상태에 묶는다. 이후 다른 ID로 바꾸려면 recovery가 필요하다.
 - 설치된 agy가 `--print-timeout`을 지원하면 브리지 timeout보다 30초 짧게 넘긴다(기본 1170s). agy가 스스로 끝내면 강제 종료 대신 정상 envelope가 남는다.
 - agy는 Go 형식 도움말(`Usage of agy.EXE:`)을 stderr로 출력한다. 프로브는 stdout과 stderr를 합쳐서 확인한다.
-- agy에는 명령 단위 허용 규칙이 없어 `executor_bash_rules`는 dispatch에 `ignored_bash_rules`로 기록만 된다. 터미널 제한은 `--sandbox`뿐이다. `--dangerously-skip-permissions`는 쓰지 않는다. 권한 때문에 막히면 실패로 보고하고 우회하지 않는다.
+- agy에는 명령 단위 허용 규칙이 없어 `executor_bash_rules`는 dispatch에 `ignored_bash_rules`로 기록만 된다. 터미널 제한은 `--sandbox`뿐이다. `--sandbox`는 터미널만 제한하고 agy의 파일 쓰기 도구는 막지 못한다. 그래서 상담·리뷰의 읽기 전용은 sandbox가 아니라 컨트롤러가 전후 스냅샷을 비교해 강제한다(저장소가 바뀌면 그 답변을 버린다). 저장소 밖(홈 폴더 등)에 쓰는 것은 이 비교로 잡지 못한다. `--dangerously-skip-permissions`는 쓰지 않는다. 권한 때문에 막히면 실패로 보고하고 우회하지 않는다.
 - `error` 필드, 실패성 `status`, `conversation_id` 부재는 실패. `structured_output`이 없으면 `response`에서 결과 JSON을 찾는다. `--conversation`으로 재개하면 agy가 `structured_output`에 이전 라운드 결과를 그대로 돌려주므로, 그 라운드(상담이면 `consult_id`·`member`)가 현재 실행과 다르면 `response`의 JSON을 쓰고, 그것도 맞지 않으면 실패로 처리한다.
 - 헤드리스 agy에는 명령을 끝날 때까지 기다리라고 지시한다(백그라운드 실행·완료 알림 대기 금지). 수용 명령이 있는 라운드는 agy가 직접 돌리지 않고 `not_run`으로 보고하며, 컨트롤러가 끝난 직후 실행한다.
 - 비용은 보고되지 않으므로 null로 둔다.
+- agy는 모르는 `--model`을 받으면 오류 없이 기본 모델로 돈다. `executors.antigravity.model`이 있으면 프로브가 `agy models`(agy 1.2부터 한 줄이 `slug<TAB>표시 이름`)와 맞춰 보고(대소문자·기호 무시), 없으면 `MODEL_UNLISTED`로 실행 전에 막는다. 목록을 못 얻으면 막지 않고 dispatch 기록의 `model_check.status`를 `unverified`로 남긴다(`listed`/`unverified`/`skipped`). `HF_AGY_ALLOW_UNLISTED_MODEL=1`이면 검사하지 않는다(`skipped`).
 
 ## Sonnet (`claude --model claude-sonnet-5-5`)
 
