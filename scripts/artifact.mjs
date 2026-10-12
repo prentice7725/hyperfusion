@@ -50,9 +50,24 @@ function neutralArgs(root) {
 export function git(root,args) {return execFileSync('git',[...neutralArgs(root),'-C',root,...args],{encoding:'utf8',maxBuffer:64*1024*1024,env:gitEnv,windowsHide:true});}
 // 사람이 읽는 diff는 외부 diff 도구와 textconv를 쓰지 않는다.
 export const SAFE_DIFF=['--no-ext-diff','--no-textconv'];
+// 한 프로세스 안에서 같은 저장소를 수없이 확인한다(run, execute, autopilot이 매번 부른다). 성공한 확인만 기억하되,
+// 루트 바로 아래 `.git` 항목(종류, 장치, inode, 파일이면 크기·mtime)이 그대로일 때만 다시 쓴다. `.git`을 지우거나
+// 바꿔치면 지문이 달라져 git으로 다시 확인한다. 디렉터리의 mtime은 git이 쓸 때마다 변하므로 지문에 넣지 않는다.
+const repoCache=new Map();
+function gitEntryStamp(real) {
+ try{
+  const st=fs.lstatSync(path.join(real,'.git'));
+  return [st.isDirectory()?'d':st.isFile()?'f':'x',st.dev,st.ino,...(st.isFile()?[st.size,st.mtimeMs]:[])].join(':');
+ }catch{return null;}
+}
 export function repo(input) {
+ let real=null,stamp=null;
+ try{real=fs.realpathSync.native(input);stamp=gitEntryStamp(real);}catch{}
+ const hit=real&&stamp?repoCache.get(real):null;
+ if(hit&&hit.stamp===stamp&&samePath(input,hit.root))return hit.root;
  const root=fs.realpathSync.native(git(input,['rev-parse','--show-toplevel']).trim());
  if(!samePath(input,root)) throw Error('Use repository root');
+ if(real&&stamp)repoCache.set(real,{stamp,root});
  return root;
 }
 const MAX_GUARD_BYTES=8*1024*1024;

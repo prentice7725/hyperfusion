@@ -112,6 +112,19 @@ if(mode==='denied'){console.log(JSON.stringify({type:'result',subtype:'success',
 console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,session_id:id,structured_output:finish(request,id),usage:{input_tokens:30,output_tokens:9},total_cost_usd:0.01}));
 `;
 
+// 기준 저장소(a.txt 하나를 커밋한 상태). 이 프로세스에서 처음 필요할 때 한 번만 만들고 끝날 때 지운다.
+let template=null;
+function templateRepo() {
+ if(template)return template;
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hf-v03-template-')),repoDir=path.join(dir,'repo');
+ fs.mkdirSync(repoDir);
+ const git=(...a)=>execFileSync('git',['-C',repoDir,...a],{stdio:'pipe'});
+ git('init');git('config','user.email','test@example.invalid');git('config','user.name','Test');
+ fs.writeFileSync(path.join(repoDir,'a.txt'),'base');git('add','.');git('commit','-m','fixture');
+ process.on('exit',()=>{try{fs.rmSync(dir,{recursive:true,force:true});}catch{}});
+ return template=repoDir;
+}
+
 // executor 기본값은 grok(기존 테스트 호환). 라우팅 테스트는 executor:'auto'를 넘긴다.
 export function fixture(t,{initialize=true,executor='grok'}={}) {
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'hf-v03-')),root=path.join(temp,'repo');fs.mkdirSync(root);
@@ -129,8 +142,9 @@ export function fixture(t,{initialize=true,executor='grok'}={}) {
  fs.writeFileSync(grok,FAKE_GROK,{mode:0o755});fs.writeFileSync(agy,FAKE_AGY,{mode:0o755});fs.writeFileSync(claude,FAKE_CLAUDE,{mode:0o755});fs.writeFileSync(codex,FAKE_CODEX,{mode:0o755});
  process.env.HF_GROK_BIN=grok;process.env.HF_AGY_BIN=agy;process.env.HF_CLAUDE_BIN=claude;process.env.HF_CODEX_BIN=codex;
  const git=(...a)=>execFileSync('git',['-C',root,...a],{stdio:'pipe'});
- git('init');git('config','user.email','test@example.invalid');git('config','user.name','Test');
- fs.writeFileSync(path.join(root,'a.txt'),'base');git('add','.');git('commit','-m','fixture');
+ // 저장소를 매번 init·config×2·add·commit(프로세스 5개)로 만들지 않고, 파일 하나당 한 번 만든 템플릿을 복사한다.
+ // Windows에서는 프로세스 하나가 25~45ms라 픽스처 수백 개가 분 단위로 쌓인다.
+ fs.cpSync(templateRepo(),root,{recursive:true});
  const brief={task_id:'HF-test',objective:'Fix a bounded issue',scope:{paths:['a.txt'],allowed_expansion:'ask-lead'},constraints:[],success_criteria:['AC1'],allowed_actions:['read','edit','test'],forbidden_actions:['commit','push','deploy','release','scope-expansion'],evidence_required:['files_changed','commands_run','test_results','remaining_risks']};
  // 제어 파일은 작업 폴더 밖(임시 폴더의 state)에 둔다. 대역 일꾼이 편집 도구로 닿을 수 없는 곳이다.
  process.env.HF_STATE_DIR=path.join(temp,'state');
