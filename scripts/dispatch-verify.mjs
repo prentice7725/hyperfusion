@@ -7,7 +7,9 @@ import {implementDispatch,sameGrant,sameAssignment,assertImplementRound} from '.
 // 실행 파일, 인자, 프롬프트가 하나라도 다르면 일꾼을 띄우지 않는다. 그래서 파일이 바뀌었어도 권한이 넓어지지 않는다.
 
 const canon=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a<b?-1:1)):x);
-const shape=r=>({cli:r.cli,prompt:r.prompt,stdin:r.stdin});
+// model_check(agy 모델 목록 확인)는 실행 시점의 관측이라 begin과 브리지 사이에 달라질 수 있다(목록 조회 시간 초과 등).
+// 권한을 정하지 않으므로 비교에서 뺀다. 목록에 없는 모델은 브리지의 재프로브에서 다시 막힌다.
+const shape=r=>{const {model_check,...cli}=r.cli??{};return {cli,prompt:r.prompt,stdin:r.stdin};};
 
 function compare(label,expected,request) {
  const a=canon(shape(expected)),b=canon(shape(request));

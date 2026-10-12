@@ -65,11 +65,32 @@ export function decideStop(input) {
  return {decision:'block',reason:`HyperFusion: 작업 ${s.task_id}가 ${s.phase} 단계에 남아 있습니다. 다음 동작: ${nextAction(s.phase,consult)}. 사용자 판단이 필요해서 멈추는 거라면 그 이유를 보고하고 끝내세요.`};
 }
 
+// SessionStart 훅: 대화가 요약(compact)되거나 새 세션이 같은 저장소에서 시작될 때, 진행 중인 작업이 있으면
+// 어느 단계인지와 다음 명령을 알려 준다. 요약이 작업 상태를 잃어도 리드가 status를 더듬지 않고 이어 간다.
+// 진행 중인 작업이 없으면 아무것도 넣지 않는다(토큰 0). 모델을 부르지 않고 상태 파일만 읽는다.
+export function decideSessionStart(input) {
+ const root=repoRootOf(path.join(path.resolve(input?.cwd??process.cwd()),'.hf-start'));
+ if(!root)return null;
+ const stateFile=controlPath(root,'state.json');
+ if(!fs.existsSync(stateFile))return null;
+ let s;
+ try{s=read(stateFile);}catch{return null;}
+ if(!s||TERMINAL_PHASES.includes(s.phase))return null;
+ const self=fileURLToPath(new URL('./fusion-state.mjs',import.meta.url)).replaceAll('\\','/');
+ const consult=!!s.open_consult;
+ const lines=[
+  `HyperFusion: 이 저장소에 진행 중인 작업이 있습니다. 작업 ${s.task_id}, 단계 ${s.phase}${s.owner?`, 일꾼 ${s.owner}`:''}, 라운드 ${s.iteration}${consult?', 열린 상담 있음':''}.`,
+  `다음 동작: ${nextAction(s.phase,consult)}.`,
+  `지금 칠 명령과 채워 둔 입력 틀: node "${self}" next "${root}"`,
+  '요약 전의 기억보다 이 상태를 믿으세요. 일꾼 예산이 남아 있는 동안 리드는 코드를 직접 쓰지 않습니다.'];
+ return {hookSpecificOutput:{hookEventName:'SessionStart',additionalContext:lines.join('\n')}};
+}
+
 // 사용자 설정(~/.claude/settings.json 등)에 넣을 훅 항목. 이 파일의 절대 경로를 쓴다.
 export function settingsSnippet() {
  const script=fileURLToPath(import.meta.url).replaceAll('\\','/');
  const command=[{type:'command',command:`node "${script}"`}];
- return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command}],Stop:[{hooks:command}]}};
+ return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command}],Stop:[{hooks:command}],SessionStart:[{matcher:'startup|resume|compact',hooks:command}]}};
 }
 
 if(isMain(import.meta.url)) {
@@ -77,6 +98,7 @@ if(isMain(import.meta.url)) {
  let input;
  try{input=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));}
  catch(e){console.error('lead-guard: invalid hook input: '+e.message);process.exit(0);}
- const out=input?.hook_event_name==='Stop'?decideStop(input):decide(input);
+ const event=input?.hook_event_name;
+ const out=event==='Stop'?decideStop(input):event==='SessionStart'?decideSessionStart(input):decide(input);
  if(out)console.log(JSON.stringify(out));
 }

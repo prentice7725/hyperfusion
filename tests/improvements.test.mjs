@@ -12,6 +12,7 @@ import {brief,safePath} from '../scripts/contracts.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {config} from '../scripts/executor-config.mjs';
 import {adapter} from '../scripts/adapters/index.mjs';
+import {NON_RETRYABLE} from '../scripts/delegation.mjs';
 import {hasOption} from '../scripts/adapters/common.mjs';
 import {ACTION_PHASES,PHASES,TERMINAL_PHASES,assertAction,phaseTable} from '../scripts/state-policy.mjs';
 import {aggregateRepo,measure} from '../scripts/metrics.mjs';
@@ -88,11 +89,55 @@ test('Grok and Antigravity refuse model overrides without exact CLI support',t=>
  for(const name of ['grok','antigravity'])assert.throws(()=>adapter(name).probe({model:'custom-model'}),/missing.*--model/);
 });
 
-for(const executor of ['grok','antigravity'])test(`${executor} dispatches a configured model when the CLI advertises --model`,t=>{
- const f=fixture(t,{initialize:false}),binary=executor==='grok'?process.env.HF_GROK_BIN:process.env.HF_AGY_BIN;
- const source=fs.readFileSync(binary,'utf8').replace("const args=process.argv.slice(2);","const args=process.argv.slice(2);if(args.includes('--help'))console.log('--model <id>');");
- fs.writeFileSync(binary,source,{mode:0o755});configure(f,{executors:{[executor]:{model:'custom-model'}}});
- run(f.root,'init',{...f.brief,executor});const d=f.begin();assert.equal(d.cli.args[d.cli.args.indexOf('--model')+1],'custom-model');
+// 가짜 agy의 목록에 있는 이름을 쓴다(목록에 없으면 실행 전에 막힌다, 아래 테스트).
+const MODEL_FOR={grok:'custom-model',antigravity:'gemini-3.6-pro-high'};
+const withModelFlag=binary=>fs.writeFileSync(binary,fs.readFileSync(binary,'utf8').replace("const args=process.argv.slice(2);","const args=process.argv.slice(2);if(args.includes('--help'))console.log('--model <id>');"),{mode:0o755});
+for(const executor of ['grok','antigravity'])test(`${executor} dispatches a configured model when the CLI advertises --model`,async t=>{
+ const f=fixture(t,{initialize:false}),binary=executor==='grok'?process.env.HF_GROK_BIN:process.env.HF_AGY_BIN,model=MODEL_FOR[executor];
+ withModelFlag(binary);configure(f,{executors:{[executor]:{model}}});
+ run(f.root,'init',{...f.brief,executor});const d=f.begin();assert.equal(d.cli.args[d.cli.args.indexOf('--model')+1],model);
+ if(executor==='antigravity')assert.equal(d.cli.model_check.status,'listed');
+ // 브리지가 같은 요청을 다시 만들어 비교해도 변조로 보지 않는다.
+ const out=await f.bridge();assert.equal(out.status,'RESULT_READY',JSON.stringify(out));
+});
+
+test('a signed-out agy run fails with the action to take, and is not retried automatically',async t=>{
+ const f=fixture(t,{initialize:false});run(f.root,'init',{...f.brief,executor:'antigravity'});f.begin();
+ fs.writeFileSync(path.join(path.dirname(process.env.HF_AGY_BIN),'fake-mode'),'agy-signed-out');
+ await assert.rejects(()=>f.bridge(),/exited with code 1 — AGY_NOT_SIGNED_IN: .*Run `agy` once interactively/);
+ assert.ok(NON_RETRYABLE.test('AGY_NOT_SIGNED_IN: agy does not look signed in'));
+});
+
+test('the Antigravity model listing tolerates other output shapes without blocking a listed model',()=>{
+ const agy=adapter('antigravity');
+ for(const shape of ['gemini-3.5-flash\tGemini 3.5 Flash','* gemini-3.5-flash (default)','Gemini 3.5 Flash','Available models:\n  - gemini-3.5-flash'])
+  assert.ok(agy.listedModels(shape).some(n=>n.toLowerCase().replace(/[^0-9a-z]/g,'')==='gemini35flash'),shape);
+});
+
+test('an Antigravity model that agy does not list is refused before anything runs, because agy would silently use its default',t=>{
+ const f=fixture(t,{initialize:false});withModelFlag(process.env.HF_AGY_BIN);
+ const agy=adapter('antigravity');
+ assert.throws(()=>agy.probe({model:'gemini-3.6-pro-hihg'}),/MODEL_UNLISTED: .*gemini-3\.6-pro-hihg.*listed: gemini-3\.5-flash, gemini-3\.6-pro-high\)/);
+ // 슬러그와 표시 이름 둘 다 받는다. 대소문자와 기호 차이는 무시한다.
+ assert.equal(agy.probe({model:'gemini-3.6-pro-high'}).model_check.status,'listed');
+ assert.equal(agy.probe({model:'gemini 3.5 flash'}).model_check.status,'listed');
+ configure(f,{executors:{antigravity:{model:'typo-model'}}});
+ run(f.root,'init',{...f.brief,executor:'antigravity'});
+ assert.throws(()=>f.begin(),/MODEL_UNLISTED/);
+ assert.equal(f.state().iteration,0);assert.equal(f.state().writer,null);
+});
+
+test('when agy cannot list its models the run is not blocked, and the check is recorded as unverified',t=>{
+ const f=fixture(t,{initialize:false});withModelFlag(process.env.HF_AGY_BIN);fs.writeFileSync(path.join(path.dirname(process.env.HF_AGY_BIN),'fake-mode'),'agy-no-models');
+ const check=adapter('antigravity').probe({model:'typo-model'}).model_check;
+ assert.equal(check.status,'unverified');assert.match(check.reason,/exited 1/);
+});
+
+test('the operator can switch the Antigravity model check off',t=>{
+ fixture(t,{initialize:false});withModelFlag(process.env.HF_AGY_BIN);
+ const old=process.env.HF_AGY_ALLOW_UNLISTED_MODEL;process.env.HF_AGY_ALLOW_UNLISTED_MODEL='1';
+ t.after(()=>{if(old===undefined)delete process.env.HF_AGY_ALLOW_UNLISTED_MODEL;else process.env.HF_AGY_ALLOW_UNLISTED_MODEL=old;});
+ assert.equal(adapter('antigravity').probe({model:'typo-model'}).model_check.status,'skipped');
 });
 
 test('doctor saves full help output without adding it to dispatch descriptors',t=>{
@@ -105,6 +150,7 @@ test('doctor saves full help output without adding it to dispatch descriptors',t
 test('timeline reports round verdict, measured duration and reported cost',async t=>{
  const f=fixture(t);f.begin();await f.bridge();f.review('pass');
  const report=run(f.root,'report');assert.equal(report.rounds.length,1);
+ assert.equal(report.lead_load.delegation,null);assert.equal(report.lead_load.decisions_by_policy,0);assert.equal(report.lead_load.reviews_recorded,1,'classic review has no lead-decision file; its review record is counted');
  assert.equal(report.rounds[0].verdict,'pass');assert.equal(report.rounds[0].cost_usd,0.002);assert.ok(report.rounds[0].wall_ms>=0);
  measure(f.root);assert.equal(aggregateRepo(f.root).tasks,1);
  const out=spawnSync(process.execPath,[cli('metrics.mjs'),'--aggregate',f.root],{encoding:'utf8'});

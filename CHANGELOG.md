@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- 컴팩션 뒤 작업 상태 주입: lead-guard에 SessionStart 훅(`startup|resume|compact`)을 추가했다. 대화가 요약되거나 새 세션이 시작될 때 저장소에 끝나지 않은 작업이 있으면 작업 id, 단계, 다음 동작과 `next` 명령을 한 번 넣는다. 작업이 없거나 상태를 읽지 못하면 아무것도 넣지 않는다. `npm run guard:settings`가 출력하는 설정에 포함되므로, 이미 훅을 설치했다면 출력의 `SessionStart` 항목을 설정에 합친다.
+- 리드 부담 요약: `report`에 `lead_load`를 추가했다. 이미 남은 산출물에서 리드 판정 수, 재량권 아래 컨트롤러 승인 수, 리드가 읽어야 했던 게이트 수, 자동·수동 복구 수를 센다. 새 기록은 만들지 않는다.
+- Codex 잔량 자동 읽기: `quota-policy.mjs REPO collect-codex`가 Codex의 로컬 세션 기록에서 마지막 `rate_limits`를 읽어 openai 잔량을 `supported_tool`로 기록한다(네트워크·모델 없음, 숫자 필드만). 기록 시각을 `collected_at`으로 쓰고 30분이 지나면 stale이다. 소진(0%)이 확인되면 라우팅이 Luna를 순서 뒤로 미룬다(다른 후보가 있을 때만).
+- agy 로그아웃 안내: 실패한 agy 실행의 출력에서 로그인 문제를 알아보면 오류에 `AGY_NOT_SIGNED_IN`과 조치(`agy`를 한 번 직접 실행해 로그인)를 덧붙이고, 자동 복구는 이를 다시 시도하지 않는다. 실행 전 점검은 매번 최대 35초가 들어 넣지 않았다.
+- Antigravity 모델 검증: agy는 모르는 `--model`을 받으면 오류 없이 기본 모델로 돈다. `executors.antigravity.model`을 정했으면 프로브가 `agy models` 목록(slug와 표시 이름, 대소문자·기호 무시)과 맞춰 보고, 없으면 실행 전에 `MODEL_UNLISTED`로 막는다. 어느 모델이 구현·리뷰했는지가 판정 근거라서 조용한 대체를 허용하지 않는다. 목록을 못 얻으면(옛 agy, 로그인 전, 시간 초과) 막지 않고 dispatch 기록의 `model_check`에 `unverified`와 이유를 남긴다. 운영자는 `HF_AGY_ALLOW_UNLISTED_MODEL=1`로 검사를 끌 수 있다.
+- agy `--sandbox` 설명 바로잡기: `--sandbox`는 터미널만 제한하고 파일 쓰기 도구는 막지 못한다. 상담·리뷰의 읽기 전용은 컨트롤러의 전후 스냅샷 비교가 강제한다(저장소가 바뀌면 그 답변을 버린다). 저장소 밖에 쓰는 것은 잡지 못한다. 동작은 바뀌지 않았고 코드 주석과 문서만 고쳤다.
+
 ## 0.19.0
 
 - 보존(preserve) 검증 계약: 리팩터링처럼 수정 전에도 수용 명령이 통과하는 작업을 위해 brief에 `verification: {kind:"preserve", protect:[...]}`를 추가했다. red-first(명령이 틀린 결과를 가려낸다는 증거) 대신, 컨트롤러가 보호 경로(테스트·픽스처)의 파일이 작업을 시작한 뒤 하나도 바뀌지 않았음을 스냅샷으로 증명한다. 일꾼이 테스트를 약하게 고쳐 통과시키는 길을 막는다. 보호 경로는 작업 범위와 겹치면 안 되고(앞쪽이 와일드카드인 glob 포함), 실제 파일에 맞아야 하며, 명령은 이미 통과해야 한다(실패하면 red-first 작업). 리드가 범위 밖 변경을 받아들여도 보호는 풀리지 않고 verify도 거절한다. autopilot은 이 작업의 baseline이 `green-acknowledged`면 시작한다.

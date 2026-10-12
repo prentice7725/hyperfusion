@@ -66,7 +66,7 @@ node scripts/fusion-state.mjs monitor C:\path\repo --watch
 
 ## Quota, effort, 최종 패킷
 
-`node scripts/quota-policy.mjs REPO record QUOTA.json`으로 운영자 관측을 기록하고 `REPO status`로 조회한다. provider는 anthropic/openai/xai/google, source는 user_manual/supported_tool/unknown이다. collected_at, ttl_ms, reset_at, window, unit을 보존하며 잔량 누락·TTL 만료·reset 경과는 unknown/stale로 남긴다. xai는 검증된 자동 조회 도구가 없어 user_manual만 받는다. `supported_tool`이라는 저장 필드 자체는 실제 도구 연결을 증명하지 않는다. quota 조회 모델 호출은 없다. 신입·탐색 우대가 fresh exhaustion의 뒤쪽 배치를 되돌리지 않도록 최종 정렬한다.
+`node scripts/quota-policy.mjs REPO record QUOTA.json`으로 운영자 관측을 기록하고 `REPO status`로 조회한다. `REPO collect-codex`는 Codex가 자기 세션 기록(`~/.codex/sessions/**/*.jsonl`, 위치는 `HF_CODEX_HOME`/`CODEX_HOME`로 바꾼다)에 남기는 마지막 `rate_limits`를 읽어 openai 잔량을 `supported_tool`로 기록한다. 네트워크도 모델도 쓰지 않고 숫자 필드만 꺼낸다. 5시간·7일 창 중 사용률이 높은 쪽을 기준으로 남은 %를 기록하며, `collected_at`은 그 기록의 시각이라 Codex를 대화형으로 마지막으로 쓴 뒤 30분이 지나면 stale이다(`codex exec`는 `rate_limits`를 null로 남기므로 읽을 값이 없으면 아무것도 쓰지 않고 이유를 돌려준다). Antigravity의 실행 중인 서버에 묻는 방식은 프로세스 인자의 토큰을 꺼내야 해서 쓰지 않는다. provider는 anthropic/openai/xai/google, source는 user_manual/supported_tool/unknown이다. collected_at, ttl_ms, reset_at, window, unit을 보존하며 잔량 누락·TTL 만료·reset 경과는 unknown/stale로 남긴다. xai는 검증된 자동 조회 도구가 없어 user_manual만 받는다. `supported_tool`이라는 저장 필드 자체는 실제 도구 연결을 증명하지 않는다. quota 조회 모델 호출은 없다. 신입·탐색 우대가 fresh exhaustion의 뒤쪽 배치를 되돌리지 않도록 최종 정렬한다.
 
 Grok/AGY 난이도별 effort를 기본 설정에 적용하고 운영자가 직접 지정한 값은 보존한다. Sonnet 중요 구현/리뷰는 high, Sol APEX/리뷰는 medium이다. CLI flag 미지원은 preflight 오류이며 의미를 추측해 성공으로 처리하지 않는다. `setup-doctor`의 help/version 검사와 실제 인증·모델 smoke는 구분한다.
 

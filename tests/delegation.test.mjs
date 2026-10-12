@@ -77,6 +77,11 @@ test('with discretion granted, autopilot runs the round, the controller approves
  assert.deepEqual(s.ac_table,[{id:'AC1',status:'PASS'}]);
  assert.match(fs.readFileSync(s.pr_draft,'utf8'),/위임 정책\(standard-auto\)/);
  assert.deepEqual(read(task(f,'lead-decision-1.json')).authority.source,'delegated-policy');
+ // 리드 부담 요약: 이 작업은 판정을 컨트롤러가 냈고 리드가 명령으로 낸 판정은 없다
+ const load=run(f.root,'report',{}).lead_load;
+ assert.equal(load.delegation.policy,'standard-auto');
+ assert.equal(load.decisions_by_policy,1);assert.equal(load.decisions_by_lead,0);
+ assert.equal(load.recoveries_auto,0);assert.equal(load.recoveries_manual,0);
 });
 
 test('without discretion autopilot still stops at the lead gate',async t=>{
