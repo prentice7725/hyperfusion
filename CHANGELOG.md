@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 테스트가 만드는 하위 프로세스 줄이기(Windows CI 속도): 테스트 한 번이 프로세스 18,906개를 만들고 그 중 git이 86%였다(Windows에서 git은 25~32ms, node는 38~45ms). 두 곳을 고쳐 3,458개(18.3%)를 줄였다. 테스트 픽스처가 저장소를 매번 `init`·`config`×2·`add`·`commit`으로 만들던 것을 파일당 한 번 만든 템플릿의 복사로 바꿨고, `repo()`는 성공한 확인을 기억하되 루트 아래 `.git` 항목의 지문(종류·장치·inode, 파일이면 크기·mtime)이 그대로일 때만 쓴다. `.git`을 지우거나 바꿔치면 git에 다시 묻고, 하위 폴더 거절은 기억하지 않는다. 스냅샷 digest와 그 계산은 건드리지 않았다.
+- `tools/count-spawns.mjs`(`npm run spawns`): 명령이 만드는 하위 프로세스를 하위 node 프로세스까지 세어 명령별·호출 지점별로 요약한다. 줄이기 전후를 같은 방법으로 비교하는 용도.
+
 - 컴팩션 뒤 작업 상태 주입: lead-guard에 SessionStart 훅(`startup|resume|compact`)을 추가했다. 대화가 요약되거나 새 세션이 시작될 때 저장소에 끝나지 않은 작업이 있으면 작업 id, 단계, 다음 동작과 `next` 명령을 한 번 넣는다. 작업이 없거나 상태를 읽지 못하면 아무것도 넣지 않는다. `npm run guard:settings`가 출력하는 설정에 포함되므로, 이미 훅을 설치했다면 출력의 `SessionStart` 항목을 설정에 합친다.
 - 리드 부담 요약: `report`에 `lead_load`를 추가했다. 이미 남은 산출물에서 리드 판정 수, 재량권 아래 컨트롤러 승인 수, 리드가 읽어야 했던 게이트 수, 자동·수동 복구 수를 센다. 새 기록은 만들지 않는다.
 - Codex 잔량 자동 읽기: `quota-policy.mjs REPO collect-codex`가 Codex의 로컬 세션 기록에서 마지막 `rate_limits`를 읽어 openai 잔량을 `supported_tool`로 기록한다(네트워크·모델 없음, 숫자 필드만). 기록 시각을 `collected_at`으로 쓰고 30분이 지나면 stale이다. 소진(0%)이 확인되면 라우팅이 Luna를 순서 뒤로 미룬다(다른 후보가 있을 때만).
