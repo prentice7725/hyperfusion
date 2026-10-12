@@ -5,11 +5,13 @@ import {isMain} from './platform.mjs';
 import {read} from './artifact.mjs';
 import {controlPath} from './control-dir.mjs';
 import {TERMINAL_PHASES,nextAction} from './state-policy.mjs';
+import {readStatusLine} from './status-line.mjs';
 
 // Claude Code 훅. SKILL.md의 리드 규칙을 지시가 아니라 차단으로 강제한다.
 //   PreToolUse 1) lease가 걸린 동안 리드는 트리를 수정하지 않는다(일꾼이 writer다).
 //   PreToolUse 2) 일꾼 예산이 남아 있으면 리드는 코드를 쓰지 않는다(takeover로 lease를 받은 경우만 예외).
 //   Stop       3) 리드가 처리할 단계(리뷰, 검증, 재지시 등)에 작업을 둔 채 턴을 끝내지 않는다.
+//   UserPromptSubmit  4) 프롬프트를 보낼 때 작업 상태 한 줄을 사용자 화면에만 보여 준다(차단 없음, 모델 컨텍스트에 넣지 않음).
 // 진행 중인 작업이 없는 저장소, Git 저장소 밖의 파일은 건드리지 않는다.
 // 일꾼 Sonnet은 --safe-mode로 떠서 사용자 훅이 꺼지므로 이 훅에 막히지 않는다.
 
@@ -86,11 +88,21 @@ export function decideSessionStart(input) {
  return {hookSpecificOutput:{hookEventName:'SessionStart',additionalContext:lines.join('\n')}};
 }
 
+// UserPromptSubmit 훅: 진행 중인 작업이 있으면 상태 한 줄을 사용자에게만 보여 준다.
+// systemMessage는 화면 표시용이라 모델 컨텍스트와 토큰에 들어가지 않는다. 터미널 전용 띠(mods/hf-status)와 달리
+// 훅 출력은 VS Code 같은 화면에서도 쓰이는 공통 경로다. 진행 중인 작업이 없거나 상태를 읽지 못하면 아무것도 내지 않는다.
+export function decideUserPrompt(input) {
+ const root=repoRootOf(path.join(path.resolve(input?.cwd??process.cwd()),'.hf-prompt'));
+ if(!root)return null;
+ const line=readStatusLine(root);
+ return line?{systemMessage:line}:null;
+}
+
 // 사용자 설정(~/.claude/settings.json 등)에 넣을 훅 항목. 이 파일의 절대 경로를 쓴다.
 export function settingsSnippet() {
  const script=fileURLToPath(import.meta.url).replaceAll('\\','/');
  const command=[{type:'command',command:`node "${script}"`}];
- return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command}],Stop:[{hooks:command}],SessionStart:[{matcher:'startup|resume|compact',hooks:command}]}};
+ return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command}],Stop:[{hooks:command}],SessionStart:[{matcher:'startup|resume|compact',hooks:command}],UserPromptSubmit:[{hooks:command}]}};
 }
 
 if(isMain(import.meta.url)) {
@@ -99,6 +111,6 @@ if(isMain(import.meta.url)) {
  try{input=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));}
  catch(e){console.error('lead-guard: invalid hook input: '+e.message);process.exit(0);}
  const event=input?.hook_event_name;
- const out=event==='Stop'?decideStop(input):event==='SessionStart'?decideSessionStart(input):decide(input);
+ const out=event==='Stop'?decideStop(input):event==='SessionStart'?decideSessionStart(input):event==='UserPromptSubmit'?decideUserPrompt(input):decide(input);
  if(out)console.log(JSON.stringify(out));
 }

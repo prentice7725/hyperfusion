@@ -4,7 +4,7 @@
 
 ## Unreleased
 
-(없음)
+- 작업 상태 한 줄: `HF ▸ 작업 │ 단계 │ 일꾼 라운드/상한 │ 다음 동작`을 `scripts/status-line.mjs` 한 곳에서 만들어 세 곳이 같은 문장을 쓴다. ① `fusion-state.mjs line REPO`(읽기 전용, 잠금 없음, 작업이 없으면 출력 없음), ② lead-guard의 UserPromptSubmit 훅(`systemMessage`라서 사용자 화면에만 보이고 모델 컨텍스트에는 들어가지 않으며 아무것도 막지 않는다), ③ 프롬프트 위 띠 모드 `mods/hf-status`(Bash 호출 뒤·턴 끝·세션 시작에 `line`을 다시 읽고, 줄이 바뀌면 숨김을 풀며, `.claude-plugin/marketplace.json`으로 설치한다). 라운드 상한에 닿은 일꾼은 `상한`으로 표시된다. 띠는 터미널·데스크톱 앱에서만 그려지고 VS Code는 띠 자리를 보장하지 않으므로 UserPromptSubmit 훅이 공통 경로다. `npm run guard:settings` 출력에 `UserPromptSubmit` 항목이 늘었으니, 훅을 이미 설치했다면 그 항목을 설정에 합친다.
 
 ## 0.20.0 — 2026-10-12
 

@@ -60,6 +60,7 @@ CLOSE까지 가야 성공이다. 어느 단계에서든 지금 칠 명령은 `no
 - **재량권(opt-in).** 리드가 init에서 작업 단위로 `delegation`을 주면, 컨트롤러가 조건을 전부 확인했을 때 STANDARD 라운드를 승인하고(`delegated-policy`로 기록), 일시 장애로 결과 없이 끝난 일꾼 실행을 되돌려 다시 시도하고, 못 끝낸 리뷰어를 다른 회사 모델로 바꾼다. 조건이 하나라도 모자라면 리드 게이트에서 멈춘다. 재량권이 없는 작업은 지금까지처럼 멈춘다. → [universal-supervisor](references/universal-supervisor.md#위임-승인-재량권)
 - **오토파일럿.** `autopilot`이 라운드 실행과 독립 위임 리뷰를 자동으로 진행한다(아래 [설치와 사용](#설치와-사용)). `report`의 `lead_load`는 리드가 직접 판정한 횟수와 컨트롤러가 승인한 횟수, 리드가 읽어야 했던 게이트 수, 자동·수동 복구 수를 보여 준다.
 - **요약 뒤에도 이어 가기.** 리드 가드의 SessionStart 훅이 대화가 요약되거나 새 세션이 시작될 때 진행 중인 작업과 다음 명령을 한 번 알려 준다. 작업이 없으면 아무것도 넣지 않는다.
+- **작업 상태 한 줄.** `fusion-state.mjs line`, UserPromptSubmit 훅, 프롬프트 위 띠 모드(`mods/hf-status`)가 같은 한 줄로 단계·일꾼 라운드·다음 동작을 보여 준다. 사용자가 리드에게 묻지 않아도 된다. [운영 설명](references/operations.md#작업-상태-표시)
 - **내장 기억 계층.** 시행착오(에러, 절차, 경험)를 외부 서버 없이 로컬에 쌓아 다음 세션과 다른 일꾼에게 넘긴다. 쓰기와 읽기 모두 리드의 승인을 거치고, 비밀값은 저장하지 않는다. → [memory](references/memory.md)
 - **알림.** `HF_NOTIFY_URL`(예: ntfy)로 일꾼 완료나 리드 판단이 필요할 때 휴대폰 푸시를 받는다. 본문은 상태만 담는다.
 
@@ -116,7 +117,7 @@ Claude Code에서 Opus 5.5를 고르고:
 
 리드가 [SKILL.md](SKILL.md)에 따라 컨트롤러와 브리지를 호출한다. 먼저 `node scripts/setup-doctor.mjs <저장소>`로 설치 상태를 점검한다. 설정은 대상 저장소의 `hyperfusion.config.json`(예시: `hyperfusion.config.example.json`).
 
-**리드 가드 훅 설치(권장).** `npm run guard:settings`가 이 PC의 절대 경로로 된 훅 설정(PreToolUse, Stop, SessionStart)을 출력한다. 그 `hooks` 항목을 `~/.claude/settings.json`(또는 대상 저장소의 `.claude/settings.json`)에 합친다. 훅을 이미 설치했다면 출력의 `SessionStart` 항목만 더하면 된다.
+**리드 가드 훅 설치(권장).** `npm run guard:settings`가 이 PC의 절대 경로로 된 훅 설정(PreToolUse, Stop, SessionStart, UserPromptSubmit)을 출력한다. 그 `hooks` 항목을 `~/.claude/settings.json`(또는 대상 저장소의 `.claude/settings.json`)에 합친다. 훅을 이미 설치했다면 출력의 `SessionStart`와 `UserPromptSubmit` 항목만 더하면 된다.
 
 **오토파일럿.** 초기화된 작업은 `node scripts/fusion-state.mjs autopilot <저장소>`로 라운드 실행과 독립 위임 리뷰를 자동 진행할 수 있다. 리드가 정한 `acceptance_commands`가 있어야 하고, 기준 트리에서 실패가 확인된(red) 명령이어야 한다(보존 검증 작업은 반대로 이미 통과가 확인돼야 한다). classic 리뷰에서는 `review.auto_apply:true`도 필요하다(`lead-gated-adaptive`는 어차피 리드 게이트에서 멈추므로 요구하지 않는다). VERIFY·설계 결정·BLOCKED·takeover에서 리드에게 제어를 돌려주며, 정지·스냅샷·예산·검증 확인에 실패하면 멈춘다. 리드가 재량권을 준 작업은 컨트롤러가 승인한 라운드의 verify까지 이어 간다([운영 설명](references/operations.md#오토파일럿)).
 

@@ -36,7 +36,25 @@ CLI 실패의 stderr는 `{code, message, next_action}` JSON이다. doctor는 체
 
 같은 설정에 **SessionStart 훅**(`startup|resume|compact`)도 있다. 대화가 요약되거나 새 세션이 시작될 때 cwd의 저장소에 끝나지 않은 작업이 있으면 작업 id, 단계, 일꾼, 라운드, 다음 동작과 `fusion-state.mjs next` 명령을 컨텍스트에 한 번 넣어, 요약이 작업 상태를 잃어도 리드가 이어 가게 한다. 진행 중인 작업이 없거나 상태를 읽지 못하면 아무것도 넣지 않는다(세션 시작을 막지 않는다). 모델을 부르지 않는다.
 
+같은 설정에 **UserPromptSubmit 훅**도 있다. 프롬프트를 보낼 때 cwd의 저장소에 끝나지 않은 작업이 있으면 작업 상태 한 줄(`HF ▸ 작업 │ 단계 │ 일꾼 라운드/상한 │ 다음 동작`)을 `systemMessage`로 사용자 화면에만 보여 준다. 모델 컨텍스트와 토큰에는 들어가지 않고, 아무것도 막지 않는다. 작업이 없거나 상태를 읽지 못하면 아무것도 내지 않는다. 훅을 이미 설치했다면 `npm run guard:settings` 출력의 `UserPromptSubmit` 항목을 더한다.
+
 Git 저장소 밖의 파일(스크래치 패드의 입력 JSON 등)은 막지 않는다. 일꾼 Sonnet은 `--safe-mode`로 떠서 사용자 훅이 꺼지므로 이 훅에 막히지 않는다. Bash·PowerShell을 통한 쓰기는 검사하지 않는다. 그 경로는 기존 보호 파일 스냅샷과 라운드 diff 검사가 잡는다.
+
+## 작업 상태 표시
+
+사용자가 Opus만 상대해도 "지금 어디까지 왔나"를 바로 볼 수 있게 상태 한 줄을 세 곳에서 보여 준다. 세 곳 모두 `scripts/status-line.mjs`의 같은 문장이다.
+
+```
+HF ▸ HF-test │ REVIEW 리뷰 차례 │ grok 1/3 │ 다음 review or delegate-review
+```
+
+| 곳 | 쓰는 법 | 보이는 화면 |
+|---|---|---|
+| 명령 | `node scripts/fusion-state.mjs line REPO_ROOT` | 어디서나(터미널에서 직접) |
+| UserPromptSubmit 훅 | `npm run guard:settings` 출력에 포함 | 훅 메시지를 보이는 화면. VS Code에서 보이는지는 확인이 필요하다 |
+| 프롬프트 위 띠 | `mods/hf-status` 모드([설치](../mods/hf-status/README.md)) | 터미널·데스크톱 앱. 모드 API가 VS Code는 띠 자리를 보장하지 않는다고 적고 있다 |
+
+일꾼 라운드는 `사용 / 상한`이고 상한에 닿으면 `상한`이 붙는다(상한에 닿은 일꾼에게는 `lead-decision`이 REDO를 받지 않고 교체를 요구한다). 상담이 열려 있으면 `상담 열림`이 붙는다. 진행 중인 작업이 없거나(CLOSE·BLOCKED·ARCHIVED 포함) 상태를 읽지 못하면 아무것도 보이지 않는다. 표시 때문에 작업이 멈추는 일은 없다: 상태 파일만 읽고, 잠금을 잡지 않고, 모델을 부르지 않는다.
 
 ## 수용 테스트 자동 실행
 

@@ -24,6 +24,7 @@
 | consult-finish | quiescent:true → 위원별 결과. 트리가 바뀌었으면 답변 폐기 후 RECOVERY_REQUIRED |
 | status | 기본은 전체 상태. `--summary`면 task_id·phase·owner·remaining·next_action만 출력하고 감시 필드는 넣지 않는다. `--monitor`는 별도 보기이며 `declares_success:false`와 라운드 모니터만 낸다. 두 플래그는 함께 쓸 수 없다 |
 | monitor | 작업 디렉터리의 모니터를 읽기 전용으로 출력. `--once`(생략 가능) 또는 `--watch`. 잠금을 잡지 않고, 진행률을 내지 않으며, 작업 성공을 선언하지 않는다 |
+| line | 작업 상태 한 줄(`HF ▸ 작업 │ 단계 │ 일꾼 라운드/상한 │ 다음 동작`). 상태 파일만 읽고 잠금을 잡지 않으며, 진행 중인 작업이 없으면 아무것도 출력하지 않는다. 프롬프트 위 띠와 UserPromptSubmit 훅이 같은 문장을 쓴다 |
 | next | 지금 단계에서 칠 다음 명령 한 줄(`command_line`)과, token·baseline_digest처럼 컨트롤러가 아는 값을 미리 채운 입력 틀. 읽기 전용이고 상태를 바꾸지 않는다. 비워 둔 칸(`<...>`)만 채워 표준입력(`-`)으로 넘긴다 |
 | report | 현재 작업의 라운드별 담당·판정·소요 시간·비용. 과거 작업은 입력에 task_id 지정 |
 | autopilot | 초기화된 작업에서 begin → 브리지 → finish → 독립 위임 리뷰 → consult-finish를 반복. `acceptance_commands` 필수이고, classic 모드는 `review.auto_apply:true`도 필요하다. `review.strategy:"lead-gated-adaptive"`에서는 `auto_apply`를 요구하지 않는다(어차피 리드 게이트에서 멈춘다). VERIFY·LEAD_DECISION_REQUIRED·DECISION_REQUIRED·BLOCKED·TAKEOVER_REQUIRED 및 안전 확인 실패에서 리드에게 제어 반환. 입력 `{"max_steps":64}`(1~256, 기본 64). [운영 설명](operations.md#오토파일럿) |

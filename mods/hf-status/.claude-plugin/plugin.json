@@ -1,0 +1,21 @@
+{
+  "name": "hf-status",
+  "version": "0.1.0",
+  "author": { "name": "prentice7725" },
+  "description": "HyperFusion 작업 상태(단계·일꾼·라운드·다음 동작)를 프롬프트 위 한 줄로 보여 줍니다.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "script": {
+      "type": "string",
+      "title": "fusion-state.mjs 경로",
+      "description": "hyperfusion의 scripts/fusion-state.mjs 절대 경로. 비어 있으면 띠가 나타나지 않습니다.",
+      "default": ""
+    },
+    "node": {
+      "type": "string",
+      "title": "node 실행 파일",
+      "description": "상태 줄을 읽는 데 쓸 node. 기본은 PATH의 node.",
+      "default": "node"
+    }
+  }
+}
