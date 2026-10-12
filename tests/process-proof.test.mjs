@@ -65,3 +65,20 @@ test('a genuine leftover child of the exited root still fails the proof',async()
  assert.equal(proof.quiescent,false);
  assert.deepEqual(proof.remaining.map(p=>p.name),['leftover.exe']);
 });
+
+import {autopilot} from '../scripts/autopilot.mjs';
+import {fixture} from './support.mjs';
+import {run} from '../scripts/fusion-state.mjs';
+test('autopilot returns why it stopped for recovery, so a CI log shows the cause',async t=>{
+ const f=fixture(t,{initialize:false});
+ run(f.root,'init',{...f.brief,executor:'grok',acceptance_commands:['node -e "process.exit(1)"']});
+ // 복구 단계와 사유를 직접 만들어 autopilot의 정지 반환값을 확인한다.
+ const file=f.control+'/state.json';
+ const fs=await import('node:fs');
+ const state=JSON.parse(fs.readFileSync(file,'utf8'));
+ state.phase='RECOVERY_REQUIRED';state.last_errors=['ACCEPTANCE_NOT_QUIESCENT: Supervised processes remain (x.exe pid=1 parent=2)'];
+ fs.writeFileSync(file,JSON.stringify(state));
+ const out=await autopilot(f.root);
+ assert.equal(out.phase,'RECOVERY_REQUIRED');
+ assert.match(out.last_errors[0],/ACCEPTANCE_NOT_QUIESCENT.*x\.exe pid=1/);
+});

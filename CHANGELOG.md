@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Windows에서 수용 테스트가 이따금 `ACCEPTANCE_NOT_QUIESCENT: Supervised processes remain (csrss.exe …, wininit.exe …, services.exe …)`로 멈추던 문제의 원인을 고쳤다. Windows는 죽은 부모의 PID를 자식의 `ParentProcessId`에 그대로 남기고 PID를 빠르게 재사용한다. 감독하는 프로세스의 PID가 부팅 때 죽은 프로세스의 PID와 같고 그 프로세스가 이미 끝나 표에서 사라지면, 그 옛 PID를 부모로 가진 시스템 프로세스(csrss, wininit, 그 아래 svchost 수십 개)가 우리 자손으로 잡혔다. 이제 자손 판정은 뿌리가 표에 없어도 뿌리의 생성 시각(표 → 처음 관측한 값 → 감독 시작 시각 순)보다 먼저 태어난 프로세스를 자손으로 세지 않는다. 시작 시각 앞에 2초 여유를 둬 Linux `lstart`의 초 단위 절단은 닫는 쪽으로 기운다. 진짜 잔존 자식(시작 뒤에 태어난 것)은 그대로 잡힌다.
+- Windows에서 수용 테스트가 이따금 `ACCEPTANCE_NOT_QUIESCENT: Supervised processes remain (csrss.exe …, wininit.exe …, services.exe …)`로 멈추던 문제의 원인을 고쳤다. Windows는 죽은 부모의 PID를 자식의 `ParentProcessId`에 그대로 남기고 PID를 빠르게 재사용한다. 감독하는 프로세스의 PID가 부팅 때 죽은 프로세스의 PID와 같고 그 프로세스가 이미 끝나 표에서 사라지면, 그 옛 PID를 부모로 가진 시스템 프로세스(csrss, wininit, 그 아래 svchost 수십 개)가 우리 자손으로 잡혔다. 이제 자손 판정은 뿌리가 표에 없어도 뿌리의 생성 시각(표 → 처음 관측한 값 → 감독 시작 시각 순)보다 먼저 태어난 프로세스를 자손으로 세지 않는다. 시작 시각 앞에 2초 여유를 둬 Linux `lstart`의 초 단위 절단은 닫는 쪽으로 기운다. 진짜 잔존 자식(시작 뒤에 태어난 것)은 그대로 잡힌다. 또한 오토파일럿이 RECOVERY_REQUIRED로 멈출 때 반환값에 `last_errors`(최대 3개)를 함께 담아, 호출한 쪽과 CI 로그에서 멈춘 이유가 바로 보이게 했다.
 
 - 테스트가 만드는 하위 프로세스 줄이기(Windows CI 속도): 테스트 한 번이 프로세스 18,906개를 만들고 그 중 git이 86%였다(Windows에서 git은 25~32ms, node는 38~45ms). 두 곳을 고쳐 3,458개(18.3%)를 줄였다. 테스트 픽스처가 저장소를 매번 `init`·`config`×2·`add`·`commit`으로 만들던 것을 파일당 한 번 만든 템플릿의 복사로 바꿨고, `repo()`는 성공한 확인을 기억하되 루트 아래 `.git` 항목의 지문(종류·장치·inode, 파일이면 크기·mtime)이 그대로일 때만 쓴다. `.git`을 지우거나 바꿔치면 git에 다시 묻고, 하위 폴더 거절은 기억하지 않는다. 스냅샷 digest와 그 계산은 건드리지 않았다.
 - `tools/count-spawns.mjs`(`npm run spawns`): 명령이 만드는 하위 프로세스를 하위 node 프로세스까지 세어 명령별·호출 지점별로 요약한다. 줄이기 전후를 같은 방법으로 비교하는 용도.
