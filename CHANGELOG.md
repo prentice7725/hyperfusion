@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+- 샌드박스 오류로 실패한 테스트(R2): 일꾼의 샌드박스·환경이 막아서 돌지 못한 테스트를 `status:"fail"`에 `environment_error`(사유)를 붙여 보고하면 `complete`와 함께 받는다(전에는 "Contradictory complete result"로 거절돼 라운드가 RECOVERY_REQUIRED로 멈췄다). 통과로 세지 않는다: 위임 승인은 거절하고, 리드 패킷에 `environment_failures`로 올라가며, 수용 명령은 컨트롤러가 직접 돌린다. 사유 없는 `fail`은 여전히 모순이다. 일꾼 결과 스키마와 지시문에 필드를 추가했다.
+- 공유 git 설정 복구 길(R2): `.git/config`, `.git/config.worktree`, `.git/info/exclude`, `.git/info/attributes`가 라운드 중에 바뀌면(`push -u`·`checkout -b` 추적 설정, `worktree add`, 다른 worktree) 범위 밖으로 잡혀 `allow_out_of_scope`로도 받을 수 없던 문제를 고쳤다. 이 네 파일만 사유와 함께 예외로 받는다. 훅과 그 밖의 `.git` 경로는 계속 받지 않는다. 설정에 명령을 실행할 수 있는 항목(`core.fsmonitor`, `!` 별칭, 필터·드라이버, `include` 등)이 있으면 받지 않고, 받은 뒤에 그런 항목이 생기면 예외 효력이 사라진다. 일꾼이 라운드 중 `.git/config`를 바꾸면 오류가 복구 방법을 알려 준다.
+- 라운드 상한에 닿은 일꾼의 같은 일꾼 REDO(R2): #36에서 이미 고쳤다. `lead-decision`이 REDO를 거절하고 교체(REASSIGN)를 요구하며, 리드 패킷의 추천도 교체로 바뀐다.
+
 - 작업 상태 한 줄: `HF ▸ 작업 │ 단계 │ 일꾼 라운드/상한 │ 다음 동작`을 `scripts/status-line.mjs` 한 곳에서 만들어 세 곳이 같은 문장을 쓴다. ① `fusion-state.mjs line REPO`(읽기 전용, 잠금 없음, 작업이 없으면 출력 없음), ② lead-guard의 UserPromptSubmit 훅(`systemMessage`라서 사용자 화면에만 보이고 모델 컨텍스트에는 들어가지 않으며 아무것도 막지 않는다), ③ 프롬프트 위 띠 모드 `mods/hf-status`(Bash 호출 뒤·턴 끝·세션 시작에 `line`을 다시 읽고, 줄이 바뀌면 숨김을 풀며, `.claude-plugin/marketplace.json`으로 설치한다). 라운드 상한에 닿은 일꾼은 `상한`으로 표시된다. 띠는 터미널·데스크톱 앱에서만 그려지고 VS Code는 띠 자리를 보장하지 않으므로 UserPromptSubmit 훅이 공통 경로다. `npm run guard:settings` 출력에 `UserPromptSubmit` 항목이 늘었으니, 훅을 이미 설치했다면 그 항목을 설정에 합친다.
 
 ## 0.20.0 — 2026-10-12

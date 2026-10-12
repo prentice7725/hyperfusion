@@ -8,7 +8,7 @@ import {PROTOCOL,VERSION} from '../versions.mjs';
 // 외부 일꾼(Grok, Antigravity)이 공통으로 따르는 결과 계약과 지시문.
 export function resultSchema(task_id,round) {
  const strings={type:'array',items:{type:'string'}};
- const properties={task_id:{type:'string',const:task_id},round:{type:'integer',const:round},status:{type:'string',enum:['complete','blocked','needs_decision','failed']},summary:{type:'string'},files_read:strings,files_changed:strings,commands_run:strings,tests:{type:'array',items:{type:'object',properties:{command:{type:'string'},status:{type:'string',enum:['pass','fail','not_run']}},required:['command','status'],additionalProperties:false}},unresolved:strings,risks:strings,needs_lead_decision:{type:'boolean'},recommended_next_action:{type:'string'}};
+ const properties={task_id:{type:'string',const:task_id},round:{type:'integer',const:round},status:{type:'string',enum:['complete','blocked','needs_decision','failed']},summary:{type:'string'},files_read:strings,files_changed:strings,commands_run:strings,tests:{type:'array',items:{type:'object',properties:{command:{type:'string'},status:{type:'string',enum:['pass','fail','not_run']},environment_error:{type:'string'}},required:['command','status'],additionalProperties:false}},unresolved:strings,risks:strings,needs_lead_decision:{type:'boolean'},recommended_next_action:{type:'string'}};
  const required=Object.keys(properties);
  // 선택 항목: 다음 세션·다른 일꾼이 알아야 할 교훈. 리드가 승인해야 기억에 저장된다.
  properties.memory_candidates={type:'array',maxItems:3,items:{type:'object',properties:{type:{type:'string',enum:['error','procedure','episode','fact']},content:{type:'string'},keywords:strings},required:['type','content'],additionalProperties:false}};
@@ -33,7 +33,7 @@ const IMPLEMENT_RULES=[
  'Keep task_id and round unchanged. status is complete, blocked, needs_decision or failed; needs_decision requires needs_lead_decision=true.',
  'files_read and files_changed are repository-relative paths; files_changed covers only this round and must match the real diff exactly.',
  'tests holds commands you actually ran with status pass, fail or not_run. Never invent evidence: the lead re-runs everything and diffs the tree.',
- 'complete means no failed tests, no unresolved items and no pending lead decision.',
+ 'complete means no failed tests, no unresolved items and no pending lead decision. If your sandbox or environment (not the code) stopped a test from running (permission denied, blocked network or spawn), report it with status fail plus environment_error naming what was refused; that is allowed with complete, but the controller does not count it as a pass and the lead sees it. Never use environment_error for a failure your change caused.',
  'Optional memory_candidates: up to 3 one- or two-sentence lessons the next agent should know (error with its cause and fix, a procedure that worked, a notable episode). Facts only, never secrets, never a copy of the brief. The lead decides whether they are kept.'
 ];
 const IMPLEMENT_ORDERS=[

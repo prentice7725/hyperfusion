@@ -41,4 +41,6 @@ $token = (Get-Content "$CTRL\locks\writer.json" | ConvertFrom-Json).token
 1. **되돌린다.** 리드가 diff를 보고 그 파일을 직접 되돌린 뒤 `recover`한다. 다음 라운드가 깨끗한 기준선에서 시작한다.
 2. **알고 받아들인다.** `recover`에 `allow_out_of_scope: [{"path":"b.txt","reason":"사용자가 이 수정에 b.txt도 포함하라고 했다"}]`를 준다. 사유가 필수이고 기록(`scope_exceptions`)으로 남는다.
 
+**공유 git 설정.** `git push -u`·`checkout -b`의 추적 설정, `worktree add`, 같은 저장소를 쓰는 다른 worktree, 사람이 친 `git config`는 일꾼이 아니어도 `.git/config`를 바꾼다. 스냅샷이 이 파일의 해시를 라운드 앞뒤로 비교하므로 `Out of scope: .git/config`로 잡힌다(`.git/config`, `.git/config.worktree`, `.git/info/exclude`, `.git/info/attributes`). 되돌릴 수 없는 변경이면 위의 2번처럼 `allow_out_of_scope: [{"path":".git/config","reason":"..."}]`로 받는다. 이 네 파일만 가능하고 **훅(`.git/hooks/*`)과 그 밖의 `.git` 경로는 어떤 경우에도 받지 않는다**(코드라서). 설정은 명령을 실행할 수 있으므로(`core.fsmonitor`, `!` 별칭, 필터·diff·merge 드라이버, `include`) 지금 그런 항목이 하나라도 있으면 받지 않고 항목을 알려 준다(`git config --unset`으로 지운 뒤 다시). 받은 뒤에 그런 항목이 생기면 예외는 더 이상 인정되지 않는다.
+
 마지막 관문인 `verify`는 라운드 단위가 아니라 **최초 기준선과 비교해** 허용 범위(시작 brief와 모든 라운드 brief의 범위 + 예외) 밖에 남은 변경이 있으면 거절한다. 라운드 사이에 사용자가 다른 파일을 고친 경우도 여기서 걸린다. 그 변경이 의도된 것이면 `verify`에 같은 `allow_out_of_scope`를 줄 수 있다. 되돌리는 쪽이면 작업이 다시 한 라운드 필요하다.

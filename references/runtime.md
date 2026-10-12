@@ -17,7 +17,7 @@
 | auto-substitute-review | `LEAD_DECISION_REQUIRED`에서 재량권이 있는 작업만. 못 끝낸 리뷰어 자리를 다른 회사의 설치된 리뷰어로 채우는 `delegate-review`를 연다. 못 고르면 `AUTO_SUBSTITUTE_REFUSED`와 이유 |
 | decide | decision → 같은 일꾼 REDO(예산 내) |
 | verify | acceptance_satisfied:true, 실제 통과 테스트 → CLOSE. brief에 `acceptance_commands`가 있으면 컨트롤러가 직접 돌린 결과가 증거이고 `tests`는 선택이다(finish 직후 실행이 통과했고 트리가 그대로면 재사용). 무시된 파일이 바뀌어 실행을 건너뛰었으면 확인 후 `acceptance_trust_ignored:true`. 여기서 실패하면 REDO로 되돌린다. 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 거절한다. 알고 받아들일 때만 `allow_out_of_scope: [{path, reason}]` |
-| recover | token(보유 시), quiescent:true, reason, 선택 `allow_out_of_scope: [{path, reason}]`(범위 밖에 남은 파일을 알고 받아들일 때) |
+| recover | token(보유 시), quiescent:true, reason, 선택 `allow_out_of_scope: [{path, reason}]`(범위 밖에 남은 파일을 알고 받아들일 때; `.git/config` 등 공유 git 설정 4개만 `.git` 경로 중 예외로 받으며 [조건](recovery-protocol.md#범위-밖에-남은-파일)) |
 | archive | quiescent:true, reason, token(보유 시) → ARCHIVED |
 | consult | mode(advisor/committee), question, focus?, executors? → 읽기 전용 상담 dispatch. [consult.md](consult.md) |
 | delegate-review | REVIEW에서 다른 모델에게 읽기 전용 리뷰를 맡김(executors? 생략 시 review.reviewers 순서, 구현자 제외) |
