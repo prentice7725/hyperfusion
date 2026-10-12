@@ -1,0 +1,16 @@
+{
+  "name": "hyperfusion",
+  "owner": {
+    "name": "prentice7725"
+  },
+  "plugins": [
+    {
+      "name": "hf-status",
+      "source": "./mods/hf-status",
+      "description": "HyperFusion 작업 상태(단계·일꾼·라운드·다음 동작)를 프롬프트 위 한 줄로 보여 줍니다."
+    }
+  ],
+  "metadata": {
+    "description": "HyperFusion 작업 상태를 프롬프트 위에 보여 주는 Claude Code 모드"
+  }
+}

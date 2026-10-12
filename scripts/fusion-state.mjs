@@ -27,6 +27,7 @@ import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
 import {ensureControl,isLegacy,migrate,controlRoot,controlPath,acquireLock} from './control-dir.mjs';
 import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex,operatorIgnoredAllow} from './acceptance.mjs';
 import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
+import {readStatusLine} from './status-line.mjs';
 import {sameFamily} from './review-plan.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation} from './review-plan.mjs';
 
@@ -1711,6 +1712,13 @@ async function cli() {
     if(action==='migrate'){
       console.log(JSON.stringify(migrate(repo(root)),null,2));
       process.exit(0);
+    }
+    // line은 작업 상태 한 줄이다. 상태 파일만 읽고 잠금을 잡지 않으며, 진행 중인 작업이 없으면 아무것도 출력하지 않는다.
+    if(action==='line'){
+      if(file||rest.length)throw Error('line takes only the repository root');
+      const text=readStatusLine(repo(root));
+      if(text)console.log(text);
+      return;
     }
     // 감시는 읽기 전용이다. --watch가 컨트롤러 잠금을 잡고 있으면 라운드가 멈춘다.
     if(action==='monitor'){
