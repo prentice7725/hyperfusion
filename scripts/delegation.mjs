@@ -20,7 +20,7 @@ export function takeDelegation(configuration,assignment,input) {
  const fail=why=>Error('DELEGATION: '+why);
  if(configuration?.review?.strategy!=='lead-gated-adaptive')throw fail('requires review.strategy "lead-gated-adaptive" (the lead gate is what the policy stands in for)');
  if(!d||typeof d!=='object'||Array.isArray(d))throw fail('delegation must be an object {policy, reason, max_rounds?}');
- const unknown=Object.keys(d).filter(k=>!['policy','reason','max_rounds'].includes(k));
+ const unknown=Object.keys(d).filter(k=>!['policy','reason','max_rounds','allow_preserve'].includes(k));
  if(unknown.length)throw fail('unknown field '+unknown.join(', '));
  if(!DELEGATION_POLICIES.includes(d.policy))throw fail('policy must be one of '+DELEGATION_POLICIES.join(', '));
  if(typeof d.reason!=='string'||!d.reason.trim()||d.reason.length>300)throw fail('reason must be a short text saying why this task may be approved without the lead');
@@ -28,23 +28,30 @@ export function takeDelegation(configuration,assignment,input) {
  if(!Number.isSafeInteger(rounds)||rounds<1||rounds>MAX_DELEGATED_ROUNDS)throw fail(`max_rounds must be an integer from 1 to ${MAX_DELEGATED_ROUNDS}`);
  if(assignment?.criticality!=='standard'||assignment?.strategy!=='external_primary')throw fail('only a STANDARD task with the external_primary strategy can be delegated; important and apex tasks stay with the lead');
  if(!input.acceptance_commands?.length)throw fail('acceptance_commands are required (the controller\'s own test run is the evidence)');
- if(input.acceptance_baseline_green!==undefined)throw fail('commands that already pass before any change cannot back a delegated approval (red-first is required)');
+ if(d.allow_preserve!==undefined&&typeof d.allow_preserve!=='boolean')throw fail('allow_preserve must be true or false');
+ const preserve=input.verification?.kind==='preserve';
+ if(preserve){
+  // 리팩터링: red-first 대신 보호 경로 불변이 증거다. 리드가 이 작업에 한해 명시적으로 허용해야 한다.
+  if(d.allow_preserve!==true)throw fail('a preserve (refactor) task is delegated only when the lead sets allow_preserve:true');
+  if(input.task_kind!=='refactor')throw fail('a delegated preserve task must say task_kind:"refactor"');
+ } else if(input.acceptance_baseline_green!==undefined)throw fail('commands that already pass before any change cannot back a delegated approval (red-first is required, or use verification preserve with allow_preserve:true)');
+ if(d.allow_preserve===true&&!preserve)throw fail('allow_preserve applies only to a task with verification preserve');
  const ids=criterionIds(input.success_criteria);
  if(!ids.length)throw fail('success_criteria must carry AC ids (AC1, AC2...)');
  const mapped=Object.keys(input.acceptance_map??{}).map(x=>x.toUpperCase());
  const missing=ids.filter(id=>!mapped.includes(id));
  if(missing.length)throw fail('acceptance_map must cover every AC; missing '+missing.join(', '));
  delete input.delegation;
- return {policy:d.policy,reason:d.reason.trim(),max_rounds:rounds,revision:1,granted_by:'lead-at-init',set_by:'controller'};
+ return {policy:d.policy,reason:d.reason.trim(),max_rounds:rounds,allow_preserve:d.allow_preserve===true,revision:1,granted_by:'lead-at-init',set_by:'controller'};
 }
 
 export function sameDelegation(recorded,current) {
  if(!recorded||!current)return false;
- return ['policy','reason','max_rounds','revision','granted_by','set_by'].every(k=>recorded[k]===current[k]);
+ return ['policy','reason','max_rounds','allow_preserve','revision','granted_by','set_by'].every(k=>recorded[k]===current[k]);
 }
 
 // 승인 때 브리프가 처음 계약에서 벗어나지 않았는지 비교하는 필드.
-export const CONTRACT_FIELDS=['success_criteria','acceptance_commands','acceptance_map','acceptance_artifacts','acceptance_timeout_ms'];
+export const CONTRACT_FIELDS=['verification','success_criteria','acceptance_commands','acceptance_map','acceptance_artifacts','acceptance_timeout_ms'];
 export function contractChanged(initial,current) {
  const same=(a,b)=>JSON.stringify(a??null)===JSON.stringify(b??null);
  return CONTRACT_FIELDS.filter(k=>!same(initial?.[k],current?.[k])).concat(same(initial?.scope?.paths,current?.scope?.paths)?[]:['scope.paths']);

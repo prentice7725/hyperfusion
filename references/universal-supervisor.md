@@ -30,6 +30,7 @@
 - STANDARD이고 `external_primary`인 작업(important·apex·Sonnet 구현·Sol 구현은 위임 불가). 구현자는 grok, antigravity, haiku, luna 중 하나
 - `acceptance_commands`가 있고 처음 트리에서 실패(red-first). `acceptance_baseline_green`으로 면제된 작업은 불가
 - `success_criteria`의 모든 AC ID가 `acceptance_map`에 있음
+- 리팩터링처럼 red-first가 안 되는 작업(`verification: {"kind":"preserve",...}`)은 리드가 `delegation.allow_preserve:true`를 명시하고 `task_kind:"refactor"`일 때만 위임된다. 이때 red-first 대신 "수정 전에도 통과 + 보호 경로(테스트·픽스처) 불변"을 승인 조건으로 확인하고, 승인 기록의 `policy_checks`에 남는다
 
 **승인 조건.** `LEAD_DECISION_REQUIRED`에서 `policy-approve`(autopilot이 부르거나 리드가 직접 부른다)가 컨트롤러 기록만으로 아래를 전부 확인했을 때만 승인한다. 하나라도 부족하면 상태를 바꾸지 않고 `POLICY_NOT_ELIGIBLE`과 이유를 돌려주며, 작업은 지금처럼 리드 게이트에 남는다. `next`가 `delegated_policy`에 지금 승인 가능한지와 이유를 보여 준다.
 1. 위임·배정 기록이 컨트롤러 기록과 같음, 라운드 수 ≤ `max_rounds`, writer 없음, 라운드 뒤 트리 그대로, 예산 남음

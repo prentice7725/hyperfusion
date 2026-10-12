@@ -61,6 +61,7 @@ export function prDraft({state,brief,table,changed,rounds,risks}) {
  if(changed.length)lines.push(...changed.map(f=>`- \`${f}\``),'');
  lines.push('## 수용 기준','','| AC | 기준 | 판정 | 증명 명령 |','|---|---|---|---|',
   ...table.map(r=>`| ${r.id} | ${cell(r.criterion)} | ${r.status} | ${r.commands.map(x=>'`'+cell(x)+'`').join('<br>')||'-'} |`),'');
+ if(brief.verification?.kind==='preserve')lines.push(`> 검증: 보존(preserve). 수정 전에도 통과하는 명령이고, 보호 경로(${brief.verification.protect.map(g=>'`'+g+'`').join(', ')})의 파일은 작업 내내 바뀌지 않았다.`,'');
  const plain=brief.success_criteria.filter(t=>!criterionIds([t]).length);
  if(plain.length)lines.push('ID 없는 기준(리뷰로 확인):','',...plain.map(t=>`- ${t}`),'');
  if(state?.lead_decision?.authority?.source==='delegated-policy')lines.push('> 승인: 위임 정책('+state.lead_decision.authority.policy+')이 컨트롤러 조건을 확인해 승인했다. 리드가 이 라운드를 직접 읽지 않았다.','');
