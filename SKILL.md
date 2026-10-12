@@ -2,7 +2,7 @@
 name: hyperfusion
 description: Orchestration skill where Claude Opus 5.5 leads (plans, routes, rejects, verifies) and never writes code; implementation and tests go to workers picked per task (Grok Build CLI, Antigravity CLI, Claude Code Sonnet, Codex Luna), and reviews can go to Sol (Codex). Single writer, auditable rounds, concrete orders on every rejection, worker swap on repeated mistakes. Use when asked to have HyperFusion, Grok, Antigravity, agy or Sonnet do coding or image-asset work.
 ---
-# HyperFusion v0.19.0
+# HyperFusion v0.20.0
 
 For an explicitly selected v0.3 profile, read [universal-supervisor.md](references/universal-supervisor.md) and use [hyperfusion.v03.config.example.json](hyperfusion.v03.config.example.json). Its owner-aware mandatory reviews and lead-decision gate override the classic worker/review policy below. Review rule: the model that implemented a round never reviews it; everything else bends to quota and outages. The table picks the default reviewers and the seat count; when a reviewer is exhausted, fails, or rejects and you want a second opinion, `delegate-review` again with `executors` naming another model and a `substitution_reason` (a replaced rejection is overruled only after the substitute passes and you review the diff yourself), or, with no reviewer left, approve only after naming `diff_reviewed`, `tests_checked` and `changed_scope` yourself. The lead always makes the final call. Sonnet implements only a granted important/reassigned round; Sol implements only a granted APEX round. Automated fallback cannot select either. Monitoring calls no model; never infer success or progress from output. Existing classic tasks are not migrated. The host lead's model is unverified unless observed; never claim actual Opus review from a model-name string.
 
@@ -38,7 +38,7 @@ Talk to the user in their language. Briefs, `lead_feedback` and review text can 
 
 With `delegation:{policy:"standard-auto",reason}` at init (STANDARD, red-first, every AC mapped), the controller may approve a round itself when all of its checks pass, recorded as `delegated-policy`, and autopilot may also retry a worker run that failed before changing anything (twice) and replace a reviewer that could not finish with one from another company; anything short stops at the lead gate ([universal-supervisor.md](references/universal-supervisor.md)). `fusion-state.mjs next REPO` prints the one command to run in the current phase with the known values (token, digest) already filled in. Command output is compact by default; add `--full` for everything.
 
-To run rounds automatically, `fusion-state.mjs autopilot REPO` after init. It needs red-proven acceptance commands, and `review.auto_apply:true` unless the review strategy is `lead-gated-adaptive`; VERIFY, decisions and takeover stay with the lead ([operations.md](references/operations.md#오토파일럿)). Status: `status REPO --summary`; history: `report REPO`.
+To run rounds automatically, `fusion-state.mjs autopilot REPO` after init. It needs red-proven acceptance commands (a `preserve` task needs commands recorded as already passing instead), and `review.auto_apply:true` unless the review strategy is `lead-gated-adaptive`; VERIFY, decisions and takeover stay with the lead ([operations.md](references/operations.md#오토파일럿)). Status: `status REPO --summary`; history: `report REPO`.
 
 ## Boundaries
 

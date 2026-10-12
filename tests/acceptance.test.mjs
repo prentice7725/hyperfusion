@@ -212,7 +212,8 @@ test('the baseline check also runs when acceptance commands first appear at the 
  assert.throws(()=>f.begin({acceptance_commands:['node -e "process.exit(0)"']}),/ACCEPTANCE_ALREADY_GREEN/);
  assert.equal(f.state().iteration,0);assert.equal(f.state().writer,null);
  f.begin({acceptance_commands:[CHECK]});
- assert.equal(f.state().acceptance_baseline.status,'red');
+ // 기준선 기록이 없으면 begin이 던지지 않고 RECOVERY_REQUIRED로 멈춘 것이다(프로세스 정지 미확인 등). 이유를 실패 메시지에 싣는다.
+ assert.equal(f.state().acceptance_baseline?.status,'red','phase='+f.state().phase+' errors='+JSON.stringify(f.state().last_errors));
 });
 
 test('a baseline run that changes the tree is refused',t=>{
