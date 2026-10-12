@@ -1,6 +1,6 @@
 # HyperFusion
 
-> **バージョン表記。** パッケージのリリースは`0.17.0`（`package.json`）で、**v0.3**はその上に載せた新しい運用プロファイル（External-First＋共通監視）の名前です。未リリースの変更は[CHANGELOG](CHANGELOG.md)のUnreleasedにあります。保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子で、正本の定数は`scripts/versions.mjs`です。
+> **バージョン表記。** パッケージのリリースは`0.18.0`（`package.json`）で、**v0.3**はその上に載せた新しい運用プロファイル（External-First＋共通監視）の名前です。未リリースの変更は[CHANGELOG](CHANGELOG.md)のUnreleasedにあります。保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子で、正本の定数は`scripts/versions.mjs`です。
 
 [한국어](README.md) | 日本語
 

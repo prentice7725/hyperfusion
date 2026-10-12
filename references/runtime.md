@@ -13,6 +13,8 @@
 | review | 판정/근거/증거 → 다음 단계. `{"adopt":true}`면 보류된 위임 판정 채택. `lead-gated-adaptive`에서는 이 액션으로 VERIFY에 가지 않는다 |
 | lead-decision | `LEAD_DECISION_REQUIRED`에서 `APPROVE\|REDO\|REDO_SAME_OWNER\|REASSIGN_TO_SONNET\|REASSIGN_OTHER\|ESCALATE\|BLOCK`, rationale, baseline_digest, contract_change. `APPROVE`는 VERIFY까지이고 CLOSE는 verify가 남긴다 |
 | policy-approve | `LEAD_DECISION_REQUIRED`에서 init 때 받은 위임(`delegation`)이 있는 STANDARD 작업만. 컨트롤러가 조건을 전부 확인하면 `delegated-policy`로 승인하고 VERIFY로 간다. 부족하면 `POLICY_NOT_ELIGIBLE`과 이유만 돌려주고 상태를 바꾸지 않는다. 입력 없음. [universal-supervisor.md](universal-supervisor.md#위임-승인-재량권) |
+| auto-recover | `EXECUTING`에서 재량권이 있는 작업만. 입력 `{error}`. 결과 없이 실패한 일시 장애를 컨트롤러 증거(종료 증명, 트리 불변)로 복구해 REDO로 보낸다. 작업당 2번. 조건이 안 맞으면 `AUTO_RECOVER_REFUSED`와 이유 |
+| auto-substitute-review | `LEAD_DECISION_REQUIRED`에서 재량권이 있는 작업만. 못 끝낸 리뷰어 자리를 다른 회사의 설치된 리뷰어로 채우는 `delegate-review`를 연다. 못 고르면 `AUTO_SUBSTITUTE_REFUSED`와 이유 |
 | decide | decision → 같은 일꾼 REDO(예산 내) |
 | verify | acceptance_satisfied:true, 실제 통과 테스트 → CLOSE. brief에 `acceptance_commands`가 있으면 컨트롤러가 직접 돌린 결과가 증거이고 `tests`는 선택이다(finish 직후 실행이 통과했고 트리가 그대로면 재사용). 무시된 파일이 바뀌어 실행을 건너뛰었으면 확인 후 `acceptance_trust_ignored:true`. 여기서 실패하면 REDO로 되돌린다. 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 거절한다. 알고 받아들일 때만 `allow_out_of_scope: [{path, reason}]` |
 | recover | token(보유 시), quiescent:true, reason, 선택 `allow_out_of_scope: [{path, reason}]`(범위 밖에 남은 파일을 알고 받아들일 때) |

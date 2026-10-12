@@ -190,7 +190,11 @@ test('acceptance fields are validated in the brief',t=>{
 test('acceptance commands that already pass on the untouched tree are refused unless the lead says why',t=>{
  const f=fixture(t,{initialize:false});
  const green={...f.brief,executor:'grok',acceptance_commands:['node -e "process.exit(0)"']};
- assert.throws(()=>run(f.root,'init',green),/ACCEPTANCE_ALREADY_GREEN/);
+ // 던지지 않고 RECOVERY_REQUIRED로 멈추면(프로세스가 남은 경우 등) 그 이유를 실패 메시지에 싣는다.
+ let thrown=null,started=null;
+ try{started=run(f.root,'init',green);}catch(e){thrown=e;}
+ assert.ok(thrown,'init did not refuse: phase='+started?.phase+' errors='+JSON.stringify(started?.last_errors));
+ assert.match(thrown.message,/ACCEPTANCE_ALREADY_GREEN/);
  assert.equal(fs.existsSync(path.join(f.control,'state.json')),false,'nothing was started');
  const s=run(f.root,'init',{...green,acceptance_baseline_green:'refactor: existing tests must keep passing'});
  assert.equal(s.acceptance_baseline.status,'green-acknowledged');

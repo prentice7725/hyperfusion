@@ -37,6 +37,14 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
   return s;
  };
  const settle=(action,input)=>{check();const out=run(root,action,input);event(action,state());return out;};
+ // 위임 리뷰를 한 번 돌린다: 리뷰 브리지를 실행하고, 모든 리뷰어의 프로세스 종료를 증명한 뒤 consult-finish.
+ const runReview=async descriptor=>{
+  check();
+  const result=await consult(root,descriptor.consult_id,{proveQuiescence:true,signal});event('consult',state());
+  // Failed reviewers may be replaced within controller caps, but only after verified shutdown.
+  if(result.members.some(m=>m.quiescence?.quiescent!==true))throw failure('AUTOPILOT_QUIESCENCE_REQUIRED',`Reviewer process-tree quiescence was not confirmed (${result.members.filter(m=>m.quiescence?.quiescent!==true).map(m=>`${m.executor}: ${proofText(m.quiescence)}`).join('; ')}); retain consultation evidence`);
+  settle('consult-finish',{quiescent:true});
+ };
  const stop=(reason,error)=>{
   const s=state();journal.finished_at=new Date().toISOString();journal.reason=reason;
   if(error)journal.error=errorRecord(error);
@@ -56,6 +64,13 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
     // 리드가 init에서 재량권(delegation)을 준 STANDARD 작업만: 컨트롤러가 조건을 전부 확인했을 때 승인하고 verify까지 이어 간다.
     // 조건이 하나라도 부족하면 승인하지 않고 이유와 함께 리드 게이트에서 멈춘다. 승인 기록은 delegated-policy로 표시된다.
     if(s.delegation&&s.phase==='LEAD_DECISION_REQUIRED'){
+     // 리뷰어 자리가 비었으면(한도·장애) 컨트롤러가 다른 회사 모델로 채워 다시 리뷰한다. 못 채우면 이유와 함께 게이트에 남는다.
+     if((s.review_results?.[s.iteration]??[]).some(r=>!r.ok)){
+      let descriptor;
+      try{descriptor=settle('auto-substitute-review',{});}
+      catch(e){if(e.code==='AUTO_SUBSTITUTE_REFUSED')return stop('LEAD_DECISION_REQUIRED',e);throw e;}
+      await runReview(descriptor);continue;
+     }
      try{settle('policy-approve',{});}
      catch(e){if(e.code==='POLICY_NOT_ELIGIBLE')return stop('LEAD_DECISION_REQUIRED',e);throw e;}
      continue;
@@ -79,13 +94,26 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
      throw failure('AUTOPILOT_ACCEPTANCE_NOT_RED',`Autopilot needs acceptance_commands proven to fail on the untouched tree (baseline: ${baseline?.status??'not checked'}); the lead must review this task`);
     if(['PLAN','REDO','ALTERNATIVE_REQUIRED'].includes(s.phase)){
      const input={...brief};delete input.executor;
-     if(s.phase!=='PLAN')input.lead_feedback='@review';
+     if(s.phase!=='PLAN')input.lead_feedback=s.last_auto_recovery?.round===s.iteration
+      ?[`The previous attempt ended before it produced a result (${s.last_auto_recovery.reason}). Nothing was changed; start again from the brief.`]
+      :'@review';
      settle('begin',input);continue;
     }
     if(s.phase==='EXECUTING'){
      if(s.owner==='lead')return stop('TAKEOVER_REQUIRED');
      if(fs.existsSync(path.join(dir,`launch-${s.iteration}.json`)))throw failure('AUTOPILOT_EXISTING_LAUNCH','A launch marker already exists; inspect quiescence and settle or recover manually');
-     const result=await execute(root,{proveQuiescence:true,signal});event('execute',state());
+     let result;
+     try{result=await execute(root,{proveQuiescence:true,signal});}
+     catch(e){
+      // 재량권이 있는 작업: 결과 없이 끝난 일시 장애는 컨트롤러 증거(종료 증명, 트리 불변)가 맞으면 복구해서 다시 시도한다.
+      // 사정이 맞지 않으면 지금까지처럼 쓰기 권한을 쥔 채 멈춘다.
+      if(s.delegation&&e?.quiescence?.quiescent===true){
+       try{settle('auto-recover',{error:e.message});continue;}
+       catch(refusal){if(refusal.code!=='AUTO_RECOVER_REFUSED')throw refusal;}
+      }
+      throw e;
+     }
+     event('execute',state());
      if(result.quiescence?.quiescent!==true)throw failure('AUTOPILOT_QUIESCENCE_REQUIRED',`Supervisor could not confirm process-tree quiescence (${proofText(result.quiescence)}); retain the writer lease`);
      settle('finish',{token:s.writer.token,quiescent:true});continue;
     }
@@ -98,12 +126,7 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
      const ignored=s.acceptance.ignored_after?read(path.join(dir,s.acceptance.ignored_after)):null;
      if(s.acceptance.tree_digest!==snapshot(root).digest||!ignored||ignoredChanges(ignored,ignoredManifest(root,brief.acceptance_artifacts)).length)
       throw failure('AUTOPILOT_ACCEPTANCE_UNVERIFIED','The tree or ignored inputs changed after acceptance; the lead must inspect them');
-     const descriptor=settle('delegate-review',{});
-     check();
-     const result=await consult(root,descriptor.consult_id,{proveQuiescence:true,signal});event('consult',state());
-     // Failed reviewers may be replaced within controller caps, but only after verified shutdown.
-     if(result.members.some(m=>m.quiescence?.quiescent!==true))throw failure('AUTOPILOT_QUIESCENCE_REQUIRED',`Reviewer process-tree quiescence was not confirmed (${result.members.filter(m=>m.quiescence?.quiescent!==true).map(m=>`${m.executor}: ${proofText(m.quiescence)}`).join('; ')}); retain consultation evidence`);
-     settle('consult-finish',{quiescent:true});continue;
+     await runReview(settle('delegate-review',{}));continue;
     }
     throw failure('INVALID_PHASE','Autopilot cannot advance '+s.phase);
    }
