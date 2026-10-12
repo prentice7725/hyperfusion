@@ -7,6 +7,7 @@ import {readInput,printError} from './cli.mjs';
 import {isMain} from './platform.mjs';
 import {controlPath,ensureControl,assertPlainDir} from './control-dir.mjs';
 import {redactText} from './redaction.mjs';
+import {codexQuotaInput} from './codex-quota.mjs';
 
 export const PROVIDERS=['anthropic','openai','xai','google'];
 export const QUOTA_SOURCES=['user_manual','supported_tool','unknown'];
@@ -94,11 +95,18 @@ export function exhaustedExecutors(report,executors) {
  });
 }
 
+// Codex의 로컬 세션 기록에서 openai 잔량을 읽어 기록한다. 읽을 값이 없으면 아무것도 쓰지 않고 이유를 돌려준다.
+export function collectCodexQuota(root,home) {
+ const found=codexQuotaInput(home);
+ if(!found.ok)return {recorded:false,reason:found.reason};
+ return {recorded:true,quota:recordQuota(root,found.input),status:quotaReport(root).openai};
+}
+
 if(isMain(import.meta.url)){
  try{
   const [root,action,file]=process.argv.slice(2);
-  if(!root||!['record','status'].includes(action))throw Error('Usage: quota-policy.mjs REPO record QUOTA.json | REPO status');
-  const out=action==='record'?recordQuota(root,readInput(file)):quotaReport(root);
+  if(!root||!['record','status','collect-codex'].includes(action))throw Error('Usage: quota-policy.mjs REPO record QUOTA.json | REPO status | REPO collect-codex');
+  const out=action==='record'?recordQuota(root,readInput(file)):action==='collect-codex'?collectCodexQuota(root):quotaReport(root);
   console.log(JSON.stringify(out,null,2));
  }catch(e){printError(e);}
 }

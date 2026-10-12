@@ -6,7 +6,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
-import {decide,decideStop,settingsSnippet} from '../scripts/lead-guard.mjs';
+import {decide,decideStop,decideSessionStart,settingsSnippet} from '../scripts/lead-guard.mjs';
 
 const SCRIPT=fileURLToPath(new URL('../scripts/lead-guard.mjs',import.meta.url));
 const edit=(f,file='a.txt',tool='Edit')=>decide({tool_name:tool,cwd:f.root,tool_input:{file_path:file}});
@@ -99,4 +99,26 @@ test('the Stop hook lets user-facing phases end and runs as a hook process',t=>{
  assert.equal(out.decision,'block');
  fs.writeFileSync(path.join(g.control,'state.json'),'{broken');
  assert.equal(stop(g),null,'unreadable state does not trap the session');
+});
+
+const start=(f,extra={})=>decideSessionStart({hook_event_name:'SessionStart',source:'compact',cwd:f.root,...extra});
+test('SessionStart hands a compacted or fresh session the running task and its next command, and nothing otherwise',t=>{
+ const f=fixture(t,{initialize:false});
+ assert.equal(start(f),null,'no task, no tokens');
+ run(f.root,'init',{...f.brief,executor:'grok'});
+ const out=start(f);
+ assert.equal(out.hookSpecificOutput.hookEventName,'SessionStart');
+ const text=out.hookSpecificOutput.additionalContext;
+ assert.match(text,new RegExp(f.brief.task_id));assert.match(text,/PLAN/);assert.match(text,/fusion-state\.mjs" next ".*"/);
+ fs.mkdirSync(path.join(f.root,'sub'));
+ assert.ok(start(f,{cwd:path.join(f.root,'sub')}),'a subfolder finds the repository');
+ const outside=fs.mkdtempSync(path.join(f.temp,'outside-'));
+ assert.equal(decideSessionStart({hook_event_name:'SessionStart',cwd:outside}),null,'outside any repository');
+ // 훅 프로세스로도 같은 출력을 낸다.
+ const viaHook=JSON.parse(execFileSync(process.execPath,[SCRIPT],{input:JSON.stringify({hook_event_name:'SessionStart',source:'compact',cwd:f.root}),encoding:'utf8'}));
+ assert.equal(viaHook.hookSpecificOutput.additionalContext,text);
+ const entry=settingsSnippet().hooks.SessionStart[0];
+ assert.equal(entry.matcher,'startup|resume|compact');assert.match(entry.hooks[0].command,/lead-guard\.mjs"$/);
+ fs.writeFileSync(path.join(f.control,'state.json'),'{broken');
+ assert.equal(start(f),null,'unreadable state never blocks a session from starting');
 });

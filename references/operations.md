@@ -12,7 +12,7 @@ node scripts/fusion-state.mjs report $REPO
 node scripts/metrics.mjs --aggregate $REPO
 ```
 
-`report`는 JSON으로 라운드별 담당·결과·판정·반려 기준·실행 시간·보고 비용을 반환한다. 이전 산출물에 시간·비용이 없으면 null이다. 전체 stdout/stderr는 포함하지 않는다. `--aggregate`는 저장소 경로 하나 또는 기존 지표 파일 목록을 받는다. worktree 지표는 해당 worktree 경로로 집계한다.
+`report`는 JSON으로 라운드별 담당·결과·판정·반려 기준·실행 시간·보고 비용을 반환한다. `lead_load`는 리드가 얼마나 직접 개입했는지를 이미 남은 산출물에서 세어 보여 준다: `decisions_by_lead`(리드가 명령으로 낸 lead-decision), `decisions_by_policy`(재량권 아래 컨트롤러가 승인한 판정), `reviews_recorded`(lead-decision 파일이 없는 classic 리뷰), `lead_packets`(리드가 직접 읽어야 했던 게이트), `recoveries_auto`/`recoveries_manual`, `delegation`(재량권 정책, 없으면 null). 재량권의 효과를 작업 단위로 비교하는 용도다. 이전 산출물에 시간·비용이 없으면 null이다. 전체 stdout/stderr는 포함하지 않는다. `--aggregate`는 저장소 경로 하나 또는 기존 지표 파일 목록을 받는다. worktree 지표는 해당 worktree 경로로 집계한다.
 
 CLI 실패의 stderr는 `{code, message, next_action}` JSON이다. doctor는 체크 결과의 `error`에 같은 구조를 넣고, CLI 버전·도움말·누락 옵션은 제어 폴더의 `doctor/probes-*.json`에 보관한다. 출력의 `probe_file`로 찾는다. 도움말은 dispatch나 리드의 일반 상태 출력에 포함하지 않는다.
 
@@ -33,6 +33,8 @@ CLI 실패의 stderr는 `{code, message, next_action}` JSON이다. doctor는 체
 | 상태 파일을 읽을 수 없음 | 차단 |
 
 같은 설정에 **Stop 훅**도 들어 있다. 리드가 턴을 끝내려 할 때 작업 폴더(cwd)의 저장소에 진행 중인 작업이 리드 차례 단계(PLAN, REVIEW, VERIFY, REDO, ALTERNATIVE_REQUIRED, LEAD_DECISION_REQUIRED, 끝나지 않은 상담)에 있으면 한 번 막고 다음 동작을 알려 준다. 이미 한 번 막혀 이어 가는 중(`stop_hook_active`)이면 통과시키므로, 사용자 판단이 필요해 멈추는 경우 이유를 보고하고 다시 끝내면 된다. 일꾼 실행 중(EXECUTING), DECISION_REQUIRED, TAKEOVER_REQUIRED, RECOVERY_REQUIRED, 종료 단계와 상태를 읽지 못한 경우는 막지 않는다.
+
+같은 설정에 **SessionStart 훅**(`startup|resume|compact`)도 있다. 대화가 요약되거나 새 세션이 시작될 때 cwd의 저장소에 끝나지 않은 작업이 있으면 작업 id, 단계, 일꾼, 라운드, 다음 동작과 `fusion-state.mjs next` 명령을 컨텍스트에 한 번 넣어, 요약이 작업 상태를 잃어도 리드가 이어 가게 한다. 진행 중인 작업이 없거나 상태를 읽지 못하면 아무것도 넣지 않는다(세션 시작을 막지 않는다). 모델을 부르지 않는다.
 
 Git 저장소 밖의 파일(스크래치 패드의 입력 JSON 등)은 막지 않는다. 일꾼 Sonnet은 `--safe-mode`로 떠서 사용자 훅이 꺼지므로 이 훅에 막히지 않는다. Bash·PowerShell을 통한 쓰기는 검사하지 않는다. 그 경로는 기존 보호 파일 스냅샷과 라운드 diff 검사가 잡는다.
 

@@ -94,7 +94,11 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
  guard(()=>{observation=activity.exit({code:exit?.code??null,signal:exit?.signal??''});});
  const seen=observation??{run_id:null,state:'UNKNOWN',telemetry_limited:true};
  immutable(path.join(dir,`envelope-${tag}.json`),{executor:request.executor,exit,reason,stdout,stderr,started_at:new Date(started).toISOString(),ended_at:new Date().toISOString(),wall_ms:Date.now()-started,observation:{run_id:seen.run_id??null,state:seen.state??'UNKNOWN',telemetry_limited:seen.telemetry_limited===true,declares_success:false}});
- const fail=e=>{e.quiescence=proof;throw e;};
+ // 어댑터가 출력에서 원인을 알아보면(로그인 필요 등) 오류 문구에 조치를 덧붙인다. 실패 분류와 리드의 안내가 같은 문장을 본다.
+ const fail=e=>{
+  try{const hint=adapter(request.executor).diagnose?.(stdout,stderr);if(hint&&!e.message.includes(hint.slice(0,24)))e.message+=' — '+hint;}catch{}
+  e.quiescence=proof;throw e;
+ };
  if(reason||exit.code!==0)fail(Error(reason||request.executor+' exited with code '+exit.code));
  let parsed;
  try{parsed=adapter(request.executor).parse(stdout,request);}catch(e){fail(e);}

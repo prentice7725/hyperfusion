@@ -12,6 +12,7 @@ import {brief,safePath} from '../scripts/contracts.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {config} from '../scripts/executor-config.mjs';
 import {adapter} from '../scripts/adapters/index.mjs';
+import {NON_RETRYABLE} from '../scripts/delegation.mjs';
 import {hasOption} from '../scripts/adapters/common.mjs';
 import {ACTION_PHASES,PHASES,TERMINAL_PHASES,assertAction,phaseTable} from '../scripts/state-policy.mjs';
 import {aggregateRepo,measure} from '../scripts/metrics.mjs';
@@ -100,6 +101,13 @@ for(const executor of ['grok','antigravity'])test(`${executor} dispatches a conf
  const out=await f.bridge();assert.equal(out.status,'RESULT_READY',JSON.stringify(out));
 });
 
+test('a signed-out agy run fails with the action to take, and is not retried automatically',async t=>{
+ const f=fixture(t,{initialize:false});run(f.root,'init',{...f.brief,executor:'antigravity'});f.begin();
+ fs.writeFileSync(path.join(path.dirname(process.env.HF_AGY_BIN),'fake-mode'),'agy-signed-out');
+ await assert.rejects(()=>f.bridge(),/exited with code 1 — AGY_NOT_SIGNED_IN: .*Run `agy` once interactively/);
+ assert.ok(NON_RETRYABLE.test('AGY_NOT_SIGNED_IN: agy does not look signed in'));
+});
+
 test('the Antigravity model listing tolerates other output shapes without blocking a listed model',()=>{
  const agy=adapter('antigravity');
  for(const shape of ['gemini-3.5-flash\tGemini 3.5 Flash','* gemini-3.5-flash (default)','Gemini 3.5 Flash','Available models:\n  - gemini-3.5-flash'])
@@ -142,6 +150,7 @@ test('doctor saves full help output without adding it to dispatch descriptors',t
 test('timeline reports round verdict, measured duration and reported cost',async t=>{
  const f=fixture(t);f.begin();await f.bridge();f.review('pass');
  const report=run(f.root,'report');assert.equal(report.rounds.length,1);
+ assert.equal(report.lead_load.delegation,null);assert.equal(report.lead_load.decisions_by_policy,0);assert.equal(report.lead_load.reviews_recorded,1,'classic review has no lead-decision file; its review record is counted');
  assert.equal(report.rounds[0].verdict,'pass');assert.equal(report.rounds[0].cost_usd,0.002);assert.ok(report.rounds[0].wall_ms>=0);
  measure(f.root);assert.equal(aggregateRepo(f.root).tasks,1);
  const out=spawnSync(process.execPath,[cli('metrics.mjs'),'--aggregate',f.root],{encoding:'utf8'});

@@ -82,6 +82,16 @@ export function commandOrders(text,rules,brief) {
  return JSON.stringify(p);
 }
 
+// agy에는 로그인 상태를 묻는 하위 명령이 없고, 로그아웃 상태에서는 라운드 하나를 빈 응답으로 날린다.
+// 실행 전 점검(매번 최대 35초)은 비싸서, 실패한 실행의 출력에서만 원인을 알아본다.
+const SIGNED_OUT=/not (?:signed|logged)[ -]?in|(?:sign|log)[ -]?in (?:is )?required|please (?:sign|log)[ -]?in|unauthenticated|not authenticated|authentication (?:required|failed)|no (?:active )?(?:google )?(?:session|credentials)|invalid api key/i;
+export function diagnose(stdout,stderr) {
+ const text=String(stderr??'').slice(-4000)+'\n'+String(stdout??'').slice(-4000);
+ return SIGNED_OUT.test(text)
+  ?'AGY_NOT_SIGNED_IN: agy does not look signed in. Run `agy` once interactively and sign in (or have the operator set GEMINI_API_KEY / ANTIGRAVITY_API_KEY), then retry. Retrying without signing in fails the same way'
+  :null;
+}
+
 export function parse(stdout,request) {
  let e;
  try{e=JSON.parse(stdout);}catch{throw Error('Antigravity emitted invalid JSON');}
