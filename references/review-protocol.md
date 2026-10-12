@@ -94,7 +94,7 @@ LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. �
 `lead-decision` 입력은 `decision`, 비어 있지 않은 `rationale`, 그 라운드의 `baseline_digest`, `contract_change`(boolean)다. `decision`은 `APPROVE`, `REDO`(`REDO_SAME_OWNER`는 같은 의미), `REASSIGN_TO_SONNET`, `REASSIGN_OTHER`, `ESCALATE`, `BLOCK`이다. writer lease가 남아 있으면 거절한다. 트리가 라운드 digest와 다르면 `RECOVERY_REQUIRED`다.
 
 - `APPROVE`는 필수 리뷰가 모두 같은 digest에서 pass일 때만 `VERIFY`로 간다. 하나라도 실패하거나 갈리면 pass로 합치지 않는다. Sol 라운드는 추가로 `diff_reviewed:true`, 비어 있지 않은 `tests_checked`, 비어 있지 않은 `changed_scope`가 있어야 한다. `APPROVE`는 `CLOSE`가 아니다. `verify`와 수용 증거가 그대로 필요하다.
-- `REDO`는 같은 작성자의 다음 라운드다. Sonnet이나 Sol이면 소모된 승인 자리에 새 한 라운드 승인을 남기고, 시작은 `begin`이 한다.
+- `REDO`는 같은 작성자의 다음 라운드다. Sonnet이나 Sol이면 소모된 승인 자리에 새 한 라운드 승인을 남기고, 시작은 `begin`이 한다. **작성자가 라운드 상한에 닿았으면(일꾼당 3라운드, Sol APEX는 상한 도달) `REDO`를 받지 않는다.** 받아 두면 REDO 단계에서 다음 `begin`이 `round cap reached`로 막혀 갇히기 때문이다. 대신 `LEAD_DECISION: <일꾼> has no round budget left`와 함께 남은 길(`REASSIGN_OTHER`의 후보, `REASSIGN_TO_SONNET`, `ESCALATE`, `BLOCK`)을 알려 주고 아무것도 기록하지 않는다. 리드 패킷도 이 경우 추천을 `REDO`에서 `REASSIGN_OTHER`(후보가 없으면 그다음 길)로 바꾸고 `note`에 이유를 적는다.
 - `REASSIGN_TO_SONNET`은 `ALTERNATIVE_REQUIRED`와 Sonnet 승인, `required_reviewer:"sol"`이다. 다음 `begin`은 그 Sonnet에 묶인다. APEX Sol 작업에서는 거절한다.
 - `REASSIGN_OTHER`의 선택 작성자는 grok, antigravity, haiku, luna다. 빠지면 기존 교체 순서를 쓴다.
 - `ESCALATE`는 `DECISION_REQUIRED`, `BLOCK`은 `BLOCKED`다.

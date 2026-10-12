@@ -606,6 +606,13 @@ function repeatedCriteria(s,blocking) {
 const panelBlocking=records=>[...new Set(records.filter(r=>r.ok&&r.verdict!=='pass').flatMap(r=>r.blocking_criteria??[]).filter(x=>typeof x==='string'&&x.trim()))];
 // APEX는 Sol에 남는다. 그 밖에는 REASSIGN_OTHER로 넘길 수 있는 일꾼이 있을 때만 교체를 권한다.
 const swapTargets=(c,s)=>s.owner==='sol'?[]:['grok','antigravity','haiku','luna'].filter(x=>x!==s.owner&&c.pool().includes(x)&&c.canWork(x));
+// 일꾼이 라운드 상한에 닿았을 때 리드에게 남은 길. 같은 일꾼 REDO는 다음 begin에서 'round cap reached'로 막히므로 후보에서 뺀다.
+// 순서는 권하는 순서다: 다른 외부 일꾼 → Sonnet(승인 grant가 필요) → 리드 판단/중단.
+const exhaustedOptions=(c,s)=>{
+  const targets=swapTargets(c,s);
+  return [...(targets.length?[`REASSIGN_OTHER (${targets.join(', ')})`]:[]),
+    ...(s.owner!=='sonnet'&&s.assignment?.strategy!=='sol_apex'&&c.budget('sonnet')?['REASSIGN_TO_SONNET']:[]),'ESCALATE','BLOCK'];
+};
 
 // 증거 파일의 위치만 넘긴다. diff 본문이나 모델 호출은 넣지 않는다.
 function leadEvidence(c,consult_id) {
@@ -625,6 +632,11 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
   if(repeated.length&&recommendation==='REDO'&&swapTargets(c,s).length){
     recommendation='REASSIGN_OTHER';
     note+=`; ${s.owner} was rejected again on ${repeated.join(', ')}, so another worker is recommended`;
+  }
+  // 상한에 닿은 일꾼에게 REDO를 권하지 않는다. lead-decision도 어차피 거절하므로 패킷 단계에서 처음부터 교체를 권한다.
+  if(recommendation==='REDO'&&!c.budget(s.owner)){
+    recommendation=exhaustedOptions(c,s)[0].split(' ')[0];
+    note+=`; ${s.owner} has no round budget left, so REDO is not offered (${recommendation} instead)`;
   }
   const evidence=leadEvidence(c,consult_id);
   const acceptance=c.optional(`acceptance-${n}-finish.json`);
@@ -1321,6 +1333,8 @@ function leadDecision(c,input) {
     }
     phase='VERIFY';
   } else if(normalized==='REDO'){
+    // 상한에 닿은 일꾼은 다시 시킬 수 없다. 받아 두면 REDO 단계에서 다음 begin이 'round cap reached'로 막혀 갇히므로 여기서 거절하고 교체를 요구한다.
+    if(!c.budget(s.owner))throw Error(`LEAD_DECISION: ${s.owner} has no round budget left (round cap reached), so REDO would be refused at the next begin; choose ${exhaustedOptions(c,s).join(', ')}`);
     // 같은 실수를 세 번 시키지 않는다. 그래도 같은 일꾼에게 맡기려면 리드가 이유를 남긴다.
     const repeated=repeatedCriteria(s,panelBlocking(records));
     if(repeated.length&&swapTargets(c,s).length){
