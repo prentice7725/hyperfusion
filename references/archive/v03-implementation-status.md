@@ -1,5 +1,7 @@
 # v0.3 구현 및 검증 기록 — 2026-10-10
 
+> **과거 기록.** v0.3 구현과 검증 시점(2026-10-10)의 기록이다. 현재 규칙은 [universal-supervisor](../universal-supervisor.md)와 [CHANGELOG](../../CHANGELOG.md)를 본다.
+
 사용자가 HyperFusion 자체 변경을 이 세션에서 직접 구현하도록 명시적으로 허용했다. 기존 작업 트리의 v0.3 초안을 이어서 수정했으며, 외부 실행기로 코드·문맥을 전송하지 않았다. 이 기록은 실제 Opus 실행 또는 Opus 독립 검수가 완료됐다는 주장이 아니다.
 
 ## 구현 범위
@@ -13,7 +15,7 @@
 | 계측 | 구현·리뷰·상담·실패 호출, Sol 구현, cache 토큰, 실제 vendor 모델별 사용량, 호스트 관측 보존, 실패 포함 성공당 Claude 토큰 | metrics |
 | 설정·문서 | 프로젝트 strategy 전달, opt-in 설정 예제, 운영·계측 문서, Phase 5 앱 핸드오프 설계 | project, 상태 문서 생성 검증 |
 
-v0.3은 [설정 예제](../hyperfusion.v03.config.example.json)의 `external-first` 및 `lead-gated-adaptive`를 명시적으로 켜서 사용한다. 기존 classic 작업에 새 정책을 소급 적용하지 않는다. 명령과 저장 계약은 [범용 Supervisor 운영 문서](universal-supervisor.md)에 정리했다.
+v0.3은 [설정 예제](../../hyperfusion.v03.config.example.json)의 `external-first` 및 `lead-gated-adaptive`를 명시적으로 켜서 사용한다. 기존 classic 작업에 새 정책을 소급 적용하지 않는다. 명령과 저장 계약은 [범용 Supervisor 운영 문서](../universal-supervisor.md)에 정리했다.
 
 ## 검증 결과
 
@@ -33,7 +35,7 @@ v0.3은 [설정 예제](../hyperfusion.v03.config.example.json)의 `external-fir
 - 실 CLI 인증·모델 smoke는 실행하지 않았다. 이전 doctor의 help/version 확인은 실모델 성공 증거가 아니다.
 - 공식 structured telemetry 연결은 아직 사용하지 않는다. 현재 모든 어댑터는 프로세스·출력 관측 fallback이며 실제 도구 수와 작업 진행률을 추정하지 않는다.
 - 최종 판단은 컨트롤러의 호스트 승인 기록으로 강제한다. 호스트가 실제 Opus인지 이 CLI가 독립적으로 인증하지 못하므로 `model_verified:false`를 기록한다. AC25/AC28의 실제 Opus 호출·독립 검수 증명은 미확인이다.
-- Phase 5는 [후속 설계](app-handoff-design.md)만 작성했다. 앱 연결·외부 전송·라이선스 검증 또는 소스 재사용은 수행하지 않았다.
+- Phase 5는 [후속 설계](../app-handoff-design.md)만 작성했다. 앱 연결·외부 전송·라이선스 검증 또는 소스 재사용은 수행하지 않았다.
 
 위 항목은 로컬 mock PASS와 구분해야 한다. 이후 사용자가 작업 브랜치의 커밋·push를 명시적으로 요청했다. main 병합·release·배포는 이번 요청에 포함되지 않는다.
 

@@ -137,9 +137,9 @@ npm run test:live
 
 ## 오토파일럿
 
-오토파일럿은 `acceptance_baseline`이 `red`인 작업만 진행한다. `green-acknowledged`나 `unchecked`면 `AUTOPILOT_ACCEPTANCE_NOT_RED`로 멈춘다(실질적인 관문이 수용 테스트이기 때문이다).
+오토파일럿은 `acceptance_baseline`이 `red`인 작업만 진행한다. `green-acknowledged`나 `unchecked`면 `AUTOPILOT_ACCEPTANCE_NOT_RED`로 멈춘다(실질적인 관문이 수용 테스트이기 때문이다). 단, `verification:{kind:"preserve"}` 작업은 반대로 `green-acknowledged`(수정 전에도 통과 + 보호 경로 불변)일 때만 진행한다.
 
-리드가 범위·수용 기준·`acceptance_commands`를 정해 init한 작업에서 실행한다. `review.auto_apply:true`가 필수이며, 리뷰 설정이 lead여도 이 명령을 호출하면 다른 모델에게 리뷰를 위임한다. 독립 리뷰어가 설치되지 않았거나 판정을 적용할 수 없으면 리드에게 제어를 반환한다.
+리드가 범위·수용 기준·`acceptance_commands`를 정해 init한 작업에서 실행한다. classic 리뷰에서는 `review.auto_apply:true`가 필수이고(`review.strategy:"lead-gated-adaptive"`는 어차피 리드 게이트에서 멈추므로 요구하지 않는다), 리뷰 설정이 lead여도 이 명령을 호출하면 다른 모델에게 리뷰를 위임한다. 독립 리뷰어가 설치되지 않았거나 판정을 적용할 수 없으면 리드에게 제어를 반환한다.
 
 ```sh
 node scripts/fusion-state.mjs autopilot REPO
@@ -148,6 +148,8 @@ node scripts/fusion-state.mjs autopilot REPO
 JSON 파일 또는 stdin(`-`)으로 `{"max_steps":64}`를 줄 수 있다(기본 64, 1~256). 별도 데몬은 아니며 명령이 실행되는 동안 begin → 브리지 → finish → delegate-review → 리뷰 브리지 → consult-finish를 반복한다. 각 호출은 한 단계다. 재지시에는 최신 brief와 `lead_feedback:"@review"`를 사용하고, 교체 대상은 기존 컨트롤러가 선택한다.
 
 VERIFY, LEAD_DECISION_REQUIRED, DECISION_REQUIRED, BLOCKED, TAKEOVER_REQUIRED, RECOVERY_REQUIRED, CLOSE, ARCHIVED에서 멈춘다. `lead-gated-adaptive`는 위임 리뷰가 만장일치여도 여기서 멈추고 `lead-decision`을 기다린다. 최종 verify·설계 결정·takeover·복구는 리드가 한다. 실패한 수용 테스트는 기존 규칙대로 피드백을 붙여 재시도하지만, 무시된 실행 입력 변경으로 테스트를 건너뛴 경우에는 멈춘다. 트리·HEAD/index·범위 검사, 라운드/리뷰 예산과 비용·시간 상한을 그대로 적용한다. 비용 상한은 보고된 비용만 계산하며, 보고되지 않은 비용은 보장하지 못한다.
+
+**재량권(delegation)이 있는 작업.** 리드가 init에서 `delegation:{policy:"standard-auto",reason}`을 준 STANDARD 작업은 오토파일럿이 리드 게이트에서 멈추지 않고 이어 간다: 컨트롤러가 조건을 전부 확인했을 때만 `policy-approve`로 라운드를 승인하고(`authority.source: delegated-policy`로 기록), `verify`까지 진행해 CLOSE에 닿는다. 일꾼이 결과 없이 일시 장애로 끝났고 종료 증명·트리 불변·예산이 맞으면 `auto-recover`로 되돌려 REDO에서 다시 시도한다(작업당 2번까지, 권한·로그인·한도 실패는 제외). 리뷰어가 한도·장애로 못 끝냈으면 `auto-substitute-review`로 다른 회사 모델에게 다시 맡긴다. 조건이 하나라도 부족하면 승인하지 않고 이유와 함께 리드 게이트에 남는다. 규칙 전문은 [universal-supervisor](universal-supervisor.md), 재량권이 실제로 얼마나 개입을 줄였는지는 `report`의 `lead_load`로 본다.
 
 오토파일럿 브리지는 프로세스 표를 관측하고 PID와 생성 시각으로 자손을 추적해 `quiescence-*.json`에 정지 증거를 남긴다. 확인 불가·잔존 자손·불확실한 종료에서는 자동 finish하지 않고 writer lease 또는 open_consult를 유지한다. 관측 사이에 부모 연결을 끊고 빠져나간 프로세스까지 완전히 추적하는 OS 격리는 아니다. 그런 실행이 가능한 회사 환경에서는 별도 프로세스 격리가 필요하다.
 
