@@ -93,11 +93,14 @@ const walk=(dir,limit=5000)=>{
 // - .env*, .npmrc, .yarnrc*: 비밀값과 패키지 설치 설정
 // - node_modules/.bin/*: 테스트나 빌드가 실행하는 실행 파일
 // - .husky, .githooks, .vscode: 훅과 에디터 자동 실행 작업
-export function guardFiles(root) {
+export function guardFiles(root,common) {
  const out={};
  const add=(file,key)=>{try{const e=entryOf(file);if(e)out[key]=e;}catch(e){if(e.code!=='ENOENT')throw e;}};
- let common=null;
- try{common=path.resolve(root,git(root,['rev-parse','--git-common-dir']).trim());}catch{}
+ // snapshot은 HEAD와 함께 한 번에 구해 넘긴다. 넘기지 않으면(setup-doctor 등) 여기서 구하고, 구하지 못하면 그 점검만 건너뛴다.
+ if(common===undefined){
+  common=null;
+  try{common=path.resolve(root,git(root,['rev-parse','--git-common-dir']).trim());}catch{}
+ }
  if(common){
   for(const f of ['config','config.worktree','info/exclude','info/attributes'])add(path.join(common,f),`.git/${f}`);
   for(const f of walk(path.join(common,'hooks')))add(f,'.git/'+path.relative(common,f).split(path.sep).join('/'));
@@ -112,8 +115,19 @@ export function guardFiles(root) {
  return out;
 }
 
+// HEAD와 공통 git 폴더를 한 번의 호출로 구한다(스냅샷마다 두 번 부르던 것). Windows에서는 git 호출 하나가 25~32ms다.
+// 한 번에 구하지 못하면(옛 git, HEAD 없음) 예전처럼 따로 부른다: HEAD가 없으면 같은 오류로 멈추고, 공통 폴더만 못 구하면 그 점검만 건너뛴다.
+function headAndCommon(root) {
+ try{
+  const [head,common]=git(root,['rev-parse','HEAD','--git-common-dir']).split('\n').map(line=>line.trim());
+  if(head&&common)return {head,common:path.resolve(root,common)};
+ }catch{}
+ return {head:git(root,['rev-parse','HEAD']).trim(),common:undefined};
+}
+
 export function snapshot(root) {
  const files={};
+ const {head,common:gitCommon}=headAndCommon(root);
  const names=[...new Set(git(root,['ls-files','-z','--cached','--others','--exclude-standard']).split('\0').filter(Boolean))].sort();
  for(const name of names) {
    if(name==='.fusion'||name.startsWith('.fusion/')) continue;
@@ -124,8 +138,7 @@ export function snapshot(root) {
      files[name]={kind:st.isSymbolicLink()?'symlink':'file',mode:st.mode&0o777,sha256:hash(st.isSymbolicLink()?fs.readlinkSync(f):fs.readFileSync(f))};
    } catch(e) {if(e.code==='ENOENT') files[name]=null;else throw e;}
  }
- Object.assign(files,guardFiles(root));
- const head=git(root,['rev-parse','HEAD']).trim();
+ Object.assign(files,guardFiles(root,gitCommon));
  const status=git(root,['status','--porcelain=v1','-z','--untracked-files=all','--','.',':(exclude).fusion']);
  const index_hash=hash(git(root,['ls-files','--stage','-z']));
  return {head,status,index_hash,files,digest:hash(JSON.stringify({head,status,index_hash,files}))};
