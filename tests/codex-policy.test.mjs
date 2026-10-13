@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
-import {execute} from '../scripts/executor-bridge.mjs';
+import {execute,consult} from '../scripts/executor-bridge.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {luna,sol,parseEvents} from '../scripts/adapters/codex.mjs';
 import {sandboxArgs} from '../scripts/codex-sandbox.mjs';
@@ -23,6 +23,15 @@ const stream=(usage={input_tokens:20,cached_input_tokens:15,output_tokens:5})=>[
 ].map(e=>JSON.stringify(e)).join('\n');
 const write=(f,v)=>fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify(v));
 function env(t,key,value){const old=process.env[key];if(value===undefined)delete process.env[key];else process.env[key]=value;t.after(()=>{if(old===undefined)delete process.env[key];else process.env[key]=old;});}
+
+test('Codex JSONL reviewer decision reaches the lead gate instead of becoming a pass',async t=>{
+ const f=fixture(t,{initialize:false});write(f,{review:{by:'delegate'}});
+ run(f.root,'init',{...f.brief,executor:'grok'});f.begin();f.finish();f.mode('review-decision');
+ const review=run(f.root,'delegate-review',{});await consult(f.root,review.consult_id);
+ const out=run(f.root,'consult-finish',{quiescent:true});
+ assert.equal(out.review.verdict,'decision');assert.equal(f.state().phase,'DECISION_REQUIRED');
+ assert.equal(f.state().iteration,1);assert.equal(f.state().writer,null);
+});
 
 test('Codex JSONL collects thread and usage without counting cached input twice',()=>{
  const p=parseEvents(stream(),{cli:{session_id:sid}});

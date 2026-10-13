@@ -40,6 +40,7 @@ const finish=(request,id)=>{
  if(mode==='lazy'){result.status='blocked';result.unresolved=['did not bother'];}
  // 위임 리뷰 모드: 기본은 pass, review-redo면 AC1 반려와 파일·줄 지적을 낸다.
  if('blocking_criteria' in result){if(mode==='review-redo'){result.recommended_verdict='redo';result.blocking_criteria=['AC1'];result.findings=[{file:'a.txt',line:1,severity:'blocker',issue:'AC1 not met',suggestion:'write fixed'}];result.summary='AC1 fails';}else if(mode==='review-bad'){result.recommended_verdict='redo';result.blocking_criteria=[];}else if(mode==='review-alt'){result.recommended_verdict='alternative';result.blocking_criteria=['approach'];result.findings=[{file:'a.txt',line:1,severity:'major',issue:'approach cannot meet AC1',suggestion:'use another approach'}];}else if(mode==='review-vague'){result.recommended_verdict='redo';result.blocking_criteria=['AC1'];result.findings=[{file:'a.txt',line:0,severity:'minor',issue:'feels off',suggestion:''}];result.summary='not sure';}else{result.recommended_verdict='pass';result.blocking_criteria=[];result.summary='All criteria met';}}
+ if(mode==='review-decision'&&'blocking_criteria' in result){result.recommended_verdict='decision';result.blocking_criteria=['choose design'];result.summary='The lead must choose the design';}
  if(mode==='findings'&&result.consult_id){result.findings=[{file:'sub\\\\a.txt',line:3,severity:'blocker',issue:'AC1 not met',suggestion:'handle empty input'}];result.recommended_verdict='redo';result.confidence='high';}
  return result;
 };

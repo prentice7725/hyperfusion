@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- CI 회귀 수정: Codex 대역의 JSONL 전환 후 autopilot decision 테스트가 옛 stdout 문자열을 치환하려다 아무것도 바꾸지 못했다. 공유 대역에 명시적 review-decision 모드를 추가하고 실제 JSONL → 위임 리뷰 → DECISION_REQUIRED 흐름을 별도 회귀 테스트로 검증한다.
+
 ## 0.22.0 — 2026-10-14
 
 - Codex JSONL의 thread·최종 메시지·turn 완료를 검증하고 실제 사용량을 기록한다. cached input은 input의 부분집합으로 이중 합산하지 않는다. 호환 resume 도움말 확인 뒤 구현 세션만 작업 단위로 재개하고 상담·리뷰는 새 읽기 전용 세션을 유지한다. 미지원 재개는 stateless로 남고 실패·불완전 이벤트는 거절한다.

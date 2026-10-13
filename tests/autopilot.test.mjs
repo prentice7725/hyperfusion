@@ -102,8 +102,7 @@ test('independent rejection is forwarded to the next round without changing acce
  assert.ok(brief.lead_feedback.some(x=>x.file==='a.txt'&&x.comment.includes('AC1')));
 });
 test('independent reviewer decision stops for the lead',async t=>{
- const f=setup(t),cli=process.env.HF_CODEX_BIN;
- fs.writeFileSync(cli,fs.readFileSync(cli,'utf8').replace("console.log(JSON.stringify(finish(request,null)));","const r=finish(request,null);r.recommended_verdict='decision';r.blocking_criteria=['choose design'];console.log(JSON.stringify(r));"));
+ const f=setup(t);f.mode('review-decision');
  const out=await autopilot(f.root);assert.equal(out.phase,'DECISION_REQUIRED',JSON.stringify(out));assert.equal(f.state().iteration,1);
 });
 test('failed reviewer with proven shutdown is replaced within the existing cap',async t=>{
