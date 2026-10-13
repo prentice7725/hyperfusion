@@ -34,9 +34,12 @@ export function measure(root,observations=null) {
  const prior=fs.existsSync(metricFile)?read(metricFile):null;
  let hostModel=prior?.lead_observed_model??s.lead_model??null;
  if(prior?.lead_usage)lead=prior.lead_usage;
+ const autoFile=controlPath(root,'tasks',s.task_id,'lead-usage.json');
+ const automatic=fs.existsSync(autoFile)?read(autoFile):null;
+ if(automatic?.complete===true&&(!lead||lead.source_kind==='claude-transcript')){lead=automatic;hostModel=automatic.lead_model;}
  if(observations){
   if(!observations.source||!known(observations.lead_tokens))throw Error('Metrics require source and nonnegative task-total lead_tokens');
-  lead={source:observations.source,lead_tokens:observations.lead_tokens};
+  lead={...observations,source_kind:observations.source_kind??'manual',source:observations.source,lead_tokens:observations.lead_tokens};
   if(observations.lead_model!==undefined){
    if(typeof observations.lead_model!=='string'||!observations.lead_model.trim())throw Error('Metrics lead_model must name the observed host model');
    hostModel=observations.lead_model;
@@ -73,16 +76,32 @@ export function measure(root,observations=null) {
   measurement_note:'Unknown usage stays null. Antigravity reports no cost, so mixed tasks have null worker cost. Failed tasks count in the numerator. Run this at CLOSE and BLOCKED so the router learns.'};
  atomic(controlPath(root,'metrics',s.task_id+'.json'),v);return v;
 }
+// Stop may arrive after state.json has moved to the next task. Update only
+// host-derived fields, preserving worker evidence and manual task totals.
+export function refreshHostUsage(root,taskId,observation) {
+ if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(taskId))throw Error('Invalid task_id');
+ const file=controlPath(root,'metrics',taskId+'.json');
+ if(!fs.existsSync(file))return null;
+ const prior=read(file);
+ if(prior.lead_usage&&prior.lead_usage.source_kind!=='claude-transcript')return prior;
+ if(observation?.complete!==true||!knownNumber(observation.lead_tokens))return prior;
+ const accounting=summarizeUsage(prior.run_usage??[],observation,observation.lead_model);
+ const updated={...prior,lead_usage:observation,lead_observed_model:observation.lead_model,
+  lead_tokens_per_success:prior.success?observation.lead_tokens:null,
+  usage_by_executor:accounting.by_executor,usage_by_model:accounting.by_model,claude_usage:accounting.claude,
+  claude_total_tokens:accounting.claude_total_tokens,claude_tokens_per_success:prior.success?accounting.claude_total_tokens:null};
+ atomic(file,updated);return updated;
+}
 function summarize(records) {
  const successes=records.filter(r=>r.success).length;
- const covered=records.length>0&&records.every(r=>r.lead_usage!==null);
+ const covered=records.length>0&&records.every(r=>knownNumber(r.lead_usage?.lead_tokens));
  const sizes=records.map(r=>r.diff_lines).filter(n=>typeof n==='number').sort((a,b)=>a-b);
  return {tasks:records.length,successful_tasks:successes,success_rate:records.length?successes/records.length:null,
   lead_tokens_per_success:covered&&successes?records.reduce((n,r)=>n+r.lead_usage.lead_tokens,0)/successes:null,
   claude_tokens_per_success:successes&&records.every(r=>knownNumber(r.claude_total_tokens))?records.reduce((n,r)=>n+r.claude_total_tokens,0)/successes:null,
   claude_usage_per_success:Object.fromEntries(['opus','sonnet','haiku'].map(model=>[model,successes&&records.every(r=>knownNumber(r.claude_usage?.[model]))?records.reduce((n,r)=>n+r.claude_usage[model],0)/successes:null])),
   lead_takeover_rate:records.length?records.filter(r=>r.lead_takeovers>0).length/records.length:null,
-  usage_coverage:records.length?records.filter(r=>r.lead_usage!==null).length/records.length:0,
+  usage_coverage:records.length?records.filter(r=>knownNumber(r.lead_usage?.lead_tokens)).length/records.length:0,
   median_diff_lines:sizes.length?sizes[Math.floor(sizes.length/2)]:null};
 }
 // 난이도별로도 나눈다. low 작업의 성공당 리드 토큰이 "리드가 직접 고칠 때"보다 크게 나오면,

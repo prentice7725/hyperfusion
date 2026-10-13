@@ -4,12 +4,21 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.20.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md), including Unreleased fixes.
+> **Versions.** The package release is `0.21.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
 
 ## Why HyperFusion
 
 1. **Reduce lead-model token use.** Opus owns planning, rejection, and final review. Workers handle implementation and test loops. The project records lead tokens per successful task; unmeasured usage stays unknown.
 2. **One point of contact.** The user works with the lead, which assigns workers, checks their claims, sends concrete revision orders, and changes workers after repeated failures.
+
+## Usage measurement and installed teams (0.21.0)
+
+The generated hooks now bind the host session and collect assistant usage from the local Claude Code transcript on Stop/SessionEnd/StopFailure. Input, output, cache read and cache creation tokens are counted by actual model, with streamed message duplicates and resumed sessions handled once. The first terminal Stop includes the closing summary; later prompts do not extend that task. Missing evidence stays unknown. Explicit `TASK_USAGE.json` observations take precedence. This is client-reported usage, not a billing API. See [metrics policy](references/metrics-policy.md).
+
+`node scripts/project.mjs draft REPO` (or `roster REPO --draft`) proposes an installed team and pre-fills missing members in `excluded`. Proposal and approval reject unavailable team members. `setup-doctor.mjs` recommends a preset without changing configuration or approving it. When only Claude and Codex are installed, the proposed `claude-codex` preset uses Luna for low difficulty and Sonnet for medium/high non-image tasks, with Sol/Sonnet cross review. User approval of the project authorizes these controller-issued Sonnet grants; explicit assignments remain authoritative. Installation checks do not verify authentication or quota.
+
+`node scripts/benchmark.mjs cases` lists ten fixed pilot cases. `node scripts/benchmark.mjs compare BASELINE.json HYPERFUSION.json` compares arrays of actual paired metrics with `case_id`, explicit `success`, host usage and total Claude tokens. Failed tasks remain in cost numerators. Missing pairs, unknown usage or incompatible measurement scopes suppress savings claims. The tool makes no model calls. The pilot has not been run with live models, so no token savings are claimed.
+
 
 ## Team
 
@@ -119,7 +128,7 @@ Select Opus 5.5 in Claude Code, then invoke:
 
 The lead follows [SKILL.md](SKILL.md). From the installed skill directory, run `node scripts/setup-doctor.mjs <repository>` to check worker CLI support. Configuration belongs to the target repository's `hyperfusion.config.json`; see `hyperfusion.config.example.json`.
 
-**Lead guard hooks.** Run `npm run guard:settings` in the skill directory and merge the printed `hooks` into `~/.claude/settings.json` or the target repository's `.claude/settings.json`. The output uses absolute paths and includes PreToolUse, Stop, SessionStart, and UserPromptSubmit. Existing installs can add the missing SessionStart/UserPromptSubmit entries.
+**Lead guard hooks.** Run `npm run guard:settings` in the skill directory and merge the printed `hooks` into `~/.claude/settings.json` or the target repository's `.claude/settings.json`. The output uses absolute paths and includes PreToolUse, Stop, SessionStart, UserPromptSubmit, SessionEnd and StopFailure. Existing installs must merge the new usage commands into those events as well; preserve unrelated hooks and avoid duplicating existing commands.
 
 **Autopilot.** Run `node scripts/fusion-state.mjs autopilot <repository>` for an initialized task. Acceptance commands must have a recorded red baseline, or a recorded green baseline for preserve verification. Classic review also requires `review.auto_apply:true`; adaptive review stops at the lead gate regardless of that setting. VERIFY, design decisions, recovery, BLOCKED, and takeover return control to the lead. Explicit discretion can continue eligible policy-approved work through verification to CLOSE. See [operations](references/operations.md#오토파일럿).
 

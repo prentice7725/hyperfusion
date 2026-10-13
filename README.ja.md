@@ -4,12 +4,21 @@
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.20.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.21.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 作った理由
 
 1. **トークン節約。** 高価なモデル（Opus）がコードを書き、テストを回し、ログを読むのにトークンを使うのは無駄です。Opusは計画・差し戻し・最終検収だけを行い、実装とテストの反復はより安いモデルや別サブスクリプションのモデルが担当します。成功した作業あたりのOpusトークンを主要指標として計測し記録します。
 2. **相手にするのはリードだけ。** 複数のエージェントを一画面で管理するツールはすでにあります。このスキルは逆に、ユーザーが**Opus一人だけを相手にし、ワーカーの管理はOpusが行います。** ワーカーの「完了しました」は信用せず、空の差し戻しは許さず、具体的な指示書で詰め、同じミスを2回したら別のワーカーに交代させます。
+
+## 使用量の測定とインストール済みチーム (0.21.0)
+
+生成したフックがホストセッションを結び付け、Stop/SessionEnd/StopFailure時にローカルClaude Code transcriptのassistant使用量を自動収集します。実際のモデルごとにinput・output・cache read・cache creationを集計し、ストリーミングの重複メッセージや再開したセッションは一度だけ数えます。終了後最初のStopの最終報告まで含め、その後のプロンプトでは測定区間を延長しません。証拠がなければ未測定とし、明示的な`TASK_USAGE.json`の観測を優先します。クライアントの報告値であり、課金APIではありません。→ [指標ポリシー](references/metrics-policy.md)
+
+`node scripts/project.mjs draft REPO`（または`roster REPO --draft`）は、インストール済みチームと未導入メンバーの`excluded`理由を埋めた案を返します。構成案の提出・承認は未導入メンバーを拒否します。`setup-doctor.mjs`は設定変更や承認をせずプリセットを推薦します。Claude+Codexだけの環境の`claude-codex`プリセットはlowをLuna、medium/highの画像以外の作業をSonnetに割り当て、Sol/Sonnetが相互レビューします。プロジェクトのユーザー承認がコントローラによるSonnet実装grantを許可し、明示的な割り当ては維持されます。導入確認は認証や残量の検証ではありません。
+
+`node scripts/benchmark.mjs cases`は固定パイロット課題10件を表示します。`node scripts/benchmark.mjs compare BASELINE.json HYPERFUSION.json`は`case_id`、明示的な`success`、ホスト使用量とClaude合計トークンを含む実測のペア配列を比較します。失敗のコストも分子に入れ、ペア欠落・未測定・測定区間の不一致があれば削減率を出しません。モデル呼び出しは行いません。実モデルのパイロットは未実施なので、削減効果は主張しません。
+
 
 ## チーム
 
@@ -118,7 +127,7 @@ Claude CodeでOpus 5.5を選び：
 
 リードが[SKILL.md](SKILL.md)に従ってコントローラとブリッジを呼び出します。まず`node scripts/setup-doctor.mjs <リポジトリ>`でインストール状況を点検してください。設定は対象リポジトリの`hyperfusion.config.json`（例：`hyperfusion.config.example.json`）です。
 
-**リードガードフックの導入（推奨）。** `npm run guard:settings`が、このPCの絶対パスで書かれたフック設定（PreToolUse、Stop、SessionStart、UserPromptSubmit）を出力します。その`hooks`の項目を`~/.claude/settings.json`（または対象リポジトリの`.claude/settings.json`）にマージします。すでにフックを入れている場合は、出力の`SessionStart`と`UserPromptSubmit`の項目だけを追加してください。
+**リードガードフックの導入（推奨）。** `npm run guard:settings`が、このPCの絶対パスで書かれたフック設定（PreToolUse、Stop、SessionStart、UserPromptSubmit、SessionEnd、StopFailure）を出力します。その`hooks`の項目を`~/.claude/settings.json`（または対象リポジトリの`.claude/settings.json`）にマージします。既存の導入でも各イベントの新しい使用量収集コマンドをマージしてください。他のフックを保持し、既存コマンドの重複を避けます。
 
 **オートパイロット。** 初期化済みの作業は`node scripts/fusion-state.mjs autopilot <リポジトリ>`でラウンド実行と独立した委任レビューを自動進行できます。リードが承認した`acceptance_commands`が必要で、基準ツリーで失敗が確認された（red）コマンドでなければなりません（保存検証の作業は逆に、すでに通ることが確認されている必要があります）。classicのレビューでは`review.auto_apply:true`も必要です（`lead-gated-adaptive`はどのみちリードゲートで止まるため要求しません）。VERIFY・設計判断・BLOCKED・takeoverではリードに制御を返し、プロセス停止・スナップショット・予算・検証の確認に失敗した場合も停止します。リードが裁量権を与えた作業は、コントローラが承認したラウンドのverifyまで進みます（[運用説明（韓国語）](references/operations.md#오토파일럿)）。
 

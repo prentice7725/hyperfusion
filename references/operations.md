@@ -174,3 +174,7 @@ VERIFY, LEAD_DECISION_REQUIRED, DECISION_REQUIRED, BLOCKED, TAKEOVER_REQUIRED, R
 오토파일럿 브리지는 프로세스 표를 관측하고 PID와 생성 시각으로 자손을 추적해 `quiescence-*.json`에 정지 증거를 남긴다. 확인 불가·잔존 자손·불확실한 종료에서는 자동 finish하지 않고 writer lease 또는 open_consult를 유지한다. 관측 사이에 부모 연결을 끊고 빠져나간 프로세스까지 완전히 추적하는 OS 격리는 아니다. 그런 실행이 가능한 회사 환경에서는 별도 프로세스 격리가 필요하다.
 
 동시 실행은 `autopilot.lock`으로 막으며, 실행 장부는 작업 폴더의 `autopilot-<UUID>.json`에 남긴다. 반환값은 `NEEDS_LEAD`, 현재 단계, 중단 사유, 수행 단계 수와 다음 동작을 담는다. 단계 상한·중단·전송 실패 후에는 status와 장부를 확인한다. 기존 launch 표식이나 open_consult가 있으면 재실행하거나 결과만 보고 자동 finish하지 않는다. 리드가 정지를 확인하고 finish/consult-finish 또는 recover한 후 다시 실행한다. 자동 commit·push나 프로젝트 승인·범위 확대는 하지 않는다.
+
+## 호스트 회계 훅 갱신
+
+0.21.0부터 `npm run guard:settings` 출력에는 `lead-usage.mjs --hook`이 들어 있다. 기존 PreToolUse/Edit·Write 가드와 Stop 가드를 보존하면서 SessionStart/UserPromptSubmit/PreToolUse(Bash)의 연결 명령 및 Stop/SessionEnd/StopFailure의 수집 명령을 병합한다. 기존 설치에서도 UserPromptSubmit만 추가하는 것으로는 자동 회계가 켜지지 않는다. transcript를 복사하지 않고 종료된 작업의 지표를 업데이트하며, 실패한 수집은 종료를 막지 않는다. 수동 관측과 scope·파일럿 조건은 [metrics-policy](metrics-policy.md)를 따른다.

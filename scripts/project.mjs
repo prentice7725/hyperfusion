@@ -8,6 +8,7 @@ import {config,EXECUTORS,REVIEWERS,TASK_KINDS,DIFFICULTIES,IMAGE_EXECUTORS} from
 import {adapter} from './adapters/index.mjs';
 import {matchRule} from './router.mjs';
 import {controlPath,ensureControl,acquireLock} from './control-dir.mjs';
+import {installationRoster,recommendPreset} from './installation.mjs';
 
 // 프로젝트 층: 리드가 기획 문서를 읽고 팀을 꾸려 보고하고, 사용자가 승인한 팀으로 마일스톤을 진행한다.
 // 승인 전에는 작업을 시작할 수 없고, 마일스톤이 끝나면 체크포인트 보고와 사용자 확인 전에는 다음으로 못 넘어간다.
@@ -52,9 +53,11 @@ export function validatePlan(root,plan) {
  if(!Array.isArray(plan.sources)||!plan.sources.length||!plan.sources.every(p=>safePath(p)&&fs.existsSync(path.join(root,p))&&fs.statSync(path.join(root,p)).isFile()))
   throw Error('Plan needs sources: the planning documents you read (repository-relative files that exist)');
  if(!Array.isArray(plan.team)||!plan.team.length)throw Error('Plan needs a team');
+ const unavailable=new Set(installationRoster(config(root)).filter(m=>!m.installed).map(m=>m.member));
  const seen=new Set();
  for(const t of plan.team){
   if(!MEMBERS.includes(t?.member))throw Error('Unknown team member '+t?.member+'; choose from '+MEMBERS.join(', '));
+  if(unavailable.has(t.member))throw Error(`TEAM_UNAVAILABLE: ${t.member} is not installed or its CLI contract is unsupported; put it in excluded`);
   if(seen.has(t.member))throw Error('Duplicate team member '+t.member);seen.add(t.member);
   if(!str(t.role)||!str(t.why))throw Error(`Team member ${t.member} needs role and why`);
   if(!Array.isArray(t.owns))throw Error(`Team member ${t.member} needs owns (task kinds, may be empty)`);
@@ -64,7 +67,9 @@ export function validatePlan(root,plan) {
   if(t.member!=='sol'&&!t.owns.length)warnings.push(`${t.member}: 담당 작업 종류가 없어 예비 인력으로만 투입됨`);
  }
  // 쓰지 않는 팀원도 이유와 함께 명시해야 한다. 빠뜨린 건지 뺀 건지 보고서에서 구분되게.
+ plan.excluded??=[];
  if(!Array.isArray(plan.excluded))throw Error('Plan needs excluded (members not used, with why; may be empty)');
+ for(const member of unavailable)if(!seen.has(member)&&!plan.excluded.some(x=>x?.member===member))plan.excluded.push({member,why:'미설치 또는 CLI 계약 불일치'});
  for(const x of plan.excluded){
   if(!MEMBERS.includes(x?.member)||!str(x.why))throw Error('Each excluded entry needs a known member and why');
   if(seen.has(x.member))throw Error(`${x.member} is both on the team and excluded`);seen.add(x.member);
@@ -74,6 +79,13 @@ export function validatePlan(root,plan) {
  const implementers=plan.team.map(t=>t.member).filter(m=>EXECUTORS.includes(m));
  if(!implementers.length)throw Error('The team needs at least one implementer');
  const members=plan.team.map(t=>t.member);
+ if(plan.preset!==undefined&&!['claude-codex','external-first','classic-installed'].includes(plan.preset))throw Error('Unknown project preset');
+ if(plan.preset==='claude-codex'){
+  if(['sonnet','luna','sol'].some(m=>!members.includes(m)))throw Error('claude-codex preset requires installed Sonnet, Luna and Sol');
+  plan.review??={by:'delegate',strategy:'lead-gated-adaptive',reviewers:['sol','sonnet'],auto_apply:false};
+  if(plan.review.strategy!=='lead-gated-adaptive')throw Error('claude-codex preset requires adaptive cross-company review');
+  warnings.push('Approval authorizes controller Sonnet grants for medium/high non-image tasks; low tasks use Luna. Sol remains a reviewer.');
+ }
  plan.review??=members.includes('sol')?{by:'delegate',reviewers:['sol',...implementers]}:{by:'lead'};
  if(!['lead','delegate'].includes(plan.review.by))throw Error('review.by must be lead or delegate');
  if(plan.review.strategy!==undefined&&plan.review.strategy!=='lead-gated-adaptive')throw Error('Unknown project review.strategy');
@@ -131,7 +143,8 @@ export function teamRules(plan) {
 // 승인된 팀을 작업 설정으로 옮긴다. 빠진 팀원은 이 프로젝트에서 불리지 않는다.
 export function teamConfig(plan,base) {
  const implementers=plan.team.map(t=>t.member).filter(m=>EXECUTORS.includes(m));
- return {...base,external:{default:'auto',available:implementers},routing:{...base.routing,rules:teamRules(plan)},
+ return {...base,external:{default:'auto',available:implementers},routing:{...base.routing,
+  ...(plan.preset==='claude-codex'?{policy:'external-first',claude_reserve:true}:{}),rules:teamRules(plan)},
   review:{...base.review,...plan.review},
   project:{name:plan.name,revision:plan.revision}};
 }
@@ -160,7 +173,17 @@ const installed=(c,m)=>{try{adapter(m).probe(c.executors?.[m]??{});return true;}
 
 export function roster(root) {
  root=repo(root);const c=config(root);
- return MEMBERS.map(m=>({member:m,model:modelOf(c,m),implementer:EXECUTORS.includes(m),default_role:CATALOG[m].role,default_owns:CATALOG[m].owns,installed:installed(c,m)}));
+ const availability=installationRoster(c);
+ return MEMBERS.map(m=>{const a=availability.find(x=>x.member===m);return {member:m,model:modelOf(c,m),implementer:EXECUTORS.includes(m),default_role:CATALOG[m].role,default_owns:CATALOG[m].owns,installed:a.installed,
+  excluded:a.installed?null:{member:m,why:a.reason}};});
+}
+
+export function draftTeam(root) {
+ const members=roster(root),preset=recommendPreset(members),selected=new Set(preset.members);
+ return {preset:preset.name==='unavailable'?null:preset.name,requires_approval:true,
+  team:members.filter(m=>m.installed&&selected.has(m.member)).map(m=>({member:m.member,role:m.default_role,owns:m.default_owns,why:'설치된 CLI 및 추천 프리셋'})),
+  excluded:members.filter(m=>!m.installed||!selected.has(m.member)).map(m=>m.excluded??{member:m.member,why:'추천 프리셋에서 사용하지 않는 예비 팀원'}),
+  review:preset.review,recommendation:preset,planning_needed:['name','summary','sources','milestones']};
 }
 
 // 팀 구성 보고서. 리드는 이걸 그대로 사용자에게 보여 주고 승인이나 변경 지시를 받는다.
@@ -172,6 +195,7 @@ export function teamReport(root,p=loadProject(root)) {
  L.push('## 팀','','| 팀원 | 모델 | 역할 | 담당 작업 | 이유 | 설치 |','|---|---|---|---|---|---|');
  for(const t of p.team)L.push(`| ${t.member} | ${cell(modelOf(c,t.member))} | ${cell(t.role)} | ${t.owns.length?cell(t.owns.map(o=>'`'+o+'`').join(', ')):(t.member==='sol'?'리뷰':'예비')} | ${cell(t.why)} | ${installed(c,t.member)?'✓':'✗ 설치 필요'} |`);
  L.push('','- 리드: Claude Opus 5.5 — 계획, 배치, 최종 검증(VERIFY), 설계 결정');
+ if(p.preset)L.push(`- 프리셋: ${p.preset}${p.preset==='claude-codex'?' — 승인 후 low는 Luna, medium/high 비이미지 작업은 controller grant로 Sonnet; Sol은 리뷰 전담':''}`);
  L.push(`- 리뷰: ${p.review.by==='delegate'?'위임 — '+p.review.reviewers.join(' → ')+' 순서(구현자는 자기 라운드 리뷰 불가)':'리드가 직접'}`,'');
  if(p.review.strategy==='lead-gated-adaptive')L.push('- v0.3: 자동 구현은 External-First, Haiku reserve 유지. 실제 owner로 필수 리뷰를 정하며 호스트 최종 판정 전 VERIFY/CLOSE 금지. Sonnet/Sol은 작업별 controller grant만 허용.','');
  if(p.excluded.length)L.push('## 이번 프로젝트에서 쓰지 않음','','| 팀원 | 이유 |','|---|---|',...p.excluded.map(x=>`| ${x.member} | ${cell(x.why)} |`),'');
@@ -200,7 +224,7 @@ export function propose(root,plan) {
   const warnings=validatePlan(root,plan);
   const p={version:1,status:'PROPOSED',revision:(old?.revision??0)+1,name:plan.name,summary:plan.summary,
    sources:plan.sources.map(s=>({path:s,sha256:hash(fs.readFileSync(path.join(root,s)))})),
-   team:plan.team,excluded:plan.excluded,review:plan.review,
+   team:plan.team,excluded:plan.excluded,review:plan.review,...(plan.preset?{preset:plan.preset}:{}),
    milestones:plan.milestones.map(m=>({...m,status:'pending',tasks:m.tasks.map(t=>({...t,status:'planned'}))})),
    risks:plan.risks??[],questions:plan.questions??[],warnings,history:[...(old?.history??[]),{at:now(),event:'proposed',by:'lead',revision:(old?.revision??0)+1}]};
   saveProject(root,p);
@@ -215,6 +239,8 @@ export function approve(root,{user_message}={}) {
   const p=loadProject(root);
   if(!p||p.status!=='PROPOSED')throw Error('Nothing to approve; propose or amend a plan first');
   if(!str(user_message))throw Error('Record the user\'s own approval words in user_message');
+  const unavailable=roster(root).filter(m=>!m.installed&&p.team.some(t=>t.member===m.member));
+  if(unavailable.length)throw Error('TEAM_UNAVAILABLE: installation changed since proposal: '+unavailable.map(m=>m.member).join(', '));
   p.status='ACTIVE';p.history.push({at:now(),event:'approved',by:'user',message:user_message,revision:p.revision});
   if(!p.milestones.some(m=>['active','checkpoint_due','reported'].includes(m.status))){const next=p.milestones.find(m=>m.status==='pending');if(next)next.status='active';}
   saveProject(root,p);
@@ -227,9 +253,9 @@ export function amend(root,changes={}) {
  root=repo(root);
  return withLock(root,()=>{
   const p=loadProject(root);if(!p)throw Error('No project plan');
-  const plan={name:p.name,summary:changes.summary??p.summary,sources:changes.sources??p.sources.map(s=>s.path),team:changes.team??p.team,excluded:changes.excluded??p.excluded,
+  const plan={name:p.name,preset:changes.preset===null?undefined:changes.preset??p.preset,summary:changes.summary??p.summary,sources:changes.sources??p.sources.map(s=>s.path),team:changes.team??p.team,excluded:changes.excluded??p.excluded,
    review:changes.review??(changes.team?undefined:p.review),milestones:[...p.milestones,...(changes.add_milestones??[]).map(m=>({...m}))],risks:changes.risks??p.risks,questions:changes.questions??p.questions};
-  const structural=['team','excluded','review','add_milestones','sources'].some(k=>changes[k]!==undefined);
+  const structural=['team','excluded','review','add_milestones','sources','preset'].some(k=>changes[k]!==undefined);
   for(const a of changes.add_tasks??[]){
    const m=plan.milestones.find(x=>x.id===a.milestone);
    if(!m||['done'].includes(m.status))throw Error('Cannot add tasks to milestone '+a.milestone);
@@ -242,7 +268,7 @@ export function amend(root,changes={}) {
    t.status='dropped';t.drop_reason=d.why;
   }
   const warnings=validatePlan(root,plan);
-  Object.assign(p,{summary:plan.summary,team:plan.team,excluded:plan.excluded,review:plan.review,risks:plan.risks??[],questions:plan.questions??[],warnings,
+  Object.assign(p,{preset:plan.preset,summary:plan.summary,team:plan.team,excluded:plan.excluded,review:plan.review,risks:plan.risks??[],questions:plan.questions??[],warnings,
    sources:changes.sources?changes.sources.map(s=>({path:s,sha256:hash(fs.readFileSync(path.join(root,s)))})):p.sources,
    milestones:plan.milestones.map(m=>({...m,status:m.status??'pending',tasks:m.tasks.map(t=>({...t,status:t.status??'planned'}))}))});
   for(const m of p.milestones)if(m.status==='active'&&m.tasks.every(x=>SETTLED.includes(x.status)))m.status='checkpoint_due';
@@ -315,9 +341,9 @@ if(isMain(import.meta.url)) {
  try{
   const [cmd,root,arg]=process.argv.slice(2);
   const input=()=>readInput(arg);
-  const out={roster:()=>roster(root),propose:()=>propose(root,input()),report:()=>({report:teamReport(repo(root))}),approve:()=>approve(root,input()),
+ const out={roster:()=>arg==='--draft'?draftTeam(root):roster(root),draft:()=>draftTeam(root),propose:()=>propose(root,input()),report:()=>({report:teamReport(repo(root))}),approve:()=>approve(root,input()),
    amend:()=>amend(root,input()),checkpoint:()=>checkpoint(root),ack:()=>ack(root,input()),status:()=>status(root)}[cmd];
-  if(!out)throw Error('Usage: project.mjs roster|propose PLAN.json|report|approve INPUT.json|amend CHANGES.json|checkpoint|ack INPUT.json|status  (each takes REPO first)');
+  if(!out)throw Error('Usage: project.mjs draft|roster [--draft]|propose PLAN.json|report|approve INPUT.json|amend CHANGES.json|checkpoint|ack INPUT.json|status  (each takes REPO first)');
   const r=out();
   // 보고서는 사람이 읽을 수 있게 그대로 출력하고, 나머지는 JSON으로.
   if(r?.report&&Object.keys(r).length<=6){const {report,...rest}=r;console.log(JSON.stringify(rest,null,2));console.log('\n'+report);}

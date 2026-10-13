@@ -4,12 +4,21 @@
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.20.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.21.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 왜 만들었나
 
 1. **토큰 절약.** 비싼 모델(Opus)이 코드를 쓰고 테스트를 돌리며 로그를 읽는 데 토큰을 태우는 건 낭비다. Opus는 계획, 반려, 최종 검수만 하고, 구현과 테스트 반복은 더 싼 모델이나 다른 구독의 모델이 한다. 성공한 작업당 Opus 토큰을 핵심 지표로 재고 기록한다.
 2. **리드만 상대하면 된다.** 여러 에이전트를 한 화면에서 관리하는 도구는 이미 있다. 이 스킬은 반대로 사용자가 **Opus 하나만 상대하고, 일꾼 관리는 Opus가 한다.** 일꾼의 "다 했어요"를 믿지 않고, 빈 반려 없이 구체적인 명령서로 갈구고, 같은 실수를 두 번 하면 다른 일꾼으로 교체한다.
+
+## 사용량 측정과 설치된 팀 구성 (0.21.0)
+
+생성된 훅이 호스트 세션을 연결하고 Stop/SessionEnd/StopFailure 때 로컬 Claude Code transcript의 assistant 사용량을 자동 수집한다. 실제 모델별 input·output·cache read·cache creation을 합산하며, 스트리밍 중복 메시지와 재개한 세션은 한 번만 센다. 종료 후 첫 Stop의 마무리 보고까지 포함하고 이후 프롬프트로 작업 측정 구간을 늘리지 않는다. 증거가 없으면 미측정으로 남기며, 명시적인 `TASK_USAGE.json` 관측이 우선한다. 클라이언트 보고치이며 청구 API가 아니다. → [지표 정책](references/metrics-policy.md)
+
+`node scripts/project.mjs draft REPO`(또는 `roster REPO --draft`)가 설치된 팀과 미설치 팀원의 `excluded` 사유를 채운 초안을 준다. 구성안 제출·승인은 미설치 팀원을 거절한다. `setup-doctor.mjs`는 설정 변경이나 승인 없이 프리셋을 추천한다. Claude+Codex만 설치된 환경의 `claude-codex` 프리셋은 low에 Luna, medium/high의 비이미지 작업에 Sonnet을 쓰고 Sol/Sonnet이 교차 리뷰한다. 프로젝트 사용자 승인이 컨트롤러의 Sonnet 구현 grant를 허가하며 명시적 배치는 유지한다. 설치 확인은 인증·잔량 검증을 뜻하지 않는다.
+
+`node scripts/benchmark.mjs cases`는 고정 파일럿 과제 10개를 출력한다. `node scripts/benchmark.mjs compare BASELINE.json HYPERFUSION.json`은 `case_id`, 명시적 `success`, 호스트 사용량·전체 Claude 토큰을 넣은 실제 paired 지표 배열을 비교한다. 실패 비용도 분자에 넣고, 쌍 누락·미측정·측정 구간 불일치가 있으면 절감률을 내지 않는다. 모델 호출은 하지 않는다. 실제 모델 파일럿은 아직 실행하지 않아 절감 효과를 주장하지 않는다.
+
 
 ## 팀
 
@@ -118,7 +127,7 @@ Claude Code에서 Opus 5.5를 고르고:
 
 리드가 [SKILL.md](SKILL.md)에 따라 컨트롤러와 브리지를 호출한다. 먼저 `node scripts/setup-doctor.mjs <저장소>`로 설치 상태를 점검한다. 설정은 대상 저장소의 `hyperfusion.config.json`(예시: `hyperfusion.config.example.json`).
 
-**리드 가드 훅 설치(권장).** `npm run guard:settings`가 이 PC의 절대 경로로 된 훅 설정(PreToolUse, Stop, SessionStart, UserPromptSubmit)을 출력한다. 그 `hooks` 항목을 `~/.claude/settings.json`(또는 대상 저장소의 `.claude/settings.json`)에 합친다. 훅을 이미 설치했다면 출력의 `SessionStart`와 `UserPromptSubmit` 항목만 더하면 된다.
+**리드 가드 훅 설치(권장).** `npm run guard:settings`가 이 PC의 절대 경로로 된 훅 설정(PreToolUse, Stop, SessionStart, UserPromptSubmit, SessionEnd, StopFailure)을 출력한다. 그 `hooks` 항목을 `~/.claude/settings.json`(또는 대상 저장소의 `.claude/settings.json`)에 합친다. 기존 설치도 각 이벤트의 새 사용량 수집 명령을 합쳐야 한다. 다른 훅은 보존하고 기존 명령은 중복 추가하지 않는다.
 
 **오토파일럿.** 초기화된 작업은 `node scripts/fusion-state.mjs autopilot <저장소>`로 라운드 실행과 독립 위임 리뷰를 자동 진행할 수 있다. 리드가 정한 `acceptance_commands`가 있어야 하고, 기준 트리에서 실패가 확인된(red) 명령이어야 한다(보존 검증 작업은 반대로 이미 통과가 확인돼야 한다). classic 리뷰에서는 `review.auto_apply:true`도 필요하다(`lead-gated-adaptive`는 어차피 리드 게이트에서 멈추므로 요구하지 않는다). VERIFY·설계 결정·BLOCKED·takeover에서 리드에게 제어를 돌려주며, 정지·스냅샷·예산·검증 확인에 실패하면 멈춘다. 리드가 재량권을 준 작업은 컨트롤러가 승인한 라운드의 verify까지 이어 간다([운영 설명](references/operations.md#오토파일럿)).
 
