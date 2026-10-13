@@ -19,7 +19,7 @@ test('a test blocked by the worker sandbox may be reported as failed with a reas
  assert.doesNotThrow(()=>validateResult(withTests([blocked,{command:'npm run lint',status:'pass'}]),'T',1));
  assert.equal(environmentFailure(blocked),true);
  assert.throws(()=>validateResult(withTests([{command:'npm test',status:'fail'}]),'T',1),/Contradictory complete result/,'a failure with no reason still contradicts complete');
- assert.throws(()=>validateResult(withTests([{command:'npm test',status:'fail',environment_error:' '}]),'T',1),/environment_error/);
+ assert.throws(()=>validateResult(withTests([{command:'npm test',status:'fail',environment_error:' '}]),'T',1),/Contradictory complete result/,'a blank reason is no reason: this is an ordinary failure');
  assert.throws(()=>validateResult(withTests([{command:'npm test',status:'pass',environment_error:'EPERM'}]),'T',1),/environment_error/,'only a failure can carry a reason');
  assert.throws(()=>validateResult(withTests([{command:'npm test',status:'not_run',environment_error:'EPERM'}]),'T',1),/environment_error/);
  assert.equal(environmentFailure({command:'x',status:'fail'}),false);
@@ -89,4 +89,52 @@ test('a git config that can run commands is not accepted, and an accepted except
  const again=f.finish(f.result());
  assert.equal(again.phase,'RECOVERY_REQUIRED');
  assert.ok(again.last_errors.some(e=>/Out of scope: \.git\/config/.test(e)),'the exception does not cover a command-running entry added later');
+});
+
+// ── Codex(Luna·Sol): 구조화 출력이 선택 항목을 필수로 만든다 ─────────────────────
+
+import {strictSchema} from '../scripts/adapters/codex.mjs';
+import {resultSchema} from '../scripts/adapters/common.mjs';
+
+test('Codex must fill environment_error on every test, so an empty value means "none"',async t=>{
+ // 원인: strictSchema가 모든 properties를 required로 바꾼다. 그러면 해당 없는 테스트에도 빈 문자열이 온다.
+ const strict=strictSchema(resultSchema('T',1));
+ assert.ok(strict.properties.tests.items.required.includes('environment_error'),'Codex is forced to emit the field');
+ const codexLike=tests=>withTests(tests);
+ const passed=[{command:'npm test',status:'pass',environment_error:''},{command:'npm run lint',status:'not_run',environment_error:''}];
+ assert.doesNotThrow(()=>validateResult(codexLike(passed),'T',1),'blank means no environment error');
+ assert.doesNotThrow(()=>validateResult(codexLike([{command:'x',status:'pass',environment_error:'   '}]),'T',1));
+ assert.doesNotThrow(()=>validateResult(codexLike([{command:'x',status:'pass',environment_error:null}]),'T',1));
+ // 빈 값이 "사유 없는 실패"를 면해 주지는 않는다.
+ assert.throws(()=>validateResult(codexLike([{command:'npm test',status:'fail',environment_error:''}]),'T',1),/Contradictory complete result/);
+ assert.equal(environmentFailure({command:'x',status:'fail',environment_error:''}),false);
+ // 사유가 있는데 실패가 아니면 여전히 거절한다. 문자열이 아닌 값도 거절한다.
+ assert.throws(()=>validateResult(codexLike([{command:'x',status:'pass',environment_error:'EPERM'}]),'T',1),/environment_error/);
+ assert.throws(()=>validateResult(codexLike([{command:'x',status:'fail',environment_error:5}]),'T',1),/environment_error/);
+ // 실제 라운드: Codex가 낸 모양 그대로 finish를 통과한다.
+ const f=fixture(t);
+ f.begin();
+ const out=f.finish({...f.result(),tests:passed});
+ assert.equal(out.phase,'REVIEW',JSON.stringify(out.last_errors));
+});
+
+test('every optional field of the worker result schema is one Codex can fill with an empty value',()=>{
+ // strictSchema는 선택 항목을 필수로 바꾼다. 선택 항목을 새로 더하면 Codex가 빈 값으로 채워 내므로, 컨트롤러가 빈 값을 받는지 먼저 확인해야 한다.
+ // 이 목록이 바뀌면 이 시험이 실패해서 그 확인을 잊지 않게 한다.
+ const optional=[];
+ const walk=(schema,at)=>{
+  if(!schema||typeof schema!=='object')return;
+  if(Array.isArray(schema))return schema.forEach((x,i)=>walk(x,`${at}[${i}]`));
+  if(schema.type==='object'&&schema.properties){
+   const required=new Set(schema.required??[]);
+   for(const key of Object.keys(schema.properties))if(!required.has(key))optional.push(`${at}.${key}`);
+  }
+  for(const [key,value] of Object.entries(schema))walk(value,`${at}.${key}`);
+ };
+ walk(resultSchema('T',1),'result');
+ assert.deepEqual(optional.sort(),[
+  'result.properties.memory_candidates.items.keywords',   // 빈 배열을 받는다(memory-policy)
+  'result.properties.tests.items.environment_error',      // 빈 문자열을 받는다(contracts)
+  'result.memory_candidates'                              // 빈 배열을 받는다(memory-policy)
+ ].sort(),`a new optional field in the worker result schema: make sure an empty value is accepted, then list it here — ${JSON.stringify(optional)}`);
 });

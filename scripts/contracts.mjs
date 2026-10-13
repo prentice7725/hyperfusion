@@ -5,6 +5,9 @@ const requireThat=(v,m)=>{if(!v)throw Error(m);};
 const str=v=>typeof v==='string'&&v.trim().length>0;
 const strs=v=>Array.isArray(v)&&v.every(str);
 // 환경이 막아서 실패한 테스트(사유가 적힌 fail). 진짜 실패와 구분해 컨트롤러와 리드가 따로 본다.
+// 비어 있는 값("", 공백, null)은 "없음"이다. OpenAI 구조화 출력(Codex 어댑터의 strictSchema)은 선택 항목도 필수로 요구해서,
+// 해당 없는 테스트마다 environment_error를 빈 문자열로 채워 낸다. 이를 오류로 보면 Codex 라운드가 매번 형식 오류로 끝난다.
+const blank=v=>v===undefined||v===null||(typeof v==='string'&&!v.trim());
 export const environmentFailure=t=>t?.status==='fail'&&str(t.environment_error);
 // 저장소 기준 상대 경로. 일꾼이 보고하는 경로(files_changed 등)와 리뷰어의 지적 위치에 쓴다. 스냅샷과 글자 그대로 비교하므로 글롭은 따지지 않는다.
 // '.'와 './src'는 git이 돌려주는 경로와 절대 일치하지 않아 모든 변경이 범위 밖이 되므로 거절한다.
@@ -67,7 +70,7 @@ export function result(v,task_id,round) {
  requireThat(v.status!=='needs_decision'||v.needs_lead_decision,'Decision flag missing');
  // environment_error: 일꾼의 샌드박스나 실행 환경이 막아서 테스트가 돌지 못했을 때 그 사유. 실패를 지우는 필드가 아니라 실패의 원인을 밝히는 필드다.
  // status는 fail 그대로 두고(정직한 보고), complete와 함께 올 수 있지만 컨트롤러는 이를 통과로 세지 않는다(위임 승인은 거절하고 리드가 본다).
- requireThat(Array.isArray(v.tests)&&v.tests.every(x=>str(x.command)&&['pass','fail','not_run'].includes(x.status)&&(x.environment_error===undefined||(x.status==='fail'&&str(x.environment_error)))),'Invalid tests (environment_error needs status fail and a reason)');
+ requireThat(Array.isArray(v.tests)&&v.tests.every(x=>str(x.command)&&['pass','fail','not_run'].includes(x.status)&&(blank(x.environment_error)||(x.status==='fail'&&str(x.environment_error)))),'Invalid tests (environment_error needs status fail and a reason)');
  requireThat(v.status!=='complete'||(!v.needs_lead_decision&&!v.unresolved.length&&!v.tests.some(t=>t.status==='fail'&&!environmentFailure(t))),'Contradictory complete result');
  // 기억 후보는 덤으로 받는 선택 항목이다. 모양이 틀려도 라운드를 실패시키지 않는다(장부에 올릴 때 걸러서 사유와 함께 남긴다).
  requireThat(v.memory_candidates===undefined||Array.isArray(v.memory_candidates),'Invalid memory_candidates (a list of up to 3)');

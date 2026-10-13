@@ -1,6 +1,6 @@
 # 결과 계약
 
-필드: task_id, round, status, summary, files_read, files_changed, commands_run, tests, unresolved, risks, needs_lead_decision, recommended_next_action. 경로는 저장소 상대 경로이고 files_changed는 이번 라운드 변경만이다. 테스트는 실제로 돌린 `{command, status}`만 넣는다. 일꾼의 샌드박스·실행 환경이 막아서(권한 거부, 막힌 네트워크·프로세스 생성) 테스트가 돌지 못했으면 `status:"fail"`에 `environment_error`(무엇이 거부됐는지)를 함께 적는다. 사유가 있는 실패는 `complete`와 함께 올 수 있지만 통과로 세지 않는다: 위임 승인(`policy-approve`)은 거절하고, 리드 패킷의 `environment_failures`에 올라 리드가 직접 확인한다. 수용 명령(`acceptance_commands`)은 컨트롤러가 직접 돌리므로 이 보고에 기대지 않는다. 자기 변경이 만든 실패에는 쓸 수 없다(사유 없는 `fail`은 여전히 `complete`와 모순이다).
+필드: task_id, round, status, summary, files_read, files_changed, commands_run, tests, unresolved, risks, needs_lead_decision, recommended_next_action. 경로는 저장소 상대 경로이고 files_changed는 이번 라운드 변경만이다. 테스트는 실제로 돌린 `{command, status}`만 넣는다. 일꾼의 샌드박스·실행 환경이 막아서(권한 거부, 막힌 네트워크·프로세스 생성) 테스트가 돌지 못했으면 `status:"fail"`에 `environment_error`(무엇이 거부됐는지)를 함께 적는다. 사유가 있는 실패는 `complete`와 함께 올 수 있지만 통과로 세지 않는다: 위임 승인(`policy-approve`)은 거절하고, 리드 패킷의 `environment_failures`에 올라 리드가 직접 확인한다. 수용 명령(`acceptance_commands`)은 컨트롤러가 직접 돌리므로 이 보고에 기대지 않는다. 자기 변경이 만든 실패에는 쓸 수 없다(사유 없는 `fail`은 여전히 `complete`와 모순이다). 비어 있는 값(`""`, 공백, `null`)은 "없음"으로 받는다: Codex의 구조화 출력은 선택 항목도 필수로 요구해서 해당 없는 테스트마다 빈 문자열을 낸다.
 
 선택 필드 `memory_candidates`: 다음 에이전트가 알아야 할 교훈 최대 3개 `{type: error|procedure|episode|fact, content, keywords?}`. 장부에 후보로만 올라가고, 리드가 승인해야 AnchorMind에 저장된다.
 
