@@ -85,8 +85,9 @@ test('a stray file from a failed round is flagged again in the next round instea
 });
 test('reverting the stray file lets the task finish normally',t=>{
  const f=fixture(t);
- recoverRound(f,stray(f));
+ const token=stray(f);
  fs.rmSync(path.join(f.root,'b.txt'));
+ recoverRound(f,token);
  assert.equal(goodRound(f).phase,'REVIEW');
  f.review('pass');
  assert.equal(run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'t',status:'pass'}]}).phase,'CLOSE');
@@ -115,10 +116,13 @@ test('verify is the last line of defence: it compares everything to the original
  assert.equal(run(f.root,'verify',{...evidence,allow_out_of_scope:[{path:'b.txt',reason:'accepted at verify'}]}).phase,'CLOSE');
  assert.equal(read(path.join(f.control,'tasks/HF-test/verification.json')).allow_out_of_scope[0].path,'b.txt');
 });
-test('a user edit made between rounds is caught by verify, not silently shipped',t=>{
+test('a user edit made between rounds stops begin and still faces final scope verification after recovery',t=>{
  const f=fixture(t);
  f.begin();f.finish();f.review('redo',['AC1']);
  fs.writeFileSync(path.join(f.root,'notes.txt'),'unrelated edit between rounds');
+ assert.throws(()=>goodRound(f),/Tree drift before begin/);
+ assert.equal(f.state().phase,'RECOVERY_REQUIRED');
+ run(f.root,'recover',{quiescent:true,reason:'Inspect the inter-round user note before proceeding'});
  goodRound(f);f.review('pass');
  assert.throws(()=>run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'t',status:'pass'}]}),/notes\.txt/);
 });
@@ -271,7 +275,7 @@ test('SKILL.md does not forbid a worker that the code supports',()=>{
  assert.match(skill,/sol.*(리뷰|상담|review)/i);
 });
 test('README does not claim Luna was removed without saying it came back',()=>{
- for(const file of ['../README.md','../README.ja.md']){
+ for(const file of ['../README.md','../README.ko.md','../README.ja.md']){
   const text=fs.readFileSync(new URL(file,import.meta.url),'utf8');
   const row=text.split('\n').find(l=>/^\| Luna \| (제거|削除)/.test(l));
   assert.equal(row,undefined,`${file}: stale "Luna removed" row`);

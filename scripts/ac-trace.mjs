@@ -3,7 +3,7 @@
 // 판정은 컨트롤러가 실행한 결과로만 정한다. 일꾼이나 리뷰어의 말로 PASS가 되지 않는다.
 import fs from 'node:fs';
 import path from 'node:path';
-import {read} from './artifact.mjs';
+import {read,changes} from './artifact.mjs';
 
 const AC_ID=/^AC\d+$/;
 export const criterionIds=list=>[...new Set((list??[]).flatMap(t=>String(t).match(/\bAC\d+\b/gi)??[]).map(x=>x.toUpperCase()))];
@@ -52,13 +52,16 @@ export function acTable(brief,results,{reviewed=false}={}) {
 const cell=v=>String(v??'').replace(/\|/g,'\\|').replace(/\r?\n/g,' ');
 
 // CLOSE 때 만드는 PR 설명 초안. 커밋이나 푸시는 하지 않는다. 파일은 제어 폴더에만 쓴다.
-export function prDraft({state,brief,table,changed,rounds,risks}) {
+export function prDraft({state,brief,table,changed,unattributed_changes=[],rounds,risks}) {
  const lines=[];
  const title=brief.objective.split(/\r?\n/)[0].trim().slice(0,72);
  lines.push(`# ${title}`,'');
  lines.push('## 변경 내용','');
  if(brief.objective.trim()!==title)lines.push(brief.objective.trim(),'');
  if(changed.length)lines.push(...changed.map(f=>`- \`${f}\``),'');
+ if(unattributed_changes.length)lines.push('## 일꾼 라운드에 귀속되지 않는 변경','',
+  '아래 파일의 최종 내용은 검증된 일꾼 라운드의 변경으로 확인되지 않았다. 복구·누적 리뷰에서 확인한 변경이며 일꾼의 구현 실적으로 계산하지 않는다.','',
+  ...unattributed_changes.map(f=>`- \`${f}\``),'');
  lines.push('## 수용 기준','','| AC | 기준 | 판정 | 증명 명령 |','|---|---|---|---|',
   ...table.map(r=>`| ${r.id} | ${cell(r.criterion)} | ${r.status} | ${r.commands.map(x=>'`'+cell(x)+'`').join('<br>')||'-'} |`),'');
  if(brief.verification?.kind==='preserve')lines.push(`> 검증: 보존(preserve). 수정 전에도 통과하는 명령이고, 보호 경로(${brief.verification.protect.map(g=>'`'+g+'`').join(', ')})의 파일은 작업 내내 바뀌지 않았다.`,'');
@@ -72,12 +75,31 @@ export function prDraft({state,brief,table,changed,rounds,risks}) {
  return lines.join('\n');
 }
 
-// 라운드 기록에서 초안 재료를 모은다.
-export function draftInputs(dir,state) {
+// Implementation starts at base-1, preserving user edits before the first round.
+// Attribute a final file to a worker only when it still matches that worker's
+// last validated post-snapshot. A recovered overwrite of an earlier worker file
+// must not acquire attribution just because its name appears in round history.
+export function taskChangeEvidence(dir,state,current) {
  const optional=name=>{const f=path.join(dir,name);return fs.existsSync(f)?read(f):null;};
- const changed=new Set(),risks=[],rounds=[];
+ const start=optional('base-1.json')??optional('baseline.json');
+ const end=current??optional(`post-${state.iteration}.json`)??start;
+ if(!start||!end)throw Error('Missing task change snapshots');
+ const changed=changes(start,end),workerEntries=new Map();
  for(let n=1;n<=state.iteration;n++){
-  for(const f of optional(`validation-${n}.json`)?.changed??[])changed.add(f);
+  const validation=optional(`validation-${n}.json`),post=optional(`post-${n}.json`);
+  if(!validation||validation.errors?.length||!post)continue;
+  for(const file of validation.changed??[])workerEntries.set(file,post.files[file]??null);
+ }
+ const unattributed_changes=changed.filter(file=>!workerEntries.has(file)
+  ||JSON.stringify(workerEntries.get(file))!==JSON.stringify(end.files[file]??null));
+ return {changed,unattributed_changes};
+}
+
+// Final change list is the net task diff, not a union of round history.
+export function draftInputs(dir,state,current) {
+ const optional=name=>{const f=path.join(dir,name);return fs.existsSync(f)?read(f):null;};
+ const risks=[],rounds=[];
+ for(let n=1;n<=state.iteration;n++){
   const review=state.reviews.filter(r=>r.round===n).at(-1);
   const lead=optional(`lead-decision-${n}.json`);
   const panel=(state.review_results?.[n]??[]).filter(r=>r.ok).map(r=>`${r.executor}:${r.verdict}${r.superseded?' (replaced)':''}`).join(', ');
@@ -86,5 +108,5 @@ export function draftInputs(dir,state) {
  }
  const last=optional(`raw-result-${state.iteration}.json`);
  for(const x of last?.risks??[])if(typeof x==='string'&&x.trim())risks.push(x.trim());
- return {changed:[...changed].sort(),rounds,risks};
+ return {...taskChangeEvidence(dir,state,current),rounds,risks};
 }

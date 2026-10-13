@@ -20,7 +20,7 @@ import {report} from './report.mjs';
 import {compactView} from './lead-view.mjs';
 import {isPreserve,checkPreserve,protectedChanges} from './preserve.mjs';
 import {takeDelegation,sameDelegation,contractChanged,DELEGABLE_OWNERS,AUTO_RECOVERY_CAP,NON_RETRYABLE} from './delegation.mjs';
-import {acTable,failureCriteria,prDraft,draftInputs} from './ac-trace.mjs';
+import {acTable,failureCriteria,prDraft,draftInputs,taskChangeEvidence} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
 import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
@@ -353,7 +353,7 @@ function status(c,input={}) {
 function roundRisk(c) {
   const s=c.s,globs=s.configuration.review?.risk_paths??[];
   if(!globs.length||!s.iteration)return [];
-  const changed=c.optional(`validation-${s.iteration}.json`)?.changed??[];
+  const changed=taskChangeEvidence(c.taskdir(),s).changed;
   const res=globs.map(globRegex);
   return changed.filter(f=>res.some(re=>re.test(f))).sort();
 }
@@ -455,11 +455,13 @@ function consult(c,input) {
   const id='c'+((s.consults?.length??0)+1);
   const n=s.iteration;
   const latest=c.optional(`brief-${n}.json`)??c.optional('initial-brief.json');
-  const changed=n?(c.optional(`validation-${n}.json`)?.changed??[]):[];
+  const cumulative=taskChangeEvidence(c.taskdir(),s,snapshot(c.root));
+  const changed=cumulative.changed;
   // 읽기 전용 위원(Sonnet은 Bash도 없다)이 diff를 볼 수 있게 직접 넣어 준다. 새 파일은 목록만 있으므로 직접 읽어야 한다.
   const diff=changed.length?git(c.root,['diff',...SAFE_DIFF,'HEAD','--',...changed]):'';
   const context={
     round:n,last_worker:s.owner,last_result:n?c.optional(`raw-result-${n}.json`):null,changed_files:changed,
+    round_changed_files:n?(c.optional(`validation-${n}.json`)?.changed??[]):[],unattributed_changes:cumulative.unattributed_changes,
     ...(n?{controller_acceptance:acceptanceContext(c,latest)}:{}),
     recent_reviews:s.reviews.slice(-3).map(r=>({owner:r.owner,round:r.round,verdict:r.verdict,blocking_criteria:r.blocking_criteria,rationale:r.rationale}))
   };
@@ -469,7 +471,7 @@ function consult(c,input) {
     const a=adapter(m.executor);
     const max=Math.min(CONTEXT_DIFF_MAX,a.contextDiffMax??Infinity),cut=diff.length>max;
     const memberContext={...context,diff:diff.slice(0,max),diff_truncated:cut,
-      diff_note:'git diff HEAD of changed files; untracked new files are not shown, read them directly'
+      diff_note:'git diff HEAD of all net task changes since base-1, including recovered/inter-round changes; review every changed file. unattributed_changes are not verified worker contributions. Pre-existing dirty content can appear in the HEAD diff; base-1 is the task baseline. Untracked new files are not shown, read them directly'
         +(cut?`. The diff was cut at ${max} characters: read the rest of each changed file directly (or run git diff HEAD -- <file>) before judging it`:'')};
     const brief={
       task_id:s.task_id,round:n,repo_root:c.root,objective:latest.objective,scope:latest.scope,
@@ -655,7 +657,8 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
   for(const run of runs)if(run.file)evidence.push(run.file);
   const packet={version:1,task_id:s.task_id,round:n,owner:s.owner,model:dispatch?.cli?.model??null,
     effort:implementDispatch(s,s.owner).options.reasoning_effort??null,criticality:s.assignment?.criticality??'standard',
-    base_commit:s.base_commit,baseline_digest:s.post_digest,changed_files:validation?.changed??[],
+    base_commit:s.base_commit,baseline_digest:s.post_digest,changed_files:taskChangeEvidence(c.taskdir(),s).changed,
+    round_changed_files:validation?.changed??[],unattributed_changes:taskChangeEvidence(c.taskdir(),s).unattributed_changes,
     acceptance:acceptance?{status:acceptance.status,quiescent:acceptance.quiescent===true,file:`acceptance-${n}-finish.json`}:{status:'not_recorded'},
     criteria:(brief?.success_criteria??[]).slice(0,36).map(text=>String(text).slice(0,180)),panel_status,
     ...(environmentFailures.length?{environment_failures:environmentFailures}:{}),
@@ -735,6 +738,11 @@ function begin(c,input) {
   input=contract.brief(input);
   if(input.task_id!==s.task_id)throw Error('Task ID mismatch');
   if(c.writerHeld())throw Error('Writer still present; recover');
+  const start=snapshot(c.root);
+  if(s.iteration>0&&s.post_digest&&start.digest!==s.post_digest){
+    s.phase='RECOVERY_REQUIRED';s.last_errors=['Tree drift before begin; inspect the cumulative diff and recover before starting another round'];c.save();
+    throw Error(s.last_errors[0]);
+  }
   try{assertBudget(c.root,s);}catch(e){if(e.code==='BUDGET_EXCEEDED'){s.phase='BLOCKED';s.budget_error=e.message;c.save();}throw e;}
 
   let owner;
@@ -819,6 +827,13 @@ function begin(c,input) {
   if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options:planned.options,apexGrant:planned.apexGrant});
 
   if(acceptanceBaseline(c,input)===false)return s;
+  // Probes and baseline checks run before the lease. Do not absorb writes from
+  // that interval into a fresh worker baseline either.
+  const base=snapshot(c.root);
+  if(base.digest!==start.digest){
+    s.phase='RECOVERY_REQUIRED';s.last_errors=['Tree drift before begin (during preflight); inspect and recover'];c.save();
+    throw Error(s.last_errors[0]);
+  }
   const lease=acquire(c.root,s.task_id,round,owner);
   if(s.owner!==owner)s.result_failures=0;
   s.hint=null;
@@ -835,7 +850,7 @@ function begin(c,input) {
   }
   c.save();
   c.art(`brief-${round}.json`,input);
-  c.art(`base-${round}.json`,snapshot(c.root));
+  c.art(`base-${round}.json`,base);
   // 수용 테스트를 돌릴 라운드는 무시된 파일의 기준선도 남긴다. 일꾼이 거기 코드를 심었는지 실행 전에 비교한다.
   if(input.acceptance_commands)c.art(`ignored-base-${round}.json`,ignoredManifest(c.root,input.acceptance_artifacts));
 
@@ -1096,7 +1111,9 @@ function applyReview(c,input) {
     throw Error('No alternative executor with budget; redo or report');
   }
 
-  const record={...input,verdict,owner:s.owner,round:s.iteration};
+  const cumulative=taskChangeEvidence(c.taskdir(),s);
+  const record={...input,verdict,owner:s.owner,round:s.iteration,
+    reviewed_changed_files:cumulative.changed,unattributed_changes:cumulative.unattributed_changes,reviewed_digest:s.post_digest};
   // VERIFY에서 수용 테스트가 되돌린 경우 같은 라운드에 리드의 pass 기록이 이미 있다.
   c.art(fs.existsSync(path.join(c.taskdir(),`review-${s.iteration}.json`))?`review-${s.iteration}-verify.json`:`review-${s.iteration}.json`,record);
   s.reviews.push(record);
@@ -1170,6 +1187,14 @@ function verify(c,input) {
     c.save();
     throw Error('Tree drift during verification');
   }
+  const cumulative=taskChangeEvidence(c.taskdir(),s,now);
+  const approval=s.reviews.findLast(r=>r.verdict==='pass'&&r.round===s.iteration&&r.reviewed_digest===now.digest)
+    ??(s.lead_decision?.decision==='APPROVE'&&s.lead_decision.round===s.iteration&&s.lead_decision.baseline_digest===now.digest?s.lead_decision:null);
+  const unreviewed=cumulative.unattributed_changes.filter(file=>!approval?.reviewed_changed_files?.includes(file));
+  if(unreviewed.length){
+    s.phase='RECOVERY_REQUIRED';s.last_errors=[`UNREVIEWED_CHANGES: ${unreviewed.join(', ')}; recover and review the cumulative task diff`];c.save();
+    throw Error(s.last_errors[0]);
+  }
   const guarded=protectedViolations(c,now);
   if(guarded.length)throw Error(`VERIFICATION: protected files changed since the task started (${guarded.join(', ')}); a preserve task cannot close with them changed`);
   // 마지막 관문: 라운드 단위 검사를 다 통과했어도, 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 닫지 않는다.
@@ -1215,13 +1240,14 @@ function verify(c,input) {
   const ac=acTable(brief,results,{reviewed:true});
   const unproven=ac.filter(r=>r.status==='FAIL'||r.status==='NOT_RUN');
   if(unproven.length){s.scope_exceptions=before;throw Error('AC_NOT_PROVEN: '+unproven.map(r=>r.id).join(', ')+' has no passing acceptance result');}
-  c.art('verification.json',{...input,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{}),ac_table:ac});
+  c.art('verification.json',{...input,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{}),ac_table:ac,
+    changed_files:cumulative.changed,unattributed_changes:cumulative.unattributed_changes});
   s.phase='CLOSE';
   s.closed_at=new Date().toISOString();
   s.ac_table=ac.map(({id,status})=>({id,status}));
   // PR 설명 초안. 커밋·푸시는 하지 않으며 저장소가 아니라 제어 폴더에 쓴다.
   try{
-    const draft=prDraft({state:s,brief,table:ac,...draftInputs(c.taskdir(),s)});
+    const draft=prDraft({state:s,brief,table:ac,...draftInputs(c.taskdir(),s,now)});
     fs.writeFileSync(path.join(c.taskdir(),'pr-draft.md'),draft);
     s.pr_draft=path.join(c.taskdir(),'pr-draft.md');
   }catch(e){s.pr_draft_error=e.message;}
@@ -1247,11 +1273,13 @@ function recover(c,input) {
     s.iteration=Math.max(s.iteration,orphan.round);
   }
   s.scope_exceptions=[...(s.scope_exceptions??[]),...stampExceptions(accepted,s.iteration)];
-  c.art(`recovery-${Date.now()}.json`,{...input,current:snapshot(c.root),prior_phase:s.phase});
+  const current=snapshot(c.root);
+  c.art(`recovery-${Date.now()}.json`,{...input,current,prior_phase:s.phase,expected_digest:s.post_digest??null});
   s.phase='RECOVERY_REQUIRED';
   c.save();
   if(c.writerHeld())release(c.root,input.token);
   s.writer=null;
+  s.post_digest=current.digest;s.pending_review=null;
   fs.rmSync(acceptanceMarker(c),{force:true});
   s.phase=s.iteration===0?'PLAN':s.result_failures>=2||s.owner==='lead'||(!c.canWork(s.owner)&&!consumedSpecialist(s))?c.exhausted():'REDO';
   c.save();
@@ -1396,6 +1424,7 @@ function leadDecision(c,input) {
   }
   const record={
     decision:normalized,requested_decision:requested,rationale,baseline_digest:s.post_digest,contract_change:input.contract_change,
+    ...(normalized==='APPROVE'?{reviewed_changed_files:taskChangeEvidence(c.taskdir(),s).changed,unattributed_changes:taskChangeEvidence(c.taskdir(),s).unattributed_changes}:{}),
     round:s.iteration,owner:s.owner,required_reviewer,next_executor,consumed_usage:roundUsage(c),
     implementation_usage:roundUsage(c),decision_usage:input.decision_usage??null,
     authority:{source:'controller-command',observed_model:s.lead_model??null,model_verified:false},
@@ -1450,6 +1479,8 @@ function policyEvaluation(c) {
   need(n<=d.max_rounds,'within the delegated round limit',`round ${n} is past the delegated limit of ${d.max_rounds}`);
   need(!c.writerHeld(),'no writer','a writer is still present');
   need(snapshot(c.root).digest===s.post_digest,'tree unchanged since the round','the tree changed after the round');
+  const cumulative=taskChangeEvidence(c.taskdir(),s);
+  need(!cumulative.unattributed_changes.length,'all net changes belong to validated worker rounds',`changes outside worker rounds need lead review: ${cumulative.unattributed_changes.join(', ')}`);
   need(!budgetStatus(c.root,s).reason,'within budget','the task budget is exhausted');
   const brief=c.optional(`brief-${n}.json`),initial=c.optional('initial-brief.json');
   const changed=brief&&initial?contractChanged(initial,brief):['(brief missing)'];
@@ -1493,6 +1524,7 @@ function policyApprove(c) {
   const d=s.delegation;
   const record={
     decision:'APPROVE',requested_decision:'APPROVE',
+    reviewed_changed_files:taskChangeEvidence(c.taskdir(),s).changed,
     rationale:`Approved by the delegated policy ${d.policy} (granted at init: ${d.reason}). ${check.passed.length} controller checks passed; the lead did not read this round.`,
     baseline_digest:s.post_digest,contract_change:false,round:s.iteration,owner:s.owner,required_reviewer:null,next_executor:null,
     consumed_usage:roundUsage(c),implementation_usage:roundUsage(c),decision_usage:null,
