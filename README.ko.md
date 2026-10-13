@@ -4,12 +4,20 @@
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.21.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.22.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 왜 만들었나
 
 1. **토큰 절약.** 비싼 모델(Opus)이 코드를 쓰고 테스트를 돌리며 로그를 읽는 데 토큰을 태우는 건 낭비다. Opus는 계획, 반려, 최종 검수만 하고, 구현과 테스트 반복은 더 싼 모델이나 다른 구독의 모델이 한다. 성공한 작업당 Opus 토큰을 핵심 지표로 재고 기록한다.
 2. **리드만 상대하면 된다.** 여러 에이전트를 한 화면에서 관리하는 도구는 이미 있다. 이 스킬은 반대로 사용자가 **Opus 하나만 상대하고, 일꾼 관리는 Opus가 한다.** 일꾼의 "다 했어요"를 믿지 않고, 빈 반려 없이 구체적인 명령서로 갈구고, 같은 실수를 두 번 하면 다른 일꾼으로 교체한다.
+
+## Codex·전송 정책 개선 (0.22.0)
+
+Codex 일꾼의 JSONL thread·turn 사용량을 기록하고, 호환 `exec resume` 플래그를 확인한 경우에만 작업 단위 구현 세션을 정확한 ID로 재개한다. 미지원 버전은 stateless로 유지하며 리뷰는 새 읽기 전용 세션이다. cached input은 input의 부분집합이므로 더하지 않는다. 운영자 전용 빌드 캐시·네트워크 옵션과 Claude/Grok 난이도별 턴 상한(기본 40)은 [Codex 운영 안내](references/codex-runtime.md)를 따른다.
+
+`allowed_vendors:["anthropic","openai"]`가 구현·리뷰·상담을 함께 제한하고, 운영자 `HF_ALLOWED_VENDORS=anthropic,openai`는 저장소가 넓힐 수 없는 상한이다. 브리지가 실행 직전에 재검사한다. 방화벽·DLP 또는 임의 모델 override의 실제 벤더 인증은 아니다. built-in 메타데이터는 `scripts/member-registry.mjs`로 모았지만 새 CLI는 여전히 검증된 어댑터가 필요하다. classic low 코드에도 Luna를 첫 후보로 넣었다. 영어 [짧은 실행 안내](references/executor-quickstart.md)를 추가했으며 generic CLI/ACP와 상태 머신 전체 분리는 미구현이다.
+
+앞으로의 로컬 커밋에는 GitHub에서 확인한 noreply 주소를 저장소별 `git config user.email`로 사용한다. 기존 공개 작성자 정보는 명시적 이력 재작성 요청 없이 지우지 않는다.
 
 ## 사용량 측정과 설치된 팀 구성 (0.21.0)
 

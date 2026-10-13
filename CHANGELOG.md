@@ -4,6 +4,14 @@
 
 ## Unreleased
 
+## 0.22.0 — 2026-10-14
+
+- Codex JSONL의 thread·최종 메시지·turn 완료를 검증하고 실제 사용량을 기록한다. cached input은 input의 부분집합으로 이중 합산하지 않는다. 호환 resume 도움말 확인 뒤 구현 세션만 작업 단위로 재개하고 상담·리뷰는 새 읽기 전용 세션을 유지한다. 미지원 재개는 stateless로 남고 실패·불완전 이벤트는 거절한다.
+- 운영자 전용 Codex 캐시 writable roots·network 옵션, Claude/Grok 작업 난이도별 max-turns 설정을 추가했다. 기본 턴 상한 40과 supervisor 예산은 유지한다.
+- allowed_vendors와 운영자 HF_ALLOWED_VENDORS를 구현·리뷰·상담·실행 직전 공통 경로에 적용한다. 방화벽·DLP가 아닌 협력형 실행 정책이며, 임의 모델 제공자 검증은 하지 않는다.
+- 벤더·바이너리·기본 모델·인증 접두사·능력·effort·예산·팀 역할을 built-in registry로 모았다. generic CLI/ACP는 미구현이며 새 CLI에는 여전히 검증된 어댑터가 필요하다. classic low 코드 기본 순서에도 Luna를 넣어 팀 역할과 맞췄다.
+- SKILL은 classic 흐름부터 읽도록 정리하고 영어 짧은 실행 안내를 추가했다. 세 언어 README와 메타데이터·여섯 팀원 표기를 갱신했다. 대형 상태 머신 전체 분리와 전체 references 번역은 하지 않았다. 공개 커밋 이메일은 새 로컬 커밋에서 noreply를 사용하며 기존 이력은 재작성하지 않는다.
+
 - Codex(Luna·Sol) 라운드가 매번 형식 오류로 끝나던 버그 수정(#38이 만든 회귀): Codex 어댑터의 `strictSchema`는 선택 항목도 모두 필수로 바꿔 보내서, Codex는 `environment_error`를 해당 없는 테스트마다 빈 문자열(`""`)로 채워 냈다. #38의 검사는 빈 문자열을 "사유가 있는데 실패가 아님"으로 보고 `Invalid tests`로 거절했다. 이제 빈 값(`""`, 공백, `null`)은 "없음"으로 받는다. 사유 없는 `fail`은 여전히 `complete`와 모순이고, 사유가 있는데 실패가 아닌 테스트는 여전히 거절한다. 지시문에도 해당 없으면 필드를 빼거나 비우라고 적었다. 결과 스키마의 선택 항목은 `memory_candidates`, `keywords`, `environment_error` 셋뿐이며(새 선택 항목을 더하면 시험이 실패해 Codex의 빈 값을 받는지 확인하게 한다), 나머지 둘은 이미 빈 값을 받는다.
 ## 0.21.0 — 2026-10-13
 

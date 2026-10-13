@@ -1,8 +1,10 @@
 import {REVIEWERS} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
+import {vendorAllowed} from './vendor-policy.mjs';
 
 export function installationRoster(configuration,probe=name=>adapter(name).probe(configuration.executors?.[name]??{})) {
  return REVIEWERS.map(member=>{
+  if(!vendorAllowed(configuration,member))return {member,installed:false,reason:'벤더 정책 제외',code:'VENDOR_POLICY'};
   try{probe(member);return {member,installed:true,reason:null};}
   catch(e){return {member,installed:false,reason:'미설치 또는 CLI 계약 불일치',code:e.code??'ADAPTER_UNAVAILABLE'};}
  });

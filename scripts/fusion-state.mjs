@@ -13,6 +13,7 @@ import {loadProject,saveProject,teamConfig,activeMilestone,settleTask} from './p
 import {measure} from './metrics.mjs';
 import {recordHostWindow} from './lead-usage.mjs';
 import {presetTaskInput} from './installation.mjs';
+import {assertVendor,vendorAllowed} from './vendor-policy.mjs';
 import {workspaceOf,propose,deriveFromState} from './memory-policy.mjs';
 import * as contract from './contracts.mjs';
 import {readInput,printError} from './cli.mjs';
@@ -90,6 +91,7 @@ function openControl(root) {
   };
   // 예산이 남아 있고 설치도 돼 있어서 실제로 일을 시킬 수 있는 일꾼.
   c.canWork=name=>{
+    if(!vendorAllowed(c.s.configuration,name))return false;
     if(c.s?.configuration?.review?.strategy==='lead-gated-adaptive'&&(name==='sonnet'||name==='sol')){
       const grant=c.s.implement_grant;
       return !!(c.budget(name)&&grant&&grant.executor===name&&grant.role==='implement'&&grant.round==null&&grant.set_by==='controller'&&!c.installError(name));
@@ -232,6 +234,7 @@ function init(c,input) {
   const adaptive=configuration.review?.strategy==='lead-gated-adaptive';
   // Sol은 일반 구현 명단에 없다. APEX 승인 작업에서만 init이 이 이름을 받는다.
   const requested=adaptive&&input.executor==='sol'?'sol':selectExecutor(configuration,input.executor);
+  if(requested!=='auto')assertVendor(configuration,requested);
   // 예전 버전의 기록이 작업 폴더 안(.fusion)에 있으면 새 작업을 시작하지 않는다. 일꾼이 그 폴더를 고칠 수 있기 때문이다.
   if(isLegacy(c.root)){
     throw Error(`LEGACY_CONTROL_DIR: records are inside the workspace (${controlRoot(c.root)}), where workers can edit them. Run: node fusion-state.mjs migrate REPO`);
@@ -447,6 +450,7 @@ function consult(c,input) {
   const members=[];
   for(const e of picks){
     if(members.length===size)break;
+    if(!vendorAllowed(s.configuration,e)){if(explicit||adaptive)assertVendor(s.configuration,e);continue;}
     let cli;
     try{cli=adapter(e).probe(s.configuration.executors[e]??{});}
     catch(err){if(explicit||adaptive)throw err;continue;}
@@ -819,6 +823,7 @@ function begin(c,input) {
   if(!c.budget(owner))throw Error(owner+' round cap reached');
 
   const round=s.iteration+1;
+  if(owner!=='lead')assertVendor(s.configuration,owner);
   const a=owner==='lead'?null:adapter(owner);
   const session=a?(s.sessions[owner]??a.newSession()):null;
   const resume=!!(a&&s.sessions[owner]);

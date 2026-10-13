@@ -4,6 +4,7 @@
 // 저장소 설정이나 워커 JSON은 자리 수를 줄이거나 리뷰어를 바꾸지 못한다. 최종 판정은 언제나 리드다.
 
 import {EXECUTORS,externalFirst,DIFFICULTY_EFFORT,automaticImplementer} from './executor-config.mjs';
+import {vendorOf} from './member-registry.mjs';
 
 export const CRITICALITIES=['standard','important','apex'];
 export const ASSIGNMENT_STRATEGIES=['external_primary','dual_review','sonnet_implementation','sol_apex'];
@@ -14,8 +15,7 @@ const LATER=['explicit_repair'];
 // 기본 리뷰어의 강도. 바꿔 낀 리뷰어도 같은 값을 쓰고, 표에 없으면 설정값을 쓴다.
 export const REVIEW_EFFORT={sol:'medium',sonnet:'high'};
 // 같은 회사 모델끼리의 리뷰는 허용하되 교차 검증이 약하다는 표시를 남긴다.
-const FAMILY={sonnet:'anthropic',haiku:'anthropic',lead:'anthropic',sol:'openai',luna:'openai',grok:'xai',antigravity:'google'};
-export const sameFamily=(a,b)=>!!FAMILY[a]&&FAMILY[a]===FAMILY[b];
+export const sameFamily=(a,b)=>!!vendorOf(a)&&vendorOf(a)===vendorOf(b);
 
 export function planReview(owner,{criticality='standard',strategy='external_primary'}={},{risk=[]}={}) {
  if(!OWNERS.includes(owner))throw Error('ADAPTIVE_REVIEW: unknown round owner '+owner);
@@ -155,6 +155,7 @@ export function implementDispatch(state,owner) {
  // External-First: 운영자가 강도를 직접 적지 않은 Grok/AGY는 작업 난이도에 맞춘다.
  const table=DIFFICULTY_EFFORT[owner];
  const difficulty=state.routing?.difficulty;
+ if(options.max_turns===undefined&&options.max_turns_by_difficulty?.[difficulty]!==undefined)options.max_turns=options.max_turns_by_difficulty[difficulty];
  if(externalFirst(state.configuration)&&table&&table[difficulty]&&state.configuration?.effort_source?.[owner]==='default')options.reasoning_effort=table[difficulty];
  if(active&&grant.effort)options.reasoning_effort=grant.effort;
  const apexGrant=!!(active&&owner==='sol'&&grant.strategy==='sol_apex'&&grant.sandbox==='workspace-write'&&grant.criticality==='apex');

@@ -1,17 +1,18 @@
 import crypto from 'node:crypto';
 import {denyRules} from '../bash-policy.mjs';
 import {schemaFor,prompt,bashRules,editDeny,probe as probeCli} from './common.mjs';
+import {memberBinary,MEMBERS} from '../member-registry.mjs';
 
 // Claude Code CLI를 하위 프로세스로 띄워 일꾼으로 쓴다. 리드(Opus)와는 별도 프로세스·별도 세션이다.
 // 같은 CLI로 모델만 다른 일꾼(Sonnet, Haiku)을 만든다. 새 Claude 모델은 여기 한 줄과 설정의 model로 붙는다.
 // 플래그 출처: https://code.claude.com/docs/en/headless, https://code.claude.com/docs/en/cli-reference
 // --max-turns는 --help에 나오지 않는 버전이 있어 프로브 대상에서 뺀다. 인자로는 계속 넘기며, 인식 못 하면 실행이 실패로 끝난다.
 export const requiredFlags=['--model','--output-format','--json-schema','--resume','--session-id','--safe-mode','--tools','--allowedTools','--disallowedTools','--permission-mode'];
-export const binary=()=>process.env.HF_CLAUDE_BIN||'claude';
+export const binary=()=>memberBinary('sonnet');
 
 function member(name,{model:MODEL,label}) {
  // 추론 강도(--effort)는 설정했을 때만 필수 플래그로 확인한다.
- const probe=(options={})=>probeCli(`Claude Code (${label})`,binary(),[...requiredFlags,...(options.reasoning_effort?['--effort']:[])],['--effort']);
+ const probe=(options={})=>probeCli(`Claude Code (${label})`,binary(),[...requiredFlags,...(options.reasoning_effort?['--effort']:[])],['--effort'],{executor:name});
  const newSession=()=>crypto.randomUUID();
 
  function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
@@ -26,7 +27,7 @@ function member(name,{model:MODEL,label}) {
   const args=['-p','--model',model,...(options.reasoning_effort?['--effort',options.reasoning_effort]:[]),'--safe-mode','--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),
    '--permission-mode','dontAsk','--tools',tools,
    '--allowedTools',allowed.join(','),'--disallowedTools',['Agent','Task','Skill','mcp__*',...editDeny(brief),...denyRules('claude')].join(','),
-   '--max-turns','40',resume?'--resume':'--session-id',session];
+   '--max-turns',String(options.max_turns??40),resume?'--resume':'--session-id',session];
   const text=prompt(brief,lease);
   return {cli:{...cli,args,session_id:session,resume,model},prompt:text,stdin:text};
  }
@@ -43,6 +44,6 @@ function member(name,{model:MODEL,label}) {
  return {name,MODEL,defaultModel:MODEL,requiredFlags,binary,probe,newSession,dispatch,parse};
 }
 
-export const sonnet=member('sonnet',{model:'claude-sonnet-5-5',label:'Sonnet'});
+export const sonnet=member('sonnet',{model:MEMBERS.sonnet.model,label:'Sonnet'});
 // Haiku: 빠르고 싼 Claude. 쉬운 코드·문서·테스트 보조로 시작하고, 실적이 쌓이면 router가 자리를 정한다.
-export const haiku=member('haiku',{model:'claude-haiku-5-5',label:'Haiku'});
+export const haiku=member('haiku',{model:MEMBERS.haiku.model,label:'Haiku'});

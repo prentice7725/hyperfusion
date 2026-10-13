@@ -89,7 +89,7 @@ console.log(JSON.stringify({conversation_id:id,status:mode==='agy-fail'?'failed'
 
 const FAKE_CODEX=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE codex for protocol tests');process.exit(0);}
-if(args[0]==='exec'&&args.includes('--help')){console.log('--sandbox --output-schema -C, --cd --ephemeral -m, --model');process.exit(0);}
+if(args[0]==='exec'&&args.includes('--help')){console.log('--sandbox --output-schema -C, --cd --ephemeral -m, --model --json resume');process.exit(0);}
 if(args.includes('--help')){console.log('Commands: exec');process.exit(0);}
 fs.writeFileSync(HERE+'/fake-codex-args.json',JSON.stringify(args));
 // reviewer-fail-once: 첫 Codex 호출만 실패한다(리뷰어 하나가 못 끝낸 상황).
@@ -98,7 +98,10 @@ const schema=JSON.parse(fs.readFileSync(args[args.indexOf('--output-schema')+1],
 if(!schema.properties)process.exit(3);
 const request=JSON.parse(fs.readFileSync(0,'utf8'));
 if(mode==='codex-crash')process.exit(1);
-console.log(JSON.stringify(finish(request,null)));
+const session=args.includes('resume')?args[args.indexOf('resume')+1]:'0199a213-81c0-7800-8aa1-bbab2a035a53';
+console.log(JSON.stringify({type:'thread.started',thread_id:session}));
+console.log(JSON.stringify({type:'item.completed',item:{id:'final',type:'agent_message',text:JSON.stringify(finish(request,session))}}));
+console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:20,cached_input_tokens:10,output_tokens:5}}));
 `;
 const FAKE_CLAUDE=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE claude for protocol tests');process.exit(0);}

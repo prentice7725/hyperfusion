@@ -9,18 +9,11 @@ const BASE=new Set(['PATH','PATHEXT','SYSTEMROOT','WINDIR','COMSPEC','HOME','USE
  'HTTP_PROXY','HTTPS_PROXY','NO_PROXY','ALL_PROXY','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_CACHE_HOME','XDG_STATE_HOME','XDG_RUNTIME_DIR']);
 
 // 일꾼마다 자기 벤더의 인증값만 받는다. Grok에게 OPENAI_API_KEY를 줄 이유가 없다.
-const VENDOR={
- grok:['XAI_','GROK_'],
- sonnet:['ANTHROPIC_','CLAUDE_'],
- haiku:['ANTHROPIC_','CLAUDE_'],
- antigravity:['GOOGLE_','GEMINI_','AGY_','ANTIGRAVITY_'],
- luna:['OPENAI_','CODEX_'],
- sol:['OPENAI_','CODEX_']
-};
+import {MEMBERS} from './member-registry.mjs';
 
 export function workerEnv(executor,env=process.env) {
  const extra=new Set((env.HF_ENV_PASS??'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean));
- const prefixes=['LC_',...(VENDOR[executor]??[])];
+ const prefixes=['LC_',...(MEMBERS[executor]?.auth??[])];
  const out={};
  for(const [key,value] of Object.entries(env)){
   const k=key.toUpperCase();

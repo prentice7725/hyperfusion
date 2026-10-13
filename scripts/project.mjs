@@ -9,19 +9,13 @@ import {adapter} from './adapters/index.mjs';
 import {matchRule} from './router.mjs';
 import {controlPath,ensureControl,acquireLock} from './control-dir.mjs';
 import {installationRoster,recommendPreset} from './installation.mjs';
+import {MEMBERS as REGISTRY,PROJECT_MEMBERS} from './member-registry.mjs';
 
 // 프로젝트 층: 리드가 기획 문서를 읽고 팀을 꾸려 보고하고, 사용자가 승인한 팀으로 마일스톤을 진행한다.
 // 승인 전에는 작업을 시작할 수 없고, 마일스톤이 끝나면 체크포인트 보고와 사용자 확인 전에는 다음으로 못 넘어간다.
 
 // 팀원 기본 역할. 리드가 구성안을 짤 때 출발점으로 쓰고, 프로젝트마다 바꾼다.
-export const CATALOG={
- sonnet:{model:'claude-sonnet-5-5',role:'핵심 구현: 중·고난도 코드, 테스트 설계, 리팩터',owns:['code:medium|high','tests','refactor']},
- grok:{model:null,role:'이미지 애셋 생성, 빠른 일반 구현',owns:['image-asset']},
- antigravity:{model:null,role:'UI·프론트엔드, 문서',owns:['ui','docs']},
- haiku:{model:'claude-haiku-5-5',role:'빠른 구현 보조: 쉬운 코드, 문서, 테스트 보강',owns:[]},
- luna:{model:'gpt-6-luna',role:'쉬운 구현·소규모 수정, 기계적 대량 편집, 이미지 애셋 보조',owns:['code:low']},
- sol:{model:'gpt-6.1-sol',role:'리뷰 전담(판정 책임), 위원회 상담',owns:[]}
-};
+export const CATALOG=Object.fromEntries(PROJECT_MEMBERS.map(name=>{const {model,role,owns}=REGISTRY[name];return [name,{model,role,owns}];}));
 export const MEMBERS=Object.keys(CATALOG);
 
 const str=v=>typeof v==='string'&&v.trim().length>0;

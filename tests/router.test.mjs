@@ -13,7 +13,7 @@ import {read} from '../scripts/artifact.mjs';
 const init=(f,extra)=>run(f.root,'init',{...f.brief,executor:'auto',...extra});
 
 test('image assets go to Grok',t=>{const f=fixture(t,{initialize:false});const s=init(f,{task_kind:'image-asset'});assert.equal(s.initial_executor,'grok');assert.equal(s.routing.mode,'auto');assert.match(s.routing.reason,/image-asset/);});
-test('medium and hard code goes to Sonnet, easy code to Grok',t=>{const f=fixture(t,{initialize:false});const c=config(f.root);assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'}).executor,'sonnet');assert.equal(route(f.root,c,{task_kind:'code',difficulty:'medium'}).executor,'sonnet');assert.equal(route(f.root,c,{task_kind:'code',difficulty:'low'}).executor,'grok');});
+test('medium and hard code goes to Sonnet, easy code to Luna',t=>{const f=fixture(t,{initialize:false});const c=config(f.root);assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'}).executor,'sonnet');assert.equal(route(f.root,c,{task_kind:'code',difficulty:'medium'}).executor,'sonnet');assert.equal(route(f.root,c,{task_kind:'code',difficulty:'low'}).executor,'luna');});
 test('UI goes to Antigravity; unclassified work uses fallback order',t=>{const f=fixture(t,{initialize:false});const c=config(f.root);assert.equal(route(f.root,c,{task_kind:'ui'}).executor,'antigravity');assert.deepEqual(route(f.root,c,{}).candidates,['sonnet','grok','antigravity','haiku','luna']);});
 test('uninstalled worker is skipped with a recorded reason',t=>{const f=fixture(t,{initialize:false});process.env.HF_CLAUDE_BIN=path.join(f.temp,'missing');const r=route(f.root,config(f.root),{task_kind:'code',difficulty:'high'});assert.equal(r.executor,'grok');assert.ok('sonnet' in r.unavailable);assert.match(r.reason,/skipped/);});
 test('no installed worker fails loudly instead of falling back to the lead',t=>{const f=fixture(t,{initialize:false});for(const k of ['HF_CLAUDE_BIN','HF_GROK_BIN','HF_AGY_BIN','HF_CODEX_BIN'])process.env[k]=path.join(f.temp,'missing');assert.throws(()=>init(f),/ADAPTER_UNAVAILABLE/);assert.ok(!fs.existsSync(path.join(f.control,'state.json')));});
@@ -49,9 +49,9 @@ test('Haiku runs through the same Claude Code CLI with the Haiku model and its o
  assert.equal(f.state().sessions.haiku,d.cli.session_id);assert.equal(f.state().sessions.sonnet,null);
 });
 
-test('easy code and docs list Haiku right after the first pick',t=>{
+test('easy code starts with Luna and docs keep Haiku after Antigravity',t=>{
  const f=fixture(t,{initialize:false});const c=config(f.root);
- assert.deepEqual(route(f.root,c,{task_kind:'code',difficulty:'low'}).candidates.slice(0,2),['grok','haiku']);
+ assert.deepEqual(route(f.root,c,{task_kind:'code',difficulty:'low'}).candidates.slice(0,3),['luna','grok','haiku']);
  assert.deepEqual(route(f.root,c,{task_kind:'docs'}).candidates.slice(0,2),['antigravity','haiku']);
 });
 
@@ -87,20 +87,20 @@ const passed=(f,name,executor,kind='code',difficulty='low')=>{
 
 test('a newcomer without a track record gets an occasional first pick (cold start)',t=>{
  const f=fixture(t,{initialize:false});const c=config(f.root);
- // grok에게 실적 3건. 다음(4번째) 작업은 newcomer_every=4라 표본이 가장 적은 신입이 먼저 나선다.
- for(let i=0;i<3;i++)passed(f,'g'+i,'grok');
+ // Luna has three samples; the fourth task explores the first newcomer.
+ for(let i=0;i<3;i++)passed(f,'g'+i,'luna');
  const r=route(f.root,c,{task_kind:'code',difficulty:'low'});
- assert.equal(r.executor,'haiku');assert.match(r.reason,/newcomer trial first pick: haiku/);assert.equal(r.candidates[1],'grok');
+ assert.equal(r.executor,'grok');assert.match(r.reason,/newcomer trial first pick: grok/);assert.equal(r.candidates[1],'luna');
  // 그 밖의 작업에서는 평소 순서다.
- passed(f,'g3','grok');
- assert.equal(route(f.root,c,{task_kind:'code',difficulty:'low'}).executor,'grok');
+ passed(f,'g3','luna');
+ assert.equal(route(f.root,c,{task_kind:'code',difficulty:'low'}).executor,'luna');
  // 끄면 신입 우대도 없다.
- writeConfig(f,{routing:{newcomer_every:0}});for(let i=4;i<7;i++)passed(f,'g'+i,'grok');
- assert.equal(route(f.root,config(f.root),{task_kind:'code',difficulty:'low'}).executor,'grok');
+ writeConfig(f,{routing:{newcomer_every:0}});for(let i=4;i<7;i++)passed(f,'g'+i,'luna');
+ assert.equal(route(f.root,config(f.root),{task_kind:'code',difficulty:'low'}).executor,'luna');
 });
 
 test('a fresh install, where nobody has a record yet, keeps the rule order',t=>{
  const f=fixture(t,{initialize:false});
  for(let i=0;i<3;i++)passed(f,'other'+i,'sonnet','tests',null);
- assert.equal(route(f.root,config(f.root),{task_kind:'code',difficulty:'low'}).executor,'grok');
+ assert.equal(route(f.root,config(f.root),{task_kind:'code',difficulty:'low'}).executor,'luna');
 });

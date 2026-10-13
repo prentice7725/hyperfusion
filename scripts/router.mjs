@@ -7,6 +7,7 @@ import {adapter} from './adapters/index.mjs';
 import {config,EXECUTORS,KIND_NEEDS,canDo,externalFirst,routingPolicy,automaticImplementer,DIFFICULTY_EFFORT} from './executor-config.mjs';
 import {controlPath} from './control-dir.mjs';
 import {quotaReport,exhaustedExecutors} from './quota-policy.mjs';
+import {vendorAllowed} from './vendor-policy.mjs';
 
 // 작업 종류·난이도로 배치표 규칙을 고르고, 과거 실적과 설치 상태로 순서를 조정한다.
 // 결과는 투입 순서(candidates)와 근거(reason)다. 리드는 이를 기록하고 필요하면 명시 지정으로 덮어쓴다.
@@ -48,6 +49,8 @@ export function route(root,c,brief,{probe=true}={}) {
  const notes=[`rule: ${rule.kind??'*'}/${rule.difficulty?.join('|')??'*'} → ${rule.executors.join(' > ')}${rule.why?' ('+rule.why+')':''}`];
  // 배치표에 없지만 고용된 일꾼은 맨 뒤 예비 인력으로 둔다.
  let order=[...rule.executors.filter(e=>c.external.available.includes(e)),...c.external.available.filter(e=>!rule.executors.includes(e))];
+ const denied=order.filter(e=>!vendorAllowed(c,e));
+ if(denied.length){order=order.filter(e=>!denied.includes(e));notes.push('vendor policy excludes: '+denied.join(', '));}
  // 능력으로 거른다. 필요한 능력이 없는 일꾼은 예비 인력으로도 넣지 않는다(예: 이미지 생성 못 하는 일꾼은 이미지 작업 제외).
  const unable=order.filter(e=>!canDo(c,e,brief.task_kind));
  if(unable.length){order=order.filter(e=>!unable.includes(e));notes.push(`lacks ${KIND_NEEDS[brief.task_kind]}: ${unable.join(', ')}`);}
