@@ -33,7 +33,7 @@ const IMPLEMENT_RULES=[
  'Keep task_id and round unchanged. status is complete, blocked, needs_decision or failed; needs_decision requires needs_lead_decision=true.',
  'files_read and files_changed are repository-relative paths; files_changed covers only this round and must match the real diff exactly.',
  'tests holds commands you actually ran with status pass, fail or not_run. Never invent evidence: the lead re-runs everything and diffs the tree.',
- 'complete means no failed tests, no unresolved items and no pending lead decision. If your sandbox or environment (not the code) stopped a test from running (permission denied, blocked network or spawn), report it with status fail plus environment_error naming what was refused; that is allowed with complete, but the controller does not count it as a pass and the lead sees it. Never use environment_error for a failure your change caused.',
+ 'complete means no failed tests, no unresolved items and no pending lead decision. If your sandbox or environment (not the code) stopped a test from running (permission denied, blocked network or spawn), report it with status fail plus environment_error naming what was refused; that is allowed with complete, but the controller does not count it as a pass and the lead sees it. Never use environment_error for a failure your change caused. When nothing was blocked, leave environment_error out (or empty).',
  'Optional memory_candidates: up to 3 one- or two-sentence lessons the next agent should know (error with its cause and fix, a procedure that worked, a notable episode). Facts only, never secrets, never a copy of the brief. The lead decides whether they are kept.'
 ];
 const IMPLEMENT_ORDERS=[
