@@ -6,7 +6,7 @@ import {isMain,resolveExecutable} from './platform.mjs';
 import {config,selectExecutor,CAP,APEX_ROUND_CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND,automaticImplementer} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
-import {atomic,immutable,read,repo,snapshot,changes,git,SAFE_DIFF} from './artifact.mjs';
+import {atomic,immutable,read,repo,snapshot,changes,git,SAFE_DIFF,riskyGitConfig} from './artifact.mjs';
 import {acquire,assertLease,release} from './writer-lease.mjs';
 import {notify} from './notify.mjs';
 import {loadProject,saveProject,teamConfig,activeMilestone,settleTask} from './project.mjs';
@@ -114,7 +114,14 @@ function openControl(root) {
     const paths=[];
     const briefs=[c.optional('initial-brief.json'),...Array.from({length:c.s.iteration},(_,i)=>c.optional(`brief-${i+1}.json`))];
     for(const b of briefs)paths.push(...(b?.scope?.paths??[]));
-    return [...paths,...(c.s.scope_exceptions??[]).map(e=>e.path)];
+    return [...paths,...c.exceptionPaths()];
+  };
+  // 리드가 받아들인 범위 밖 경로. 공유 git 설정 예외는 받아들인 뒤에 명령을 실행하는 항목이 생기면 더는 인정하지 않는다
+  // (예외가 "그 파일은 앞으로 무엇이 들어와도 된다"가 되면 안 된다). 이 검사는 git 설정 예외가 있을 때만 git을 부른다.
+  c.exceptionPaths=()=>{
+    const paths=(c.s.scope_exceptions??[]).map(e=>e.path);
+    if(!paths.some(p=>GIT_CONTROL_EXCEPTIONS.has(p)))return paths;
+    return gitConfigRisk(c.root).length?paths.filter(p=>!GIT_CONTROL_EXCEPTIONS.has(p)):paths;
   };
   c.inScope=(file,paths)=>paths.some(p=>file===p||file.startsWith(p+'/'));
   // 최초 기준선(init 시점)과 비교해 허용 범위 밖에 있는 변경 파일.
@@ -640,6 +647,9 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
     note+=`; ${s.owner} has no round budget left, so REDO is not offered (${recommendation} instead)`;
   }
   const evidence=leadEvidence(c,consult_id);
+  // 일꾼의 샌드박스·환경이 막아서 돌지 못한 테스트. 통과로 세지 않으므로 리드가 직접 확인할 것으로 올린다.
+  const environmentFailures=(c.optional(`raw-result-${n}.json`)?.tests??[]).filter(contract.environmentFailure).slice(0,10)
+    .map(t=>({command:String(t.command).slice(0,200),environment_error:String(t.environment_error).slice(0,300)}));
   const acceptance=c.optional(`acceptance-${n}-finish.json`);
   if(acceptance)evidence.push(`acceptance-${n}-finish.json`);
   for(const run of runs)if(run.file)evidence.push(run.file);
@@ -648,6 +658,7 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
     base_commit:s.base_commit,baseline_digest:s.post_digest,changed_files:validation?.changed??[],
     acceptance:acceptance?{status:acceptance.status,quiescent:acceptance.quiescent===true,file:`acceptance-${n}-finish.json`}:{status:'not_recorded'},
     criteria:(brief?.success_criteria??[]).slice(0,36).map(text=>String(text).slice(0,180)),panel_status,
+    ...(environmentFailures.length?{environment_failures:environmentFailures}:{}),
     review_gaps:coverage.gaps,repeated_criteria:repeated,risk_paths:plan.risk,unsupported_rejections:(s.review_results?.[n]??[]).filter(r=>r.ok&&r.evidence===false).map(r=>r.executor),planned_reviewers:plan.reviewers,substitutes:coverage.substitutes,same_family_reviewers:coverage.same_family,
     quota:quotaReport(c.root),usage:runs.map(r=>({executor:r.executor,role:r.role,tokens:r.tokens,cost_usd:r.cost_usd,file:r.file})),
     decision_authority:{source:'host-controller',observed_model:s.lead_model??null,model_verified:false},
@@ -866,9 +877,11 @@ function finish(c,input) {
   const errors=[];
   try{contract.result(input.result,s.task_id,n);}catch(e){errors.push(e.message);}
   const brief=read(path.join(c.taskdir(),`brief-${n}.json`));
-  const accepted=(s.scope_exceptions??[]).map(e=>e.path);
+  const accepted=c.exceptionPaths();
   const outside=changed.filter(f=>!c.inScope(f,[...brief.scope.paths,...accepted]));
   if(outside.length)errors.push('Out of scope: '+outside.join(', '));
+  const gitControl=outside.filter(f=>GIT_CONTROL_EXCEPTIONS.has(f));
+  if(gitControl.length)errors.push(`${gitControl.join(', ')} changed during the round (git commands such as push -u, checkout -b or worktree add, another worktree, or the worker can do this). If the change is yours or harmless, recover with allow_out_of_scope [{path:"${gitControl[0]}", reason}]; it is accepted only while the git config has no entries that run commands`);
   // 실패한 라운드가 남긴 범위 밖 파일은 복구해도 자동으로 되돌리지 않는다. 그래서 다음 라운드의 기준선에 섞여 들어가
   // 라운드 단위 비교만으로는 다시 걸리지 않는다. 지적된 파일을 기록해 두고 되돌려지거나 허용될 때까지 계속 막는다.
   const baseline=read(path.join(c.taskdir(),'baseline.json'));
@@ -1150,7 +1163,7 @@ function verify(c,input) {
   const passing=input.acceptance_satisfied===true&&(manual||auto)
     &&(!manual||input.tests.every(t=>typeof t.command==='string'&&t.command.trim()&&t.status==='pass'));
   if(!passing)throw Error(auto?'acceptance_satisfied:true required (the controller runs acceptance_commands itself)':'Passing verification evidence required');
-  const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope);
+  const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope,c.root);
   const now=snapshot(c.root);
   if(now.digest!==s.post_digest){
     s.phase='RECOVERY_REQUIRED';
@@ -1224,7 +1237,7 @@ function recover(c,input) {
     throw Error('Recovery requires stopped writers and rationale');
   }
   // 범위 밖에 남은 파일을 리드가 알고 받아들이는 경우. 상태를 바꾸기 전에 입력부터 검사한다.
-  const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope);
+  const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope,c.root);
   if(['PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED'].includes(s.phase)){
     // 디스패치 전에 컨트롤러가 죽어 남은 고아 lease. 소모된 시도는 되돌리지 않는다.
     const orphan=assertLease(c.root,input.token);
@@ -1246,9 +1259,21 @@ function recover(c,input) {
 }
 
 // allow_out_of_scope: [{path, reason}]. 범위 밖 변경을 알고 받아들일 때 남기는 기록이다.
-function parseScopeExceptions(list) {
-  const valid=Array.isArray(list)&&list.every(e=>e&&contract.safePath(e.path)&&typeof e.reason==='string'&&e.reason.trim());
-  if(!valid)throw Error('Invalid allow_out_of_scope: a list of {path, reason} with a repository-relative path and a reason');
+// 공유 git 설정은 일꾼이 아니어도 바뀐다: `git push -u`나 `checkout -b`의 추적 설정, `worktree add`, 같은 저장소를 쓰는 다른 worktree.
+// 스냅샷은 이 파일들의 해시를 라운드 앞뒤로 비교하므로 그런 변경도 범위 밖으로 잡히고, 되돌릴 수 없는 변경이면 복구할 길이 없었다.
+// 그래서 설정·무시 규칙 파일만 예외로 받을 수 있게 한다. 훅(.git/hooks/*)은 코드라서 어떤 경우에도 받지 않는다.
+// 설정은 명령을 실행할 수 있으므로(core.fsmonitor, 별칭, 필터 등) 지금 그런 항목이 하나도 없을 때만 받는다.
+const GIT_CONTROL_EXCEPTIONS=new Set(['.git/config','.git/config.worktree','.git/info/exclude','.git/info/attributes']);
+const gitConfigRisk=root=>riskyGitConfig(root).filter(entry=>!entry.startsWith('active hook '));
+
+function parseScopeExceptions(list,root) {
+  const named=Array.isArray(list)&&list.every(e=>e&&typeof e.reason==='string'&&e.reason.trim());
+  const valid=named&&list.every(e=>contract.safePath(e.path)||GIT_CONTROL_EXCEPTIONS.has(e.path));
+  if(!valid)throw Error('Invalid allow_out_of_scope: a list of {path, reason} with a repository-relative path and a reason (.git/hooks and other .git paths are never accepted; only .git/config, .git/config.worktree, .git/info/exclude and .git/info/attributes can be)');
+  if(list.some(e=>GIT_CONTROL_EXCEPTIONS.has(e.path))){
+    const risky=gitConfigRisk(root);
+    if(risky.length)throw Error(`Invalid allow_out_of_scope: the git config has entries that can run commands (${risky.slice(0,5).join('; ')}); remove them (git config --unset ...) or restore the file, then record the exception`);
+  }
   return list.map(e=>({path:e.path,reason:e.reason}));
 }
 const stampExceptions=(list,round)=>list.map(e=>({...e,round,at:new Date().toISOString()}));
