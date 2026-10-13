@@ -24,13 +24,15 @@ function countGit(t) {
 
 test('a snapshot asks git for HEAD and the common git folder in one rev-parse',t=>{
  const f=fixture(t,{initialize:false});
- snapshot(f.root); // 저장소 설정 조회(git config)는 처음 한 번만 뜨고 기억된다. 따로 세지 않으려고 먼저 한 번 부른다.
+ snapshot(f.root);
  const seen=countGit(t);
  snapshot(f.root);
  const revParse=seen.filter(s=>s.startsWith('rev-parse'));
  assert.equal(revParse.length,1,`rev-parse ran ${revParse.length} times: ${JSON.stringify(seen)}`);
- assert.match(revParse[0],/HEAD/);assert.match(revParse[0],/--git-common-dir/);
- assert.equal(seen.length,5,`a snapshot is five git calls (ls-files x3, rev-parse, status): ${JSON.stringify(seen)}`);
+ assert.match(revParse[0],/HEAD/);assert.match(revParse[0],/--git-common-dir/);assert.match(revParse[0],/--git-dir/);
+ const lookups=seen.filter(s=>s.startsWith('config'));
+ assert.equal(lookups.length,5,'each operational Git call rechecks the effective config');
+ assert.equal(seen.length-lookups.length,5,`snapshot keeps five operational calls: ${JSON.stringify(seen)}`);
 });
 
 test('the combined lookup does not change what a snapshot records',t=>{

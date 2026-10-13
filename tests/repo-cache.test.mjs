@@ -9,11 +9,17 @@ import {repo} from '../scripts/artifact.mjs';
 
 // artifact.mjs가 부르는 execFileSync를 감싸 `rev-parse --show-toplevel` 횟수를 센다.
 function countTopLevel(t) {
- const original=cp.execFileSync;let n=0;
- cp.execFileSync=function(file,args,...rest){if(file==='git'&&Array.isArray(args)&&args.includes('--show-toplevel'))n++;return original.call(this,file,args,...rest);};
+ const original=cp.execFileSync;let n=0,configs=0;
+ cp.execFileSync=function(file,args,...rest){
+  if(file==='git'&&Array.isArray(args)){
+   if(args.includes('--show-toplevel'))n++;
+   if(args.includes('--show-scope'))configs++;
+  }
+  return original.call(this,file,args,...rest);
+ };
  syncBuiltinESMExports();
  t.after(()=>{cp.execFileSync=original;syncBuiltinESMExports();});
- return ()=>n;
+ const calls=()=>n;calls.configs=()=>configs;return calls;
 }
 
 test('repo() asks git once per repository, then answers from the .git fingerprint',t=>{
@@ -37,14 +43,14 @@ test('repo() asks git again when .git is removed or replaced, and still refuses 
  assert.throws(()=>repo(sub),/Use repository root/,'a refusal is never remembered');
  // .git이 사라지면 기억을 쓰지 않고 git에 묻는다. 위쪽에 저장소가 없으니 실패한다.
  fs.rmSync(path.join(f.root,'.git'),{recursive:true,force:true});
- const before=calls();
+ const before=calls.configs();
  assert.throws(()=>repo(f.root));
- assert.equal(calls(),before+1,'the missing .git was not answered from memory');
+ assert.equal(calls.configs(),before+1,'the missing .git was rechecked, not answered from memory');
  // .git을 파일(gitdir 포인터)로 바꿔치면 종류가 달라 다시 묻는다.
  fs.writeFileSync(path.join(f.root,'.git'),'gitdir: /nonexistent\n');
- const again=calls();
+ const again=calls.configs();
  assert.throws(()=>repo(f.root));
- assert.equal(calls(),again+1);
+ assert.equal(calls.configs(),again+1,'an unreadable config fails before rev-parse can run');
 });
 
 test('a path that does not exist fails as before and is not cached',t=>{

@@ -25,26 +25,30 @@ export function immutable(f,v) {
 // 저장소의 .git/config는 일꾼이 고칠 수 있는 입력이다. core.fsmonitor나 filter.*.clean, diff 외부 도구가 설정돼 있으면
 // 컨트롤러가 `git status`/`git diff`를 부르는 것만으로 그 명령이 컨트롤러 권한으로 실행된다. 그래서 컨트롤러의 git은
 // 코드를 실행할 수 있는 설정을 모두 꺼서 부른다. 설정 파일을 읽는 것은 코드를 실행하지 않는다.
-const RUNNABLE=/^(filter\.[^\n]+\.(clean|smudge|process)|diff\.[^\n]+\.(command|textconv)|merge\.[^\n]+\.driver)$/;
+const RUNNABLE=/^(filter\.[^\n]+\.(clean|smudge|process)|diff\.[^\n]+\.(command|textconv)|merge\.[^\n]+\.driver)$/i;
 const NEUTRAL=['-c','core.fsmonitor=false','-c','core.pager=cat','-c','core.untrackedCache=false','-c','diff.external=','-c','core.sshCommand=false'];
 const gitEnv={...process.env,GIT_OPTIONAL_LOCKS:'0',GIT_TERMINAL_PROMPT:'0',GIT_EXTERNAL_DIFF:'',GIT_PAGER:'cat'};
-const cache=new Map();
-function neutralArgs(root) {
- let stamp=null;
- try{const st=fs.statSync(path.join(root,'.git','config'));if(st.isFile())stamp=`${st.mtimeMs}:${st.size}`;}catch{}
- const hit=cache.get(root);
- if(stamp&&hit?.stamp===stamp)return hit.args;
- const args=[...NEUTRAL];
+// Git applies includes, conditional includes and worktree config to normal commands.
+// Read that same effective configuration, not just the main .git/config. A parent
+// file's mtime/size cannot invalidate a changed include or worktree-local setting.
+// Re-read before each Git invocation; configuration errors must fail closed.
+function effectiveConfig(root) {
  try{
-  const out=execFileSync('git',[...NEUTRAL,'-C',root,'config','-z','--get-regexp','^(filter|diff|merge)\\.'],{encoding:'utf8',env:gitEnv,windowsHide:true,stdio:['ignore','pipe','ignore']});
-  for(const entry of out.split('\0').filter(Boolean)){
-   const key=entry.split('\n')[0];
-   if(!RUNNABLE.test(key))continue;
-   args.push('-c',`${key}=`);
-   if(key.startsWith('filter.'))args.push('-c',key.replace(/\.[^.]+$/,'.required')+'=false');
-  }
- }catch{/* 일치하는 설정이 없으면 git이 1로 끝난다 */}
- if(stamp)cache.set(root,{stamp,args});
+  const fields=execFileSync('git',[...NEUTRAL,'-C',root,'config','--show-scope','--includes','-z','--list'],{encoding:'utf8',maxBuffer:64*1024*1024,env:gitEnv,windowsHide:true,stdio:['ignore','pipe','ignore']}).split('\0');
+  if(fields.pop()!==''||fields.length%2)throw Error('Invalid config inventory');
+  const entries=[];
+  for(let i=0;i<fields.length;i+=2)entries.push({scope:fields[i],entry:fields[i+1]});
+  return entries;
+ }catch(cause){throw Error('GIT_CONFIG_UNREADABLE: cannot inspect effective Git configuration',{cause});}
+}
+function neutralArgs(root) {
+ const args=[...NEUTRAL];
+ for(const {entry} of effectiveConfig(root)){
+  const key=entry.split('\n')[0];
+  if(!RUNNABLE.test(key))continue;
+  args.push('-c',`${key}=`);
+  if(/^filter\./i.test(key))args.push('-c',key.replace(/\.[^.]+$/,'.required')+'=false');
+ }
  return args;
 }
 export function git(root,args) {return execFileSync('git',[...neutralArgs(root),'-C',root,...args],{encoding:'utf8',maxBuffer:64*1024*1024,env:gitEnv,windowsHide:true});}
@@ -93,16 +97,19 @@ const walk=(dir,limit=5000)=>{
 // - .env*, .npmrc, .yarnrc*: 비밀값과 패키지 설치 설정
 // - node_modules/.bin/*: 테스트나 빌드가 실행하는 실행 파일
 // - .husky, .githooks, .vscode: 훅과 에디터 자동 실행 작업
-export function guardFiles(root,common) {
+export function guardFiles(root,common,gitDir) {
  const out={};
  const add=(file,key)=>{try{const e=entryOf(file);if(e)out[key]=e;}catch(e){if(e.code!=='ENOENT')throw e;}};
- // snapshot은 HEAD와 함께 한 번에 구해 넘긴다. 넘기지 않으면(setup-doctor 등) 여기서 구하고, 구하지 못하면 그 점검만 건너뛴다.
- if(common===undefined){
-  common=null;
-  try{common=path.resolve(root,git(root,['rev-parse','--git-common-dir']).trim());}catch{}
+ // snapshot passes both directories from its single rev-parse. A linked worktree
+ // has its own config.worktree under --git-dir, outside --git-common-dir.
+ if(common===undefined||gitDir===undefined){
+  const dirs=git(root,['rev-parse','--git-common-dir','--git-dir']).split('\n').map(line=>line.replace(/\r$/,''));
+  common=path.resolve(root,dirs[0]);gitDir=path.resolve(root,dirs[1]);
  }
  if(common){
-  for(const f of ['config','config.worktree','info/exclude','info/attributes'])add(path.join(common,f),`.git/${f}`);
+  for(const f of ['config','info/exclude','info/attributes'])add(path.join(common,f),`.git/${f}`);
+  add(path.join(common,'config.worktree'),samePath(common,gitDir)?'.git/config.worktree':'.git/common/config.worktree');
+  if(!samePath(common,gitDir))add(path.join(gitDir,'config.worktree'),'.git/config.worktree');
   for(const f of walk(path.join(common,'hooks')))add(f,'.git/'+path.relative(common,f).split(path.sep).join('/'));
  }
  const rel=f=>path.relative(root,f).split(path.sep).join('/');
@@ -115,19 +122,18 @@ export function guardFiles(root,common) {
  return out;
 }
 
-// HEAD와 공통 git 폴더를 한 번의 호출로 구한다(스냅샷마다 두 번 부르던 것). Windows에서는 git 호출 하나가 25~32ms다.
-// 한 번에 구하지 못하면(옛 git, HEAD 없음) 예전처럼 따로 부른다: HEAD가 없으면 같은 오류로 멈추고, 공통 폴더만 못 구하면 그 점검만 건너뛴다.
+// HEAD, common Git directory and the active worktree directory in one call.
 function headAndCommon(root) {
  try{
-  const [head,common]=git(root,['rev-parse','HEAD','--git-common-dir']).split('\n').map(line=>line.trim());
-  if(head&&common)return {head,common:path.resolve(root,common)};
+  const [head,common,gitDir]=git(root,['rev-parse','HEAD','--git-common-dir','--git-dir']).split('\n').map(line=>line.replace(/\r$/,''));
+  if(head&&common&&gitDir)return {head,common:path.resolve(root,common),gitDir:path.resolve(root,gitDir)};
  }catch{}
  return {head:git(root,['rev-parse','HEAD']).trim(),common:undefined};
 }
 
 export function snapshot(root) {
  const files={};
- const {head,common:gitCommon}=headAndCommon(root);
+ const {head,common:gitCommon,gitDir}=headAndCommon(root);
  const names=[...new Set(git(root,['ls-files','-z','--cached','--others','--exclude-standard']).split('\0').filter(Boolean))].sort();
  for(const name of names) {
    if(name==='.fusion'||name.startsWith('.fusion/')) continue;
@@ -138,7 +144,7 @@ export function snapshot(root) {
      files[name]={kind:st.isSymbolicLink()?'symlink':'file',mode:st.mode&0o777,sha256:hash(st.isSymbolicLink()?fs.readlinkSync(f):fs.readFileSync(f))};
    } catch(e) {if(e.code==='ENOENT') files[name]=null;else throw e;}
  }
- Object.assign(files,guardFiles(root,gitCommon));
+ Object.assign(files,guardFiles(root,gitCommon,gitDir));
  const status=git(root,['status','--porcelain=v1','-z','--untracked-files=all','--','.',':(exclude).fusion']);
  const index_hash=hash(git(root,['ls-files','--stage','-z']));
  return {head,status,index_hash,files,digest:hash(JSON.stringify({head,status,index_hash,files}))};
@@ -151,14 +157,18 @@ export function changes(a,b) {
 // 컨트롤러의 git 호출은 이 항목들을 꺼서 부르지만, 사람이 같은 저장소에서 git을 쓰면 그대로 실행된다.
 export function riskyGitConfig(root) {
  const found=[];
- let out='';
- try{out=execFileSync('git',[...NEUTRAL,'-C',root,'config','-z','--local','--list'],{encoding:'utf8',env:gitEnv,windowsHide:true,stdio:['ignore','pipe','ignore']});}catch{}
- for(const entry of out.split('\0').filter(Boolean)){
+ let entries;
+ try{entries=effectiveConfig(root);}catch{return ['git config unreadable (GIT_CONFIG_UNREADABLE)'];}
+ // Scope exceptions concern repository-owned configuration. Global/system
+ // defaults (e.g. installed Git LFS) are still neutralized for controller calls,
+ // but must not prohibit accepting an unrelated local branch-tracking change.
+ for(const {scope,entry} of entries){
+  if(!['local','worktree'].includes(scope))continue;
   const [key,...rest]=entry.split('\n'),value=rest.join('\n');
   if(/^core\.(fsmonitor|hookspath|sshcommand|editor|pager)$/i.test(key)&&value&&value!=='false')found.push(`${key}=${value.slice(0,80)}`);
-  else if(/^(filter\.[^.]+\.(clean|smudge|process)|diff\.[^.]+\.(command|textconv)|merge\.[^.]+\.driver)$/i.test(key))found.push(`${key}=${value.slice(0,80)}`);
+  else if(RUNNABLE.test(key))found.push(`${key}=${value.slice(0,80)}`);
   else if(/^alias\./i.test(key)&&value.startsWith('!'))found.push(`${key}=${value.slice(0,80)}`);
-  else if(/^include(if\.[^.]+)?\.path$/i.test(key))found.push(`${key}=${value.slice(0,80)}`);
+  else if(/^(include|includeif\.[^\n]+)\.path$/i.test(key))found.push(`${key}=${value.slice(0,80)}`);
  }
  for(const [key] of Object.entries(guardFiles(root)))if(/^\.git\/hooks\//.test(key)&&!key.endsWith('.sample'))found.push(`active hook ${key}`);
  return found;
