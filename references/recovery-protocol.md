@@ -1,5 +1,7 @@
 # 복구
 
+후속 `begin`은 직전 라운드의 `post_digest`와 현재 트리를 비교한다. 범위 안 파일을 Bash로 썼더라도 일치하지 않으면 새 lease·시도 예산을 쓰기 전에 `RECOVERY_REQUIRED`로 멈춘다. 프리플라이트 도중 생긴 변경도 같은 방식으로 멈춘다. 쓰기 프로세스가 없음을 확인하고 누적 diff를 검토한 뒤 `recover`에 `quiescent:true`와 `reason`을 준다(lease가 없으면 token은 필요 없다). 복구는 확인한 현재 digest를 다음 시작의 기대값으로 기록하며, 변경을 일꾼이 쓴 것으로 인정하거나 승인하지 않는다.
+
 1. 상태, lock, 최신 brief, 결과, 라운드별 스냅샷, 실제 diff/status를 본다. 오래된 타임스탬프는 writer가 멈췄다는 증거가 아니다.
 2. `launch-N.json`, `process-N.json`, `envelope-N.json`으로 브리지와 일꾼 프로세스(POSIX는 프로세스 그룹, Windows는 프로세스 트리)가 모두 끝났는지 확인한다. Windows에서는 `process-N.json`의 pid를 부모로 가진 프로세스가 남았는지 직접 본다. 빠져나간 자손도 확인한다. 정지를 확인할 수 없으면 lock을 유지하고 BLOCKED로 보고한다.
 3. 컨트롤러가 죽어 control.lock이 남았으면: lock에는 소유자(pid, 호스트, 시각)가 적혀 있다. 같은 호스트에서 그 프로세스가 이미 없으면 다음 명령이 알아서 치운다. 살아 있거나 다른 호스트면 `EEXIST … held by pid N on HOST`로 거절하므로, 실행 중인 컨트롤러가 없음을 확인하고 기록한 뒤 그 파일만 지운다. writer.json을 지워 lease를 훔치지 않는다. `recover`에 token, `quiescent:true`, 근거 있는 reason을 넘긴다. 스냅샷 후 lease를 놓고 남은 예산 안에서 라우팅한다.

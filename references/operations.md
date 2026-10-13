@@ -2,6 +2,8 @@
 
 ## 입력·상태·타임라인
 
+`verify`의 `verification.json`과 `report`는 `base-1` 대비 최종 `changed_files`와 `unattributed_changes`를 기록한다. PR 초안도 이 누적 순변경으로 작성하며, 되돌린 중간 변경은 최종 변경 목록에서 뺀다. 일꾼 라운드에 귀속되지 않는 파일은 별도 항목으로 표시해 구현 실적과 구별한다. 첫 `begin` 전에 있던 사용자 변경은 첫 일꾼 기준선에 보존한다.
+
 컨트롤러·프로젝트·기억 쓰기 명령·router·metrics의 JSON 입력은 파일이나 stdin(`-`)으로 받는다. PowerShell 예:
 
 ```powershell

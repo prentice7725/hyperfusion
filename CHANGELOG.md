@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- README를 기본 영어(`README.md`), 한국어(`README.ko.md`), 일본어(`README.ja.md`)로 제공한다. 언어 전환 링크, 최신 Git 설정 보강·누적 리뷰·라운드 사이 drift 검사·PR 초안 동작, Sol APEX 예외와 실제 CLI 검증 한계를 함께 갱신했다.
+- 라운드 사이 변경 누락 수정: 후속 `begin`은 현재 트리를 직전 `post_digest`와 비교하고, 프리플라이트 도중 변경도 확인한다. 불일치하면 lease·시도 예산을 쓰기 전에 `RECOVERY_REQUIRED`로 멈춘다. `recover`는 확인한 트리의 digest를 다음 시작 기준으로 기록한다. 리뷰·위험 경로·최종 검증·PR 초안은 `base-1` 대비 최종 누적 변경을 보며, 어느 검증된 일꾼 라운드의 최종 내용에도 일치하지 않는 파일은 `unattributed_changes`로 표시한다. 이전 일꾼 파일을 라운드 밖에서 덮어쓴 경우도 포함한다. 이 변경은 위임 정책의 자동 승인을 막고, 누적 리뷰의 승인 근거가 없는 채 `verify`로 닫을 수 없다. 처음 일꾼이 시작하기 전 사용자 변경은 보존한다.
 - Git 설정 보안 보강: 컨트롤러가 include·조건부 include·worktree 설정까지 포함한 실제 적용 설정을 Git 호출 직전에 다시 읽고 실행 가능한 filter/diff/merge 항목을 무력화한다. `.git/config`의 mtime·크기만 보던 설정 캐시는 제거했다(설정 조회 프로세스가 늘지만 include 변경을 놓치지 않는다). 설정 조회 실패는 `GIT_CONFIG_UNREADABLE`로 중단한다. 연결 worktree의 전용 `config.worktree`를 별도로 감시하고, 점이 포함된 드라이버·조건부 include 이름도 위험 검사에 포함한다. HEAD·두 Git 폴더의 rev-parse는 계속 한 번에 구한다.
 - 스냅샷의 git 호출 줄이기: `snapshot()`이 HEAD와 공통 git 폴더(`--git-common-dir`)를 `rev-parse` 두 번으로 구하던 것을 한 번(`rev-parse HEAD --git-common-dir`)으로 합쳤다. 한 번에 구하지 못하면(옛 git, HEAD 없음) 예전처럼 따로 부르므로 오류와 동작은 그대로다. 스냅샷 digest와 보호 파일 점검 대상은 바뀌지 않았다(같은 저장소와 링크된 worktree에서 이전 구현과 digest가 같음을 확인했다). 같은 방법으로 센 `npm test`의 하위 프로세스: 15,598개 → 13,673개(−1,925개, −12.3%), `git rev-parse` 4,249개 → 2,336개. Windows에서 git 호출 하나는 25~32ms다. 캐시를 쓰지 않아 `.git` 바꿔치기에 낡은 값이 남을 일이 없다.
 - 샌드박스 오류로 실패한 테스트(R2): 일꾼의 샌드박스·환경이 막아서 돌지 못한 테스트를 `status:"fail"`에 `environment_error`(사유)를 붙여 보고하면 `complete`와 함께 받는다(전에는 "Contradictory complete result"로 거절돼 라운드가 RECOVERY_REQUIRED로 멈췄다). 통과로 세지 않는다: 위임 승인은 거절하고, 리드 패킷에 `environment_failures`로 올라가며, 수용 명령은 컨트롤러가 직접 돌린다. 사유 없는 `fail`은 여전히 모순이다. 일꾼 결과 스키마와 지시문에 필드를 추가했다.
