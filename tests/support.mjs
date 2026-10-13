@@ -40,6 +40,7 @@ const finish=(request,id)=>{
  if(mode==='lazy'){result.status='blocked';result.unresolved=['did not bother'];}
  // 위임 리뷰 모드: 기본은 pass, review-redo면 AC1 반려와 파일·줄 지적을 낸다.
  if('blocking_criteria' in result){if(mode==='review-redo'){result.recommended_verdict='redo';result.blocking_criteria=['AC1'];result.findings=[{file:'a.txt',line:1,severity:'blocker',issue:'AC1 not met',suggestion:'write fixed'}];result.summary='AC1 fails';}else if(mode==='review-bad'){result.recommended_verdict='redo';result.blocking_criteria=[];}else if(mode==='review-alt'){result.recommended_verdict='alternative';result.blocking_criteria=['approach'];result.findings=[{file:'a.txt',line:1,severity:'major',issue:'approach cannot meet AC1',suggestion:'use another approach'}];}else if(mode==='review-vague'){result.recommended_verdict='redo';result.blocking_criteria=['AC1'];result.findings=[{file:'a.txt',line:0,severity:'minor',issue:'feels off',suggestion:''}];result.summary='not sure';}else{result.recommended_verdict='pass';result.blocking_criteria=[];result.summary='All criteria met';}}
+ if(mode==='review-decision'&&'blocking_criteria' in result){result.recommended_verdict='decision';result.blocking_criteria=['choose design'];result.summary='The lead must choose the design';}
  if(mode==='findings'&&result.consult_id){result.findings=[{file:'sub\\\\a.txt',line:3,severity:'blocker',issue:'AC1 not met',suggestion:'handle empty input'}];result.recommended_verdict='redo';result.confidence='high';}
  return result;
 };
@@ -89,7 +90,7 @@ console.log(JSON.stringify({conversation_id:id,status:mode==='agy-fail'?'failed'
 
 const FAKE_CODEX=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE codex for protocol tests');process.exit(0);}
-if(args[0]==='exec'&&args.includes('--help')){console.log('--sandbox --output-schema -C, --cd --ephemeral -m, --model');process.exit(0);}
+if(args[0]==='exec'&&args.includes('--help')){console.log('--sandbox --output-schema -C, --cd --ephemeral -m, --model --json resume');process.exit(0);}
 if(args.includes('--help')){console.log('Commands: exec');process.exit(0);}
 fs.writeFileSync(HERE+'/fake-codex-args.json',JSON.stringify(args));
 // reviewer-fail-once: 첫 Codex 호출만 실패한다(리뷰어 하나가 못 끝낸 상황).
@@ -98,7 +99,10 @@ const schema=JSON.parse(fs.readFileSync(args[args.indexOf('--output-schema')+1],
 if(!schema.properties)process.exit(3);
 const request=JSON.parse(fs.readFileSync(0,'utf8'));
 if(mode==='codex-crash')process.exit(1);
-console.log(JSON.stringify(finish(request,null)));
+const session=args.includes('resume')?args[args.indexOf('resume')+1]:'0199a213-81c0-7800-8aa1-bbab2a035a53';
+console.log(JSON.stringify({type:'thread.started',thread_id:session}));
+console.log(JSON.stringify({type:'item.completed',item:{id:'final',type:'agent_message',text:JSON.stringify(finish(request,session))}}));
+console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:20,cached_input_tokens:10,output_tokens:5}}));
 `;
 const FAKE_CLAUDE=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE claude for protocol tests');process.exit(0);}

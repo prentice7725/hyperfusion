@@ -4,12 +4,20 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.21.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
+> **Versions.** The package release is `0.22.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
 
 ## Why HyperFusion
 
 1. **Reduce lead-model token use.** Opus owns planning, rejection, and final review. Workers handle implementation and test loops. The project records lead tokens per successful task; unmeasured usage stays unknown.
 2. **One point of contact.** The user works with the lead, which assigns workers, checks their claims, sends concrete revision orders, and changes workers after repeated failures.
+
+## Codex and egress improvements (0.22.0)
+
+Codex workers now collect JSONL thread/turn usage and resume an exact task-scoped implementation thread when compatible `exec resume` flags are confirmed; unsupported versions stay stateless. Reviews remain fresh and read-only. Cached input is a subset of input, not an extra token charge. [Codex runtime](references/codex-runtime.md) covers operator-only build cache/network options and configurable Claude/Grok turn ceilings (default 40).
+
+Set `allowed_vendors:["anthropic","openai"]` to narrow implementation, review and consultation together. Operator `HF_ALLOWED_VENDORS=anthropic,openai` is an upper bound that repository configuration cannot widen. The bridge checks again before spawning; this cooperative dispatch policy is not a firewall/DLP or vendor attestation for arbitrary model overrides. Built-in metadata is centralized in `scripts/member-registry.mjs`; new CLIs still require audited adapters. Classic low-code routing now starts with Luna. A short English [executor map](references/executor-quickstart.md) reduces reference loading; generic CLI/ACP and full state-machine extraction remain unimplemented.
+
+For future local commits, use your verified GitHub noreply address with repository-local `git config user.email`. Existing public author metadata is not removed without an explicit history-rewrite request.
 
 ## Usage measurement and installed teams (0.21.0)
 

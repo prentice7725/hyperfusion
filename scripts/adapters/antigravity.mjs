@@ -2,19 +2,20 @@ import {spawnSync} from 'node:child_process';
 import {schemaFor,prompt,bashRules,probe as probeCli,extractResult,ACCEPTANCE} from './common.mjs';
 import {assertCommandLine} from '../platform.mjs';
 import {workerEnv} from '../worker-env.mjs';
+import {memberBinary} from '../member-registry.mjs';
 
 // Google Antigravity CLI(agy) 헤드리스 모드. 모든 플래그는 -p 앞에 와야 한다.
 // 대화 ID는 CLI가 발급하므로 첫 라운드 envelope의 conversation_id를 저장해 재개에 쓴다.
 export const name='antigravity';
 export const requiredFlags=['--output-format','--json-schema','--conversation','--mode','--add-dir','--print'];
-export const binary=()=>process.env.HF_AGY_BIN||'agy';
+export const binary=()=>memberBinary('antigravity');
 // --sandbox는 agy의 터미널만 제한하고 파일 쓰기 도구(write_to_file)는 막지 못한다(외부 실측). 그래서 상담·리뷰의
 // 읽기 전용은 sandbox가 아니라 컨트롤러가 전후 스냅샷을 비교해 강제한다(저장소가 바뀌면 그 답변을 버린다).
 // 그래도 셸로 쓰는 길은 줄여 주므로, 끌 수 있는 것은 운영자가 허용한 구현 라운드뿐이고 상담과 리뷰는 항상 --sandbox를 넘긴다
 // (CLI가 그 플래그를 모르면 상담이 실패한다. 읽기 전용이어야 할 일꾼을 풀어 두는 것보다 낫다).
 const unsandboxed=(options,brief)=>options.sandbox===false&&!brief?.consult;
 export const probe=(options={})=>{
- const cli=probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(options.model?['--model']:[]),...(options.reasoning_effort?['--effort']:[])],['--print-timeout','--model','--effort']);
+ const cli=probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(options.model?['--model']:[]),...(options.reasoning_effort?['--effort']:[])],['--print-timeout','--model','--effort'],{executor:'antigravity'});
  return options.model?{...cli,model_check:checkModel(cli,options.model)}:cli;
 };
 

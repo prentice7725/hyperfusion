@@ -3,32 +3,32 @@ import path from 'node:path';
 import {read} from './artifact.mjs';
 import {workspaceOf} from './memory-policy.mjs';
 import {validateLimits} from './budgets.mjs';
+import {MEMBERS} from './member-registry.mjs';
+import {validateVendors,assertVendor,vendorAllowed} from './vendor-policy.mjs';
 
 // 리드는 Claude Opus 5.5 하나로 고정. 구현 일꾼은 Grok, Antigravity, Sonnet·Haiku(Claude Code), Luna(Codex).
-export const EXECUTORS=['grok','antigravity','sonnet','haiku','luna'];
+export const EXECUTORS=Object.keys(MEMBERS).filter(n=>MEMBERS[n].implement);
 // 리뷰·상담까지 포함한 명단. Sol은 이 구현 명단에 넣지 않는다. APEX 구현은 라운드 승인으로만 연다.
 export const REVIEWERS=['sol',...EXECUTORS];
 // 위임 리뷰는 라운드당 이 횟수까지(리뷰어가 실패하면 한 번 더). 상담 예산과 별도다.
 export const REVIEW_RUNS_PER_ROUND=2;
-export const CAP={grok:3,antigravity:3,sonnet:3,haiku:3,luna:3,lead:1};
+export const CAP={...Object.fromEntries(EXECUTORS.map(n=>[n,MEMBERS[n].rounds])),lead:1};
 export const APEX_ROUND_CAP=3;
 // 상담(advisor 1명, committee 2명) 위원 실행 총량. 구현 예산과 별도다.
 export const CONSULT_CAP=4;
 // 추론 강도(reasoning_effort)로 받는 값. CLI마다 다르다(각 CLI --help 기준).
 // Codex: codex exec -c model_reasoning_effort=…, Claude Code·agy: --effort, Grok: --reasoning-effort(값 목록은 도움말에 없어 Claude와 같게 둔다).
-const HIGH=['low','medium','high','xhigh','max'];
 // 기본 추론 강도. 설정에 reasoning_effort가 없으면 이 값을 쓰고, null이면 플래그를 넘기지 않는다(CLI 기본값).
-export const DEFAULT_EFFORT={sonnet:'high',haiku:'max',antigravity:'high',grok:'xhigh',luna:'xhigh',sol:'medium'};
-export const EFFORT_LEVELS={sol:['minimal','low','medium','high','xhigh'],luna:['minimal','low','medium','high','xhigh'],sonnet:HIGH,haiku:HIGH,antigravity:HIGH,grok:HIGH};
+export const DEFAULT_EFFORT=Object.fromEntries(Object.entries(MEMBERS).map(([n,m])=>[n,m.effort]));
+export const EFFORT_LEVELS=Object.fromEntries(Object.entries(MEMBERS).map(([n,m])=>[n,m.efforts]));
 export const TASK_KINDS=['code','ui','image-asset','tests','refactor','docs'];
 export const DIFFICULTIES=['low','medium','high'];
 // 능력(caps): 배치는 이름이 아니라 능력으로 후보를 거른다. 작업 종류마다 필요한 능력이 하나 있다.
 // 기본값은 여기, 바꾸거나 새 모델의 능력을 적을 때는 설정의 executors.<이름>.caps로 덮어쓴다.
 export const CAPABILITIES=['code','tests','refactor','ui','docs','image-gen'];
 export const KIND_NEEDS={code:'code',tests:'tests',refactor:'refactor',ui:'ui',docs:'docs','image-asset':'image-gen'};
-const GENERAL=['code','tests','refactor','ui','docs'];
 // Antigravity CLI와 Claude Code에는 이미지 생성 기능이 없다.
-export const DEFAULT_CAPS={grok:[...GENERAL,'image-gen'],antigravity:GENERAL,sonnet:GENERAL,haiku:GENERAL,luna:[...GENERAL,'image-gen']};
+export const DEFAULT_CAPS=Object.fromEntries(EXECUTORS.map(n=>[n,MEMBERS[n].caps]));
 export const capsOf=(c,e)=>c?.executors?.[e]?.caps??DEFAULT_CAPS[e]??[];
 // 작업 종류가 없으면(분류 안 된 작업) 능력으로 거르지 않는다.
 export const canDo=(c,e,kind)=>!kind||capsOf(c,e).includes(KIND_NEEDS[kind]);
@@ -40,7 +40,7 @@ export const IMAGE_EXECUTORS=EXECUTORS.filter(e=>DEFAULT_CAPS[e].includes('image
 export const DEFAULT_RULES=[
  {kind:'image-asset',executors:['grok','luna'],why:'이미지 생성 능력(image-gen)이 있는 일꾼'},
  {kind:'code',difficulty:['medium','high'],executors:['sonnet','grok','antigravity'],why:'까다로운 구현은 Sonnet'},
- {kind:'code',difficulty:['low'],executors:['grok','haiku','antigravity','sonnet'],why:'쉬운 구현은 빠른 일꾼부터'},
+ {kind:'code',difficulty:['low'],executors:['luna','grok','haiku','antigravity','sonnet'],why:'쉬운 구현은 Luna·빠른 일꾼부터'},
  {kind:'tests',executors:['sonnet','grok','antigravity'],why:'테스트 설계·디버깅은 Sonnet'},
  {kind:'refactor',executors:['sonnet','antigravity','grok'],why:'넓은 범위 리팩터는 Sonnet'},
  {kind:'ui',executors:['antigravity','sonnet','grok'],why:'프론트엔드·UI는 Antigravity부터'},
@@ -69,6 +69,7 @@ export const externalFirst=c=>routingPolicy(c)==='external-first';
 export const claudeReserve=c=>externalFirst(c)&&c?.routing?.claude_reserve!==false;
 // The same eligibility applies before routing, fallback and lease acquisition.
 export function automaticImplementer(c,name) {
+ if(!vendorAllowed(c,name))return false;
  if(!EXECUTORS.includes(name))return false;
  if((externalFirst(c)||c?.review?.strategy==='lead-gated-adaptive')&&GRANT_ONLY.includes(name))return false;
  return !(claudeReserve(c)&&name==='haiku');
@@ -94,6 +95,9 @@ const validCaps=v=>v===undefined||(Array.isArray(v)&&v.every(x=>CAPABILITIES.inc
 export function config(root) {
  const file=path.join(root,'hyperfusion.config.json');
  const v=fs.existsSync(file)?read(file):structuredClone(DEFAULT_CONFIG);
+ if(v.allowed_vendors!==undefined)validateVendors(v.allowed_vendors);
+ // Validate operator policy even if no particular executor is selected yet.
+ vendorAllowed(v,'sol');
  const userRules=v.routing?.rules!==undefined;
  if(['sol','astra'].includes(v.lead))throw Error('Invalid HyperFusion configuration: Codex lead config belongs to the main branch; this branch is Opus-led');
  v.lead??='opus';v.lead_model??='claude-opus-5-5';v.lead_takeover??=true;v.external??=structuredClone(DEFAULT_CONFIG.external);
@@ -114,7 +118,9 @@ export function config(root) {
   &&(ext.default==='auto'||ext.available.includes(ext.default))&&typeof (v.executors.antigravity.sandbox??true)==='boolean'
   &&Array.isArray(v.routing.rules)&&v.routing.rules.length&&v.routing.rules.every(r=>validRule(r,v,userRules))&&typeof v.routing.learn==='boolean'
   &&Object.entries(v.executors).every(([k,o])=>REVIEWERS.includes(k)&&o&&typeof o==='object'&&(o.timeout_ms===undefined||(Number.isSafeInteger(o.timeout_ms)&&o.timeout_ms>0))
-   &&(o.model===undefined||(typeof o.model==='string'&&/^[\w.:/-]{1,80}$/.test(o.model)))&&(o.reasoning_effort===undefined||typeof o.reasoning_effort==='string')&&validCaps(o.caps))
+   &&(o.model===undefined||(typeof o.model==='string'&&/^[\w.:/-]{1,80}$/.test(o.model)))&&(o.reasoning_effort===undefined||typeof o.reasoning_effort==='string')&&validCaps(o.caps)
+   &&(o.max_turns===undefined||(Number.isSafeInteger(o.max_turns)&&o.max_turns>0&&o.max_turns<=1000))
+   &&(o.max_turns_by_difficulty===undefined||(o.max_turns_by_difficulty&&typeof o.max_turns_by_difficulty==='object'&&!Array.isArray(o.max_turns_by_difficulty)&&Object.entries(o.max_turns_by_difficulty).every(([d,n])=>DIFFICULTIES.includes(d)&&Number.isSafeInteger(n)&&n>0&&n<=1000))))
   &&['lead','delegate'].includes(v.review.by)&&Array.isArray(v.review.reviewers)&&v.review.reviewers.length>0&&v.review.reviewers.every(x=>REVIEWERS.includes(x))&&new Set(v.review.reviewers).size===v.review.reviewers.length&&typeof v.review.auto_apply==='boolean'
   &&(v.review.strategy===undefined||v.review.strategy==='lead-gated-adaptive')
   &&Array.isArray(v.review.risk_paths)&&v.review.risk_paths.length<=50&&v.review.risk_paths.every(validGlob)
@@ -124,6 +130,7 @@ export function config(root) {
  if(!ok)throw Error('Invalid HyperFusion configuration');
  // 추론 강도는 일꾼 CLI가 받는 값만 허용한다. 틀린 값을 조용히 넘기면 CLI가 실패하거나 무시하므로 여기서 막는다.
  for(const [k,o] of Object.entries(v.executors)){
+  if((o.max_turns!==undefined||o.max_turns_by_difficulty!==undefined)&&!['grok','sonnet','haiku'].includes(k))throw Error('TURN_LIMIT_UNSUPPORTED: '+k+' does not expose --max-turns');
   if(o.reasoning_effort!==undefined&&!(EFFORT_LEVELS[k]??[]).includes(o.reasoning_effort))
    throw Error(`EFFORT_UNSUPPORTED: ${k} reasoning_effort must be one of ${(EFFORT_LEVELS[k]??[]).join(', ')||'(none)'}`);
  }
@@ -147,5 +154,6 @@ export function selectExecutor(c,requested) {
  if(name==='sol')throw Error('Executor must be an implementer; sol only reviews and advises');
  if(!EXECUTORS.includes(name))throw Error('Executor must be grok, antigravity, sonnet, haiku, luna or auto');
  if(!c.external.available.includes(name))throw Error('Executor not enabled in configuration: '+name);
+ assertVendor(c,name);
  return name;
 }

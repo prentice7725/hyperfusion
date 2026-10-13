@@ -4,6 +4,7 @@ import {resolveExecutable} from '../platform.mjs';
 import {controlRoot} from '../control-dir.mjs';
 import {checkBashRules} from '../bash-policy.mjs';
 import {PROTOCOL,VERSION} from '../versions.mjs';
+import {assertVendor} from '../vendor-policy.mjs';
 
 // 외부 일꾼(Grok, Antigravity)이 공통으로 따르는 결과 계약과 지시문.
 export function resultSchema(task_id,round) {
@@ -95,12 +96,12 @@ export function bashRules(brief) {
 // 실행 파일과 필수 플래그를 확인한다. 인증은 실제 호출에서만 드러난다.
 // optionalFlags는 있으면 쓰고 없어도 통과하는 플래그다. 결과의 supports에 기록된다.
 // help는 도움말을 여는 인자. 하위 명령의 플래그를 봐야 하는 CLI(codex exec)는 따로 준다.
-export function probe(name,binary,requiredFlags,optionalFlags=[],{help:helpArgs=['--help']}={}) {
+export function probe(name,binary,requiredFlags,optionalFlags=[],{help:helpArgs=['--help'],executor='probe'}={}) {
+ if(executor!=='probe')assertVendor(null,executor);
  const {executable,prefix_args}=resolveExecutable(name,binary);
  const shown=prefix_args.at(-1)??executable;
  // 도움말을 stderr로 내거나 0이 아닌 코드로 끝내는 CLI도 있어 두 스트림을 합쳐 본다.
  const run=(...flag)=>{
-  const executor=/grok/i.test(name)?'grok':/antigravity|agy/i.test(name)?'antigravity':/sonnet|claude/i.test(name)?'sonnet':/codex|sol|luna/i.test(name)?'luna':'probe';
   const r=spawnSync(executable,[...prefix_args,...flag],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:workerEnv(executor)});
   if(r.error)throw Error(`ADAPTER_UNAVAILABLE: ${name} ${flag.join(' ')} failed at ${shown}: ${r.error.code==='ETIMEDOUT'?'timed out (CLI may need a TTY)':r.error.message}`);
   return `${r.stdout??''}\n${r.stderr??''}`;

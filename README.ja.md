@@ -4,12 +4,20 @@
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.21.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.22.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 作った理由
 
 1. **トークン節約。** 高価なモデル（Opus）がコードを書き、テストを回し、ログを読むのにトークンを使うのは無駄です。Opusは計画・差し戻し・最終検収だけを行い、実装とテストの反復はより安いモデルや別サブスクリプションのモデルが担当します。成功した作業あたりのOpusトークンを主要指標として計測し記録します。
 2. **相手にするのはリードだけ。** 複数のエージェントを一画面で管理するツールはすでにあります。このスキルは逆に、ユーザーが**Opus一人だけを相手にし、ワーカーの管理はOpusが行います。** ワーカーの「完了しました」は信用せず、空の差し戻しは許さず、具体的な指示書で詰め、同じミスを2回したら別のワーカーに交代させます。
+
+## Codexと送信ポリシーの改善 (0.22.0)
+
+CodexワーカーのJSONL thread・turn使用量を記録し、互換性のある`exec resume`フラグを確認できた場合だけ、タスク内の実装セッションを正確なIDで再開します。未対応版はstatelessのまま、レビューは新しい読み取り専用セッションです。cached inputはinputの一部なので加算しません。運用者専用のビルドキャッシュ・ネットワーク設定とClaude/Grokの難易度別ターン上限（既定40）は[Codex運用案内](references/codex-runtime.md)を参照してください。
+
+`allowed_vendors:["anthropic","openai"]`は実装・レビュー・相談をまとめて制限し、運用者の`HF_ALLOWED_VENDORS=anthropic,openai`はリポジトリ側で広げられない上限です。ブリッジも起動直前に再検査します。ファイアウォール・DLPや任意モデルoverrideのベンダー認証ではありません。built-inメタデータは`scripts/member-registry.mjs`に集約しましたが、新CLIには検証済みアダプターが必要です。classic lowコードの第一候補もLunaに合わせました。英語の[短い実行案内](references/executor-quickstart.md)を追加し、generic CLI/ACPと状態マシン全体の分割は未実装です。
+
+今後のローカルコミットはGitHubで確認したnoreplyアドレスをリポジトリ単位の`git config user.email`に設定します。既存の公開作成者情報は、明示的な履歴書き換え依頼なしでは削除しません。
 
 ## 使用量の測定とインストール済みチーム (0.21.0)
 
