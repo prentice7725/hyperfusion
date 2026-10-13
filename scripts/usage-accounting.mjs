@@ -45,18 +45,24 @@ export function summarizeUsage(runs,lead=null,leadModel=null) {
   const rows=runs.filter(r=>r.executor===executor);
   return [executor,{calls:rows.length,roles:Object.fromEntries(['implement','review','consult'].map(role=>[role,rows.filter(r=>r.role===role).length])),tokens:completeSum(rows,'tokens'),cost_usd:completeSum(rows,'cost_usd'),unreported_calls:rows.filter(r=>!r.reported).length}];
  }));
- const modelRows=runs.flatMap(r=>r.model_usage?.length?r.model_usage:r);
+ const hostRows=lead?.by_model?Object.entries(lead.by_model).map(([model,row])=>({model,tokens:row.tokens,cost_usd:null})):[];
+ const modelRows=[...runs.flatMap(r=>r.model_usage?.length?r.model_usage:r),...hostRows];
  const models=[...new Set(modelRows.map(r=>r.model??'unknown'))];
  const by_model=Object.fromEntries(models.map(model=>{
   const rows=modelRows.filter(r=>(r.model??'unknown')===model);return [model,{calls:rows.length,tokens:completeSum(rows,'tokens'),cost_usd:completeSum(rows,'cost_usd')}];
  }));
  // An unverified host model is never reported as measured Opus usage.
- const opus=lead&&/^claude-opus-/.test(leadModel??'')?lead.lead_tokens:null;
+ const observed=hostRows.length?hostRows:lead&&leadModel?[{model:leadModel,tokens:lead.lead_tokens}]:[];
+ const hostKnown=observed.length>0&&observed.every(r=>/^claude-(opus|sonnet|haiku)-/.test(r.model)&&knownNumber(r.tokens));
+ const hostFamily=family=>hostKnown?completeSum(observed.filter(r=>r.model.startsWith(`claude-${family}-`)),'tokens'):null;
  const claudeRows=runs.filter(r=>['sonnet','haiku'].includes(r.executor)).flatMap(r=>r.model_usage?.length?r.model_usage:r);
  const unknownClaude=claudeRows.some(r=>!/^claude-(opus|sonnet|haiku)-/.test(r.model??''));
  const familyTokens=family=>unknownClaude?null:completeSum(claudeRows.filter(r=>r.model.startsWith(`claude-${family}-`)),'tokens');
  const workerOpus=familyTokens('opus');
- const claude={opus:knownNumber(opus)&&knownNumber(workerOpus)?opus+workerOpus:null,sonnet:familyTokens('sonnet'),haiku:familyTokens('haiku')};
+ const add=(a,b)=>knownNumber(a)&&knownNumber(b)?a+b:null;
+ const claude={opus:add(hostFamily('opus'),workerOpus),
+  sonnet:observed.length?add(hostFamily('sonnet'),familyTokens('sonnet')):familyTokens('sonnet'),
+  haiku:observed.length?add(hostFamily('haiku'),familyTokens('haiku')):familyTokens('haiku')};
  return {by_executor,by_model,claude,claude_total_tokens:Object.values(claude).every(knownNumber)?Object.values(claude).reduce((a,b)=>a+b,0):null,
   unreported_calls:runs.filter(r=>!r.reported).length};
 }

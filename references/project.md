@@ -97,3 +97,9 @@ $P status $HF_REPO
 ```
 
 프로젝트 파일은 제어 폴더의 `project.json`이다(작업 폴더 밖). 프로젝트가 없으면 이전처럼 작업 단위로 쓴다.
+
+## 설치 상태 기반 초안과 승인
+
+`project.mjs draft REPO` 또는 `roster REPO --draft`는 설치된 CLI만 팀에 넣고 미설치 팀원의 `excluded` 사유를 채운 기획용 초안을 준다. `planning_needed`에 남은 기획·마일스톤을 채운 뒤 propose/approve를 진행한다. 설치된 팀원을 빼려면 여전히 명시적 제외 사유가 필요하다. propose와 approve는 미설치 팀원을 `TEAM_UNAVAILABLE`로 거절한다. 설치 확인은 로그인·인증·쿼터 확인이 아니다.
+
+setup-doctor는 실제 설치 조합에 맞는 프리셋을 추천하지만 설정을 바꾸거나 승인하지 않는다. Claude+Codex 전용 `preset:"claude-codex"`는 sonnet/luna/sol과 adaptive 리뷰를 요구한다. 사용자가 이 프로젝트를 승인하면 컨트롤러가 low는 Luna STANDARD, medium/high 비이미지 작업은 Sonnet IMPORTANT + `sonnet_implementation` grant로 기본 배치한다. Sol과 Sonnet은 구현자를 제외해 교차 리뷰한다. 명시적인 worker·assignment·criticality는 덮어쓰지 않는다. 저장소 설정에 프리셋 이름만 넣어서는 grant가 생기지 않는다. 이미지 작업은 Luna에 남고, 같은 회사 리뷰가 필요하면 기존 경고가 유지된다. 프리셋을 바꾸는 amend는 재승인을 요구한다.

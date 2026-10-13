@@ -11,6 +11,8 @@ import {acquire,assertLease,release} from './writer-lease.mjs';
 import {notify} from './notify.mjs';
 import {loadProject,saveProject,teamConfig,activeMilestone,settleTask} from './project.mjs';
 import {measure} from './metrics.mjs';
+import {recordHostWindow} from './lead-usage.mjs';
+import {presetTaskInput} from './installation.mjs';
 import {workspaceOf,propose,deriveFromState} from './memory-policy.mjs';
 import * as contract from './contracts.mjs';
 import {readInput,printError} from './cli.mjs';
@@ -156,6 +158,7 @@ function finalizeTask(c,outcome) {
   let dirty=false;
   // router가 일꾼 실적을 배우는 재료다. 빠지면 학습이 조용히 멈추므로 실패를 기록한다.
   try{
+    recordHostWindow(c.root,s);
     measure(c.root);
   } catch(e){
     s.metrics_error=`metrics not recorded: ${e.message}`;
@@ -222,6 +225,7 @@ function init(c,input) {
     if(planned.status!=='planned')throw Error(`Project task ${planned.id} is ${planned.status}`);
     configuration=teamConfig(project,configuration);
     input={task_kind:planned.kind,...(planned.difficulty?{difficulty:planned.difficulty}:{}),...input};
+    input=presetTaskInput(project.preset,input);
     projectTask={...planned,milestone:milestone.id,project:project.name};
   }
 
@@ -298,6 +302,7 @@ function init(c,input) {
   if(delegation)c.art('delegation.json',delegation);
   if(grant)c.art(`implement-grant-${grant.revision}.json`,grant);
   c.save();
+  try{recordHostWindow(c.root,c.s);}catch(e){c.s.host_usage_error='host usage binding unavailable';c.save();}
 
   if(projectTask){
     const p=loadProject(c.root);

@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+## 0.21.0 — 2026-10-13
+
+- 리드 사용량 자동 회계: Claude Code 종료 훅의 로컬 transcript에서 실제 모델별 input/output/cache를 수집한다. 메시지 중복·세션 재개·연속 작업 귀속을 처리하고 종료 지표를 보정한다. 원문은 저장하지 않으며 수동 관측이 우선하고 누락은 미측정이다.
+- 설치된 CLI만으로 팀 초안 생성, 미설치 팀원 propose/approve 거절, doctor 프리셋 추천을 추가했다. 사용자 승인된 Claude+Codex 프로젝트는 low Luna, medium/high Sonnet 구현 grant와 Sol/Sonnet 교차 리뷰를 기본으로 한다. 명시적 배치는 보존한다.
+- 고정 A/B 과제 10개와 paired 실측 지표 비교 CLI를 추가했다. 미측정·scope 불일치는 절감률을 내지 않는다. 실제 모델 A/B는 미실행이며 절감 효과를 주장하지 않는다. 영어·한국어·일본어 README와 운영 문서를 갱신했다.
+
 - README를 기본 영어(`README.md`), 한국어(`README.ko.md`), 일본어(`README.ja.md`)로 제공한다. 언어 전환 링크, 최신 Git 설정 보강·누적 리뷰·라운드 사이 drift 검사·PR 초안 동작, Sol APEX 예외와 실제 CLI 검증 한계를 함께 갱신했다.
 - 라운드 사이 변경 누락 수정: 후속 `begin`은 현재 트리를 직전 `post_digest`와 비교하고, 프리플라이트 도중 변경도 확인한다. 불일치하면 lease·시도 예산을 쓰기 전에 `RECOVERY_REQUIRED`로 멈춘다. `recover`는 확인한 트리의 digest를 다음 시작 기준으로 기록한다. 리뷰·위험 경로·최종 검증·PR 초안은 `base-1` 대비 최종 누적 변경을 보며, 어느 검증된 일꾼 라운드의 최종 내용에도 일치하지 않는 파일은 `unattributed_changes`로 표시한다. 이전 일꾼 파일을 라운드 밖에서 덮어쓴 경우도 포함한다. 이 변경은 위임 정책의 자동 승인을 막고, 누적 리뷰의 승인 근거가 없는 채 `verify`로 닫을 수 없다. 처음 일꾼이 시작하기 전 사용자 변경은 보존한다.
 - Git 설정 보안 보강: 컨트롤러가 include·조건부 include·worktree 설정까지 포함한 실제 적용 설정을 Git 호출 직전에 다시 읽고 실행 가능한 filter/diff/merge 항목을 무력화한다. `.git/config`의 mtime·크기만 보던 설정 캐시는 제거했다(설정 조회 프로세스가 늘지만 include 변경을 놓치지 않는다). 설정 조회 실패는 `GIT_CONFIG_UNREADABLE`로 중단한다. 연결 worktree의 전용 `config.worktree`를 별도로 감시하고, 점이 포함된 드라이버·조건부 include 이름도 위험 검사에 포함한다. HEAD·두 Git 폴더의 rev-parse는 계속 한 번에 구한다.

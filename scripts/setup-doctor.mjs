@@ -11,11 +11,16 @@ import {status as projectStatus} from './project.mjs';
 import {errorRecord} from './cli.mjs';
 import {SCHEMA_VERSION} from './versions.mjs';
 import {smoke} from './smoke.mjs';
+import {installationRoster,recommendPreset} from './installation.mjs';
 
 // 실행 전 점검. 일꾼 CLI는 모두 프로브해서 교체 가능한 인력을 미리 파악한다.
 const checks=[];
 const probeEvidence={};
 const probeMember=name=>{
+ if(probeEvidence[name]){
+  if(probeEvidence[name].error)throw Error(probeEvidence[name].error);
+  return probeEvidence[name];
+ }
  try{const p=adapter(name).probe(c.executors[name]??{});probeEvidence[name]={...p,help:p.help};return p;}
  catch(e){probeEvidence[name]={error:e.message,...e.probe};throw e;}
 };
@@ -72,6 +77,8 @@ let memory=null;
 try{const w=c?workspaceOf(c):null;if(w){memory={...memoryStats(w),binding:root?bindingStatus(w,repoId(root)):'unknown'};if(memory.binding==='foreign'||memory.binding==='unclaimed')warnings.push(`memory workspace "${w}" is ${memory.binding==='foreign'?'bound to other repositories':'not bound to any repository'}; memory commands will refuse until the user approves: node memory.mjs bind REPO`);}}catch(e){memory={error:e.message};}
 let project=null;
 try{if(root)project=projectStatus(root);}catch(e){project={error:e.message};}
+const installation=c?installationRoster(c,probeMember):[];
+const recommended_preset=c?recommendPreset(installation):null;
 let probe_file=null;
 if(root&&!isLegacy(root)){
  try{ensureControl(root);probe_file=controlPath(root,'doctor',`probes-${Date.now()}-${process.pid}.json`);atomic(probe_file,{at:new Date().toISOString(),probes:probeEvidence});}
@@ -88,5 +95,6 @@ if(smokeWanted&&c){
   check('smoke',()=>{const broken=smoke_results.filter(r=>!r.ok);if(broken.length)throw Error('Contract broken: '+broken.map(r=>`${r.executor} at ${r.stage}: ${r.error}`).join(' | '));return smoke_results.map(r=>`${r.executor} ok ${Math.round(r.ms/1000)}s`).join(', ');});
  }
 }
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,smoke:smoke_results,bench,reviewers,memory,project,probe_file,review:c?.review??null,roster:{lead:`${c?.lead_model??'Claude Opus'} (host)`,workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,smoke:smoke_results,bench,reviewers,memory,project,probe_file,review:c?.review??null,
+ installation,recommended_preset,roster:{lead:`${c?.lead_model??'Claude Opus'} (host)`,workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;

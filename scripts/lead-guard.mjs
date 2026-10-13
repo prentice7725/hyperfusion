@@ -102,7 +102,11 @@ export function decideUserPrompt(input) {
 export function settingsSnippet() {
  const script=fileURLToPath(import.meta.url).replaceAll('\\','/');
  const command=[{type:'command',command:`node "${script}"`}];
- return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command}],Stop:[{hooks:command}],SessionStart:[{matcher:'startup|resume|compact',hooks:command}],UserPromptSubmit:[{hooks:command}]}};
+ const usage=fileURLToPath(new URL('./lead-usage.mjs',import.meta.url)).replaceAll('\\','/');
+ const collect=[{type:'command',command:`node "${usage}" --hook`,timeout:10}];
+ return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command},{matcher:'Bash',hooks:collect}],
+  Stop:[{hooks:[...command,...collect]}],SessionStart:[{matcher:'startup|resume|compact',hooks:[...command,...collect]}],
+  UserPromptSubmit:[{hooks:[...command,...collect]}],SessionEnd:[{hooks:collect}],StopFailure:[{hooks:collect}]}};
 }
 
 if(isMain(import.meta.url)) {
