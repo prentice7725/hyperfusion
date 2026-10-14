@@ -4,6 +4,13 @@ const placeholder=kind=>`[REDACTED:${kind}]`;
 const SECRET_FIELD=/^(?:[\w.-]+[_-])?(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization|private[_-]?key)$/i;
 const CONTROL_FIELD=new Set(['task_id','repo_root','round','id','member','file','files_read','files_changed','changed_files','paths','executor_bash_rules']);
 
+// 이미지 해상도 표기 파일명(icon@16.png, logo@2x.png, hero@1.5x.webp)은 이메일이 아니다. 도메인 자리가 "해상도 표기.이미지 확장자"이고,
+// png 같은 확장자는 최상위 도메인이 아니라서 이 모양의 주소는 존재할 수 없다. 이메일로 오인하면 파일 경로가 통째로 지워져
+// 일꾼이 어느 파일인지 모르게 되고, scope.paths·files_changed에서는 "rename it before dispatch"로 디스패치가 막힌다.
+// 좁게 잡는다: alice@example.com.txt처럼 실제 이메일이 든 파일명은 그대로 마스킹한다.
+const DENSITY_IMAGE_DOMAIN=/^\d+(?:\.\d+)?x?\.(?:png|apng|jpe?g|gif|webp|avif|bmp|ico|icns|tiff?|heic|heif|svg|jxl)$/i;
+const isImageDensityName=match=>DENSITY_IMAGE_DOMAIN.test(match.slice(match.lastIndexOf('@')+1));
+
 // Transport-only filtering. Local provenance artifacts stay unchanged; audit never stores originals.
 export function redactText(text,counts={}) {
  if(text.length>8*1024*1024)throw Object.assign(Error('Redaction text size limit exceeded'),{code:'REDACTION_UNSAFE'});
@@ -34,7 +41,7 @@ export function redactText(text,counts={}) {
   const quote=/^["']/.test(v)?v[0]:'';
   return p+quote+placeholder('secret')+quote;
  });
- replace('email',/[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?\.[A-Za-z]{2,63}/g);
+ replace('email',/[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?\.[A-Za-z]{2,63}/g,match=>!isImageDensityName(match));
  // IPv6, including compressed and IPv4-mapped forms. Validate candidates to avoid model/version matches.
  replace('ip',/(?<![\w:])(?:[A-Fa-f0-9]{0,4}:){2,7}(?:(?:\d{1,3}\.){3}\d{1,3}|[A-Fa-f0-9]{1,4})?(?:%[\w.-]+)?(?![\w:])/g,v=>isIP(v.split('%')[0])===6);
  replace('ip',/\b(?:\d{1,3}\.){3}\d{1,3}\b/g,v=>isIP(v)===4);

@@ -77,3 +77,25 @@ test('help probes receive only the chosen vendor environment',t=>{
  t.after(()=>{if(old===undefined)delete process.env.UNRELATED_DATABASE_PASSWORD;else process.env.UNRELATED_DATABASE_PASSWORD=old;});
  f.begin();assert.ok(!read(path.join(f.temp,'fake-env.json')).includes('UNRELATED_DATABASE_PASSWORD'));
 });
+
+test('image density filenames (icon@16.png, logo@2x.png) are not mistaken for email addresses',()=>{
+ const names=['assets/icon@16.png','logo@2x.png','img/hero@1.5x.webp','ui/arrow@3x.SVG','tray@16.ico','a/b/c@2x.jpeg'];
+ for(const name of names){
+  assert.equal(redactText(name),name,name);
+  assert.equal(redactText(`see ${name} and ${name}.`),`see ${name} and ${name}.`,'inside a sentence');
+ }
+ // 경로 필드도 막히지 않는다(전에는 REDACTION_UNSAFE: rename it before dispatch).
+ assert.doesNotThrow(()=>redactValue({scope:{paths:['assets/icon@16.png']},files_changed:['a/logo@2x.png'],files_read:['x/hero@3x.png']}));
+ const counts={};redactText(names.join(' '),counts);
+ assert.equal(counts.email,undefined,'nothing was counted as an email');
+});
+
+test('real email addresses are still masked next to, or inside, image-like names',()=>{
+ const counts={};
+ assert.equal(redactText('mail bob@corp.io, icon@2x.png',counts),'mail [REDACTED:email], icon@2x.png');
+ assert.equal(counts.email,1);
+ for(const text of ['alice@example.com','bob@2x.com','bob@16.com','alice@example.com.txt','alice@example.com.png','bob@16.png.example.com','x@2x.png.bak'])
+  assert.match(redactText(text),/\[REDACTED:email\]/,text);
+ // 실제 이메일이 든 파일명은 경로 필드에서 여전히 막힌다.
+ assert.throws(()=>redactValue({scope:{paths:['alice@example.com.txt']}}),e=>e.code==='REDACTION_UNSAFE');
+});

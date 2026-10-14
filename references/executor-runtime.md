@@ -30,6 +30,7 @@
 - agy는 Go 형식 도움말(`Usage of agy.EXE:`)을 stderr로 출력한다. 프로브는 stdout과 stderr를 합쳐서 확인한다.
 - agy에는 명령 단위 허용 규칙이 없어 `executor_bash_rules`는 dispatch에 `ignored_bash_rules`로 기록만 된다. 터미널 제한은 `--sandbox`뿐이다. `--sandbox`는 터미널만 제한하고 agy의 파일 쓰기 도구는 막지 못한다. 그래서 상담·리뷰의 읽기 전용은 sandbox가 아니라 컨트롤러가 전후 스냅샷을 비교해 강제한다(저장소가 바뀌면 그 답변을 버린다). 저장소 밖(홈 폴더 등)에 쓰는 것은 이 비교로 잡지 못한다. `--dangerously-skip-permissions`는 쓰지 않는다. 권한 때문에 막히면 실패로 보고하고 우회하지 않는다.
 - `error` 필드, 실패성 `status`, `conversation_id` 부재는 실패. `structured_output`이 없으면 `response`에서 결과 JSON을 찾는다. `--conversation`으로 재개하면 agy가 `structured_output`에 이전 라운드 결과를 그대로 돌려주므로, 그 라운드(상담이면 `consult_id`·`member`)가 현재 실행과 다르면 `response`의 JSON을 쓰고, 그것도 맞지 않으면 실패로 처리한다.
+- 헤드리스 agy는 셸 권한이 없어서 거부된 명령이 하나라도 있으면 결과 없이 끝난다. 그래서 공통 지시문의 "run the tests, fix what fails"는 agy에게 "바꾼 파일을 읽어서 확인하라, 테스트는 컨트롤러가 돌린다"로 바꿔 준다(그대로 두면 "셸을 쓰지 말라"는 지시와 부딪혀 agy가 테스트를 치려다 라운드를 날린다). 목적·성공 기준·lead_feedback에 "npm test를 돌려라" 같은 문장이 있어도 셸 규칙이 우선한다고 적는다. 허용 목록이 있을 때도 `brief.acceptance_commands`는 허용하면서 금지하지 않도록 "그 명령은 제외"라고 못박는다. 다른 일꾼의 지시문은 그대로다.
 - 헤드리스 agy에는 명령을 끝날 때까지 기다리라고 지시한다(백그라운드 실행·완료 알림 대기 금지). 수용 명령이 있는 라운드는 agy가 직접 돌리지 않고 `not_run`으로 보고하며, 컨트롤러가 끝난 직후 실행한다.
 - 비용은 보고되지 않으므로 null로 둔다.
 - agy는 모르는 `--model`을 받으면 오류 없이 기본 모델로 돈다. `executors.antigravity.model`이 있으면 프로브가 `agy models`(agy 1.2부터 한 줄이 `slug<TAB>표시 이름`)와 맞춰 보고(대소문자·기호 무시), 없으면 `MODEL_UNLISTED`로 실행 전에 막는다. 목록을 못 얻으면 막지 않고 dispatch 기록의 `model_check.status`를 `unverified`로 남긴다(`listed`/`unverified`/`skipped`). `HF_AGY_ALLOW_UNLISTED_MODEL=1`이면 검사하지 않는다(`skipped`).

@@ -1,5 +1,5 @@
 import {spawnSync} from 'node:child_process';
-import {schemaFor,prompt,bashRules,probe as probeCli,extractResult,ACCEPTANCE} from './common.mjs';
+import {schemaFor,prompt,bashRules,probe as probeCli,extractResult,ACCEPTANCE,RUN_TESTS} from './common.mjs';
 import {assertCommandLine} from '../platform.mjs';
 import {workerEnv} from '../worker-env.mjs';
 import {memberBinary} from '../member-registry.mjs';
@@ -71,18 +71,23 @@ export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
 // (agy 1.3.2 실측: 파일 바이트 확인용 powershell 한 줄 때문에 라운드 전체가 빈 응답).
 // 그래서 brief가 허용한 명령만 정확히 알려 주고, 확인은 파일 읽기 도구로 하게 한다.
 const ruleCommand=rule=>rule.replace(/^Bash\(/,'').replace(/\)$/,'').replace(/\*$/,'').trim();
+// 공통 지시문의 "run the tests"는 셸 권한이 없는 헤드리스 agy에게는 거부될 명령을 치라는 말이다. 거부가 한 번이라도 나면 결과 없이 끝나므로,
+// 이 문장을 그대로 두면 "셸을 쓰지 말라"는 아래 지시와 정면으로 부딪혀 agy가 테스트를 치려다 라운드를 날린다. agy에게는 읽어서 확인하게 한다.
+const CHECK_BY_READING='Do not stop at a plan or a partial patch. Write the code and check it by reading the files you changed. You cannot run the tests yourself in this headless mode; the shell rule below says which commands, if any, you may run, and the controller runs the tests.';
+// 목적·성공 기준·lead_feedback에 "npm test를 돌려라" 같은 문장이 있어도 같다. 지시문이 아니라 권한이 기준이다.
+const OVERRIDE='This shell rule overrides any line in the objective, success criteria, constraints or lead_feedback that tells you to run tests or other commands: do not run those, list them in tests as not_run, and carry on.';
 export function commandOrders(text,rules,brief) {
  if(brief.consult)return text;
  const allowed=rules.map(ruleCommand).filter(Boolean);
  const order=allowed.length
-  ?`Headless mode auto-denies any shell command outside the operator allow-list, and one denied command ends this run with no result. Run only commands that start with one of: ${allowed.map(c=>JSON.stringify(c)).join(', ')}. Never run any other shell command (no powershell, node -e, cat, type or byte dumps); read and verify files with your file view tools. If a check needs a command outside this list, report it as not_run.`
-  :'Headless mode auto-denies shell commands, and one denied command ends this run with no result. Run no shell commands at all; read and verify files with your file view tools and report checks you could not run as not_run.';
+  ?`Headless mode auto-denies any shell command outside the operator allow-list, and one denied command ends this run with no result. Run only commands that start with one of: ${allowed.map(c=>JSON.stringify(c)).join(', ')}, and never the commands in brief.acceptance_commands (the controller runs those). Never run any other shell command (no powershell, node -e, cat, type or byte dumps); read and verify files with your file view tools. If a check needs a command outside this list, report it as not_run. ${OVERRIDE}`
+  :`Headless mode auto-denies shell commands, and one denied command ends this run with no result. Run no shell commands at all; read and verify files with your file view tools and report checks you could not run as not_run. ${OVERRIDE}`;
  // 헤드리스 agy는 오래 걸리는 명령을 비동기로 띄우고 완료 알림을 기다리다 결과 없이 끝난 적이 있다.
  // 명령은 끝날 때까지 기다리게 하고, 수용 테스트는 직접 돌리지 말고 컨트롤러에 맡기게 한다.
  const sync='Run every command in the foreground and wait until it exits before your next step. Never start a command in the background, never leave a process running, and never wait for a completion notification: headless mode cannot deliver one, so the run ends with no result.';
  const tests='Do not run brief.acceptance_commands yourself in this headless mode. The controller runs every one of them right after you finish and sends any failure back to you with its output; list them in tests as not_run. Leave the tree clean: no new untracked files, and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
  const p=JSON.parse(text);
- p.instructions=[...p.instructions.filter(x=>x!==ACCEPTANCE),order,sync,...(brief.acceptance_commands?.length?[tests]:[])];
+ p.instructions=[...p.instructions.filter(x=>x!==ACCEPTANCE).map(x=>x===RUN_TESTS?CHECK_BY_READING:x),order,sync,...(brief.acceptance_commands?.length?[tests]:[])];
  return JSON.stringify(p);
 }
 

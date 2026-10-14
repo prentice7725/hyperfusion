@@ -38,11 +38,13 @@ const IMPLEMENT_RULES=[
  'complete means no failed tests, no unresolved items and no pending lead decision. If your sandbox or environment (not the code) stopped a test from running (permission denied, blocked network or spawn), report it with status fail plus environment_error naming what was refused; that is allowed with complete, but the controller does not count it as a pass and the lead sees it. Never use environment_error for a failure your change caused. When nothing was blocked, leave environment_error out (or empty).',
  'Optional memory_candidates: up to 3 one- or two-sentence lessons the next agent should know (error with its cause and fix, a procedure that worked, a notable episode). Facts only, never secrets, never a copy of the brief. The lead decides whether they are kept.'
 ];
+// 셸 권한이 없는 헤드리스 agy에는 이 문장을 그대로 줄 수 없다(antigravity.mjs의 commandOrders가 바꿔 준다).
+export const RUN_TESTS='Do not stop at a plan or a partial patch. Write the code, run the tests, fix what fails.';
 const IMPLEMENT_ORDERS=[
  'You are a worker, not a planner. Execute exactly this brief until every success criterion holds, then stop.',
  'If lead_feedback is present, every item in it is a blocking order from the lead. Items with file/line point at the exact spot. Address each one; ignoring any of them fails the round.',
  'Do not commit, stage, push, deploy, delegate, touch .fusion or .git, or edit outside scope.paths.',
- 'Do not stop at a plan or a partial patch. Write the code, run the tests, fix what fails.',
+ RUN_TESTS,
  'If the brief itself is wrong or insufficient, return needs_decision with the concrete question instead of guessing.',
  'Stop every command and child process before returning. Returning ends your write authority.',
  PRIOR
