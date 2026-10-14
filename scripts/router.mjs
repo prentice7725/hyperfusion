@@ -4,7 +4,7 @@ import path from 'node:path';
 import {isMain} from './platform.mjs';
 import {read} from './artifact.mjs';
 import {adapter} from './adapters/index.mjs';
-import {config,EXECUTORS,KIND_NEEDS,canDo,externalFirst,routingPolicy,automaticImplementer,DIFFICULTY_EFFORT} from './executor-config.mjs';
+import {config,EXECUTORS,KIND_NEEDS,canDo,externalFirst,routingPolicy,automaticImplementer,DIFFICULTY_EFFORT,taskExecutorOptions} from './executor-config.mjs';
 import {controlPath} from './control-dir.mjs';
 import {quotaReport,exhaustedExecutors} from './quota-policy.mjs';
 import {vendorAllowed} from './vendor-policy.mjs';
@@ -69,7 +69,7 @@ export function route(root,c,brief,{probe=true}={}) {
  const demoted=order.filter(e=>{const s=stats[e];return s&&s.weighted_tasks>=c.routing.min_samples&&s.weighted_score/s.weighted_tasks<c.routing.demote_below;});
  if(demoted.length){order=[...order.filter(e=>!demoted.includes(e)),...demoted];notes.push('demoted by track record: '+demoted.map(e=>`${e} ${stats[e].passed}/${stats[e].tasks}`).join(', '));}
  const unavailable={};
- if(probe)for(const e of order){try{adapter(e).probe(c.executors[e]??{});}catch(err){unavailable[e]=err.message;}}
+ if(probe)for(const e of order){try{adapter(e).probe(taskExecutorOptions(c,e,brief.difficulty));}catch(err){unavailable[e]=err.message;}}
  const candidates=order.filter(e=>!(e in unavailable));
  const every=c.routing.explore_every;
  if(c.routing.learn&&every>0&&(stats.sample_count+1)%every===0){

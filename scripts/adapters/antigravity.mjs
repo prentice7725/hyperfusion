@@ -3,6 +3,7 @@ import {schemaFor,prompt,bashRules,probe as probeCli,extractResult,ACCEPTANCE} f
 import {assertCommandLine} from '../platform.mjs';
 import {workerEnv} from '../worker-env.mjs';
 import {memberBinary} from '../member-registry.mjs';
+import {selectAgyModel} from './agy-model.mjs';
 
 // Google Antigravity CLI(agy) 헤드리스 모드. 모든 플래그는 -p 앞에 와야 한다.
 // 대화 ID는 CLI가 발급하므로 첫 라운드 envelope의 conversation_id를 저장해 재개에 쓴다.
@@ -15,8 +16,9 @@ export const binary=()=>memberBinary('antigravity');
 // (CLI가 그 플래그를 모르면 상담이 실패한다. 읽기 전용이어야 할 일꾼을 풀어 두는 것보다 낫다).
 const unsandboxed=(options,brief)=>options.sandbox===false&&!brief?.consult;
 export const probe=(options={})=>{
- const cli=probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(options.model?['--model']:[]),...(options.reasoning_effort?['--effort']:[])],['--print-timeout','--model','--effort'],{executor:'antigravity'});
- return options.model?{...cli,model_check:checkModel(cli,options.model)}:cli;
+ const choice=selectAgyModel(options);
+ const cli=probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(choice.model||options.models_by_difficulty?['--model']:[]),...(choice.effort_flag?['--effort']:[])],['--print-timeout','--model','--effort'],{executor:'antigravity'});
+ return choice.model?{...cli,model_check:checkModel(cli,choice.model)}:cli;
 };
 
 // agy는 모르는 --model을 받으면 오류 없이 기본 모델로 돈다(외부 실측). 어느 모델이 구현·리뷰했는지가 판정 근거이므로,
@@ -48,20 +50,21 @@ export const newSession=()=>null;
 export const contextDiffMax=12000;
 
 export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
- if(options.model&&!cli.supports?.['--model'])throw Error('MODEL_UNSUPPORTED: Antigravity requires --model support for a model override');
- if(options.reasoning_effort&&!cli.supports?.['--effort'])throw Error('EFFORT_UNSUPPORTED: Antigravity requires --effort support for a reasoning_effort setting');
+ const choice=selectAgyModel(options);
+ if(choice.model&&!cli.supports?.['--model'])throw Error('MODEL_UNSUPPORTED: Antigravity requires --model support for a model override');
+ if(choice.effort_flag&&!cli.supports?.['--effort'])throw Error('EFFORT_UNSUPPORTED: Antigravity requires --effort support for a reasoning_effort setting');
  if(resume&&!session)throw Error('Antigravity resume requires a saved conversation_id');
  // agy에는 실행 단위 명령 허용 플래그가 없다. 터미널 제한은 --sandbox와 운영자의 agy settings.json(permissions.allow)뿐이다.
  const ignored=bashRules(brief);
  const text=commandOrders(prompt(brief,lease),ignored,brief);
- const args=['--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),...(options.model?['--model',options.model]:[]),...(options.reasoning_effort?['--effort',options.reasoning_effort]:[]),
+ const args=['--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),...(choice.model?['--model',choice.model]:[]),...(choice.effort_flag?['--effort',choice.effort_flag]:[]),
   // 상담은 plan 모드(읽기·계획만), 구현은 accept-edits.
   ...(brief.consult?['--mode','plan']:brief.allowed_actions.includes('edit')?['--mode','accept-edits']:[]),'--add-dir',brief.repo_root,
   ...(unsandboxed(options,brief)?[]:['--sandbox']),...(cli.supports?.['--print-timeout']?['--print-timeout',printTimeout(options)]:[]),
   ...(resume?['--conversation',session]:[]),'-p',text];
  // 프롬프트를 명령줄로 넘기므로 Windows 길이 제한을 lease 획득 전에 확인한다.
  assertCommandLine(cli.executable,[...(cli.prefix_args??[]),...args]);
- return {cli:{...cli,args,session_id:session??null,resume,ignored_bash_rules:ignored},prompt:text};
+ return {cli:{...cli,args,session_id:session??null,resume,model:choice.model,model_family:choice.model_family,reasoning_effort:choice.reasoning_effort,ignored_bash_rules:ignored},prompt:text};
 }
 
 // 헤드리스 agy는 허용 목록 밖의 명령을 자동 거부하고, 거부가 한 번이라도 나면 결과 없이 끝난다

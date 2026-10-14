@@ -51,7 +51,7 @@ export function measure(root,observations=null) {
   objective:'minimize total Claude (Opus + Sonnet + Haiku) tokens per successful task',
   lead_target_model:s.lead_target_model??null,lead_model:s.lead_model??null,
   lead_usage:lead,lead_tokens_per_success:s.phase==='CLOSE'&&lead?lead.lead_tokens:null,
-  lead_observed_model:hostModel,run_usage:runs,usage_by_executor:accounting.by_executor,usage_by_model:accounting.by_model,
+  lead_observed_model:hostModel,run_usage:runs,usage_by_executor:accounting.by_executor,usage_by_model:accounting.by_model,usage_by_model_effort:accounting.by_model_effort,
   claude_usage:accounting.claude,claude_total_tokens:accounting.claude_total_tokens,claude_tokens_per_success:s.phase==='CLOSE'?accounting.claude_total_tokens:null,
   unreported_calls:accounting.unreported_calls,review_calls:runs.filter(r=>r.role==='review').length,consult_calls:runs.filter(r=>r.role==='consult').length,
   retry_rounds:Math.max(0,s.iteration-1),mandatory_review_gaps:s.configuration?.review?.strategy==='lead-gated-adaptive'?Array.from({length:s.iteration},(_,i)=>i+1).filter(n=>{
@@ -88,7 +88,7 @@ export function refreshHostUsage(root,taskId,observation) {
  const accounting=summarizeUsage(prior.run_usage??[],observation,observation.lead_model);
  const updated={...prior,lead_usage:observation,lead_observed_model:observation.lead_model,
   lead_tokens_per_success:prior.success?observation.lead_tokens:null,
-  usage_by_executor:accounting.by_executor,usage_by_model:accounting.by_model,claude_usage:accounting.claude,
+  usage_by_executor:accounting.by_executor,usage_by_model:accounting.by_model,usage_by_model_effort:accounting.by_model_effort,claude_usage:accounting.claude,
   claude_total_tokens:accounting.claude_total_tokens,claude_tokens_per_success:prior.success?accounting.claude_total_tokens:null};
  atomic(file,updated);return updated;
 }

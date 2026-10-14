@@ -107,7 +107,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
  const slash=p=>typeof p==='string'?p.replaceAll('\\','/').replace(/^(\.\/)+/,''):p;
  for(const k of ['files_read','files_changed'])if(Array.isArray(parsed.result?.[k]))parsed.result[k]=parsed.result[k].map(slash);
  if(Array.isArray(parsed.result?.findings))for(const f of parsed.result.findings)if(f)f.file=slash(f.file);
- immutable(path.join(dir,`usage-${tag}.json`),{executor:request.executor,session_id:parsed.session_id,role,round,run_id:seen.run_id,model:request.cli.model??null,started_at:new Date(started).toISOString(),wall_ms:Date.now()-started,...parsed.usage,cost_basis:'executor client-side report, not billed cost'});
+ immutable(path.join(dir,`usage-${tag}.json`),{executor:request.executor,session_id:parsed.session_id,role,round,run_id:seen.run_id,model:request.cli.model??null,model_family:request.cli.model_family??null,reasoning_effort:request.cli.reasoning_effort??null,started_at:new Date(started).toISOString(),wall_ms:Date.now()-started,...parsed.usage,cost_basis:'executor client-side report, not billed cost'});
  return {...parsed,quiescence:proof};
 }
 

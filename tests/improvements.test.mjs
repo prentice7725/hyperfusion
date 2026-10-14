@@ -117,7 +117,7 @@ test('the Antigravity model listing tolerates other output shapes without blocki
 test('an Antigravity model that agy does not list is refused before anything runs, because agy would silently use its default',t=>{
  const f=fixture(t,{initialize:false});withModelFlag(process.env.HF_AGY_BIN);
  const agy=adapter('antigravity');
- assert.throws(()=>agy.probe({model:'gemini-3.6-pro-hihg'}),/MODEL_UNLISTED: .*gemini-3\.6-pro-hihg.*listed: gemini-3\.5-flash, gemini-3\.6-pro-high\)/);
+ assert.throws(()=>agy.probe({model:'gemini-3.6-pro-hihg'}),/MODEL_UNLISTED: .*gemini-3\.6-pro-hihg.*listed: gemini-3\.5-flash, gemini-3\.6-pro-high/);
  // 슬러그와 표시 이름 둘 다 받는다. 대소문자와 기호 차이는 무시한다.
  assert.equal(agy.probe({model:'gemini-3.6-pro-high'}).model_check.status,'listed');
  assert.equal(agy.probe({model:'gemini 3.5 flash'}).model_check.status,'listed');

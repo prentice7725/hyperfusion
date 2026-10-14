@@ -121,9 +121,10 @@ test('reasoning_effort reaches every worker CLI with its own flag, and bad value
  cfg({executors:{sonnet:{reasoning_effort:'minimal'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: sonnet/,'Claude Code has no minimal');
  cfg({executors:{luna:{reasoning_effort:'max'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: luna/,'Codex has no max');
  cfg({executors:{grok:{reasoning_effort:'turbo'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: grok/);
- cfg({executors:{sonnet:{reasoning_effort:'max'},haiku:{reasoning_effort:'low'},grok:{reasoning_effort:'high'},antigravity:{reasoning_effort:'xhigh'},luna:{reasoning_effort:'minimal'}}});
+ cfg({executors:{antigravity:{reasoning_effort:'xhigh'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: antigravity/,'AGY Gemini has no xhigh');
+ cfg({executors:{sonnet:{reasoning_effort:'max'},haiku:{reasoning_effort:'low'},grok:{reasoning_effort:'high'},antigravity:{reasoning_effort:'high'},luna:{reasoning_effort:'minimal'}}});
  const c=config(f.root);
- const flag={sonnet:['--effort','max'],haiku:['--effort','low'],grok:['--reasoning-effort','high'],antigravity:['--effort','xhigh']};
+ const flag={sonnet:['--effort','max'],haiku:['--effort','low'],grok:['--reasoning-effort','high'],antigravity:['--effort','high']};
  for(const [name,[option,value]] of Object.entries(flag)){
   const a=adapter(name),cli=a.probe(c.executors[name]);
   const brief={task_id:'T',round:1,repo_root:f.root,objective:'o',scope:{paths:['a.txt'],allowed_expansion:'ask-lead'},constraints:[],success_criteria:['AC1'],allowed_actions:['read','edit']};

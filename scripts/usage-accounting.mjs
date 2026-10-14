@@ -32,6 +32,7 @@ export function collectRunUsage(root,state) {
   return {tag,file:usage?`usage-${tag}.json`:null,executor:usage?.executor??launch?.executor??envelope?.executor??dispatch?.executor??null,
    role:usage?.role??(consult?context?.mode==='review'?'review':'consult':'implement'),
    round:usage?.round??(consult?dispatch?.round??null:Number(tag)),model:usage?.model??dispatch?.cli?.model??null,
+   model_family:usage?.model_family??dispatch?.cli?.model_family??null,reasoning_effort:usage?.reasoning_effort??dispatch?.cli?.reasoning_effort??null,
    tokens:usage?reportedTokens(usage):null,cost_usd:knownNumber(usage?.total_cost_usd)?usage.total_cost_usd:null,
    model_usage:usage?.modelUsage&&typeof usage.modelUsage==='object'&&!Array.isArray(usage.modelUsage)?Object.entries(usage.modelUsage).map(([model,u])=>({model,tokens:reportedTokens(u),cost_usd:knownNumber(u?.costUSD)?u.costUSD:null})):null,
    wall_ms:usage?.wall_ms??envelope?.wall_ms??null,started_at:usage?.started_at??envelope?.started_at??launch?.at??null,
@@ -51,6 +52,14 @@ export function summarizeUsage(runs,lead=null,leadModel=null) {
  const by_model=Object.fromEntries(models.map(model=>{
   const rows=modelRows.filter(r=>(r.model??'unknown')===model);return [model,{calls:rows.length,tokens:completeSum(rows,'tokens'),cost_usd:completeSum(rows,'cost_usd')}];
  }));
+ // Dispatch-selected family/effort, not authenticated provider model identity.
+ // Structured pair keys cannot collide when a custom model contains '::'.
+ const effortKey=r=>JSON.stringify([r.model_family??r.model??null,r.reasoning_effort??null]);
+ const pairs=[...new Set(runs.map(effortKey))];
+ const by_model_effort=Object.fromEntries(pairs.map(key=>{
+  const rows=runs.filter(r=>effortKey(r)===key),[model_family,reasoning_effort]=JSON.parse(key);
+  return [key,{model_family,reasoning_effort,calls:rows.length,tokens:completeSum(rows,'tokens'),cost_usd:completeSum(rows,'cost_usd')}];
+ }));
  // An unverified host model is never reported as measured Opus usage.
  const observed=hostRows.length?hostRows:lead&&leadModel?[{model:leadModel,tokens:lead.lead_tokens}]:[];
  const hostKnown=observed.length>0&&observed.every(r=>/^claude-(opus|sonnet|haiku)-/.test(r.model)&&knownNumber(r.tokens));
@@ -63,6 +72,6 @@ export function summarizeUsage(runs,lead=null,leadModel=null) {
  const claude={opus:add(hostFamily('opus'),workerOpus),
   sonnet:observed.length?add(hostFamily('sonnet'),familyTokens('sonnet')):familyTokens('sonnet'),
   haiku:observed.length?add(hostFamily('haiku'),familyTokens('haiku')):familyTokens('haiku')};
- return {by_executor,by_model,claude,claude_total_tokens:Object.values(claude).every(knownNumber)?Object.values(claude).reduce((a,b)=>a+b,0):null,
+ return {by_executor,by_model,by_model_effort,claude,claude_total_tokens:Object.values(claude).every(knownNumber)?Object.values(claude).reduce((a,b)=>a+b,0):null,
   unreported_calls:runs.filter(r=>!r.reported).length};
 }

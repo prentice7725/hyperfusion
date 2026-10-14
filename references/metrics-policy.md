@@ -1,5 +1,7 @@
 # 지표 정책 — classic 및 v0.3
 
+AGY는 선택한 CLI 슬러그(`model`), 계열(`model_family`), 강도(`reasoning_effort`)를 별도로 기록한다. `usage_by_model_effort`의 키는 `[계열,강도]` JSON 배열 문자열이며 각 행에도 두 필드가 있다. 구현·리뷰·상담 모두 포함하고, 누락된 모델/강도는 null이다. client usage를 dispatch의 선택값에 연결한 집계로, 실제 벤더 모델 인증이나 과금 증명이 아니다. 기존 `usage_by_model`은 그대로 유지한다.
+
 v0.3의 주 지표는 `sum(전체 Claude 토큰, 실패 작업 포함) / 성공 작업 수`다. Opus·Sonnet·Haiku를 따로 기록하고 implementation/review/consult를 모두 포함한다. classic의 `lead_tokens_per_success`는 호환 필드로 유지한다. 성공률, 회귀, 사람 개입, 소요 시간, 외부 실행기 비용도 함께 비교한다.
 
 수동으로 호스트가 관측한 작업 전체 사용량은 `metrics.mjs REPO TASK_USAGE.json`으로 전달한다.
