@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+## 0.23.0 — 2026-10-14
+
+- AGY 모델 계열과 effort를 분리했다. Gemini 계열+강도는 하나의 슬러그로 합쳐 보내고 중복 effort 플래그는 생략한다. pinned effort는 기본값·자동 난이도로 덮어쓰지 않고 명시 충돌은 거절한다. 모델 목록 검사는 최종 선택 슬러그에 적용한다.
+- AGY 구현용 models_by_difficulty 옵트인을 추가하고 기존 모델 기본값은 유지한다. Gemini headless의 low/medium/high와 Enterprise Claude 모델의 max를 구분한다. 없는 계정/effort 슬러그는 lease 전에 거절한다.
+- 구현·리뷰·상담의 모델 계열/강도와 usage_by_model_effort 집계를 추가했다. 원래 모델 집계도 유지하며 미지정 항목은 null이다. 기존 Argon 패치는 최신 registry·모델 목록 검사·dispatch 검증에 맞게 재작업했다. 실제 AGY CLI 추론·접근 권한과 토큰 절감은 미검증이다.
+
 - CI 회귀 수정: Codex 대역의 JSONL 전환 후 autopilot decision 테스트가 옛 stdout 문자열을 치환하려다 아무것도 바꾸지 못했다. 공유 대역에 명시적 review-decision 모드를 추가하고 실제 JSONL → 위임 리뷰 → DECISION_REQUIRED 흐름을 별도 회귀 테스트로 검증한다.
 
 ## 0.22.0 — 2026-10-14

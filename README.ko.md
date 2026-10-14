@@ -4,12 +4,16 @@
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.22.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.23.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 왜 만들었나
 
 1. **토큰 절약.** 비싼 모델(Opus)이 코드를 쓰고 테스트를 돌리며 로그를 읽는 데 토큰을 태우는 건 낭비다. Opus는 계획, 반려, 최종 검수만 하고, 구현과 테스트 반복은 더 싼 모델이나 다른 구독의 모델이 한다. 성공한 작업당 Opus 토큰을 핵심 지표로 재고 기록한다.
 2. **리드만 상대하면 된다.** 여러 에이전트를 한 화면에서 관리하는 도구는 이미 있다. 이 스킬은 반대로 사용자가 **Opus 하나만 상대하고, 일꾼 관리는 Opus가 한다.** 일꾼의 "다 했어요"를 믿지 않고, 빈 반려 없이 구체적인 명령서로 갈구고, 같은 실수를 두 번 하면 다른 일꾼으로 교체한다.
+
+## AGY 모델 계열과 effort (0.23.0)
+
+`executors.antigravity.model:"gemini-4-argon"`과 `reasoning_effort:"high"`를 따로 설정한다. 중복 effort 플래그 없이 `gemini-4-argon-high`를 선택하고, `-medium`으로 고정한 모델은 medium을 유지한다. 명시적 effort 충돌은 실행 전에 거절한다. 선택적 `models_by_difficulty`는 구현 계열을 고르며 리뷰는 기본 model을 쓴다. 최종 슬러그를 `agy models`로 검사하고 없는 변형으로 대체하지 않는다. 기본값·계정 설정은 바꾸지 않는다. `usage_by_model_effort`는 선택한 계열/강도를 분리하고 미지정 항목은 null이다. → [설정 안내](references/configuration.md#agy-모델-계열과-effort-분리-argon). 실제 AGY 추론·접근 권한은 미검증이다.
 
 ## Codex·전송 정책 개선 (0.22.0)
 

@@ -2,7 +2,7 @@
 name: hyperfusion
 description: Claude Opus-led orchestration with serialized workers, audited tests and independent review. Use for HyperFusion, Grok, Antigravity/agy, Sonnet/Haiku or Codex Luna/Sol implementation, review and image-asset requests.
 ---
-# HyperFusion v0.22.0
+# HyperFusion v0.23.0
 
 Start with the classic procedure below. For a short English reference map, read [executor-quickstart.md](references/executor-quickstart.md). Load other references only when their step applies.
 
@@ -49,6 +49,8 @@ No automatic commit, staging, push, deploy, PR or scope expansion; do those only
 Before init with adaptive review, read [universal-supervisor.md](references/universal-supervisor.md) and use [the example](hyperfusion.v03.config.example.json). Mandatory review seats and the final lead gate override classic policy. Sonnet/Sol implement only controller-granted important/APEX rounds, never automatic fallback; the implementer never reviews itself. Substitution requires an explicit reason, and overriding a rejection requires a substitute pass plus independent lead diff review. Monitoring calls no model; never infer success from output. Existing classic tasks are not migrated and host model identity remains unverified unless observed.
 
 ## CLI and vendor policy
+
+For AGY Gemini, configure model family and reasoning effort separately (e.g. `gemini-4-argon` + `high`). A suffixed model pins effort; conflicting explicit effort is refused. Optional AGY `models_by_difficulty` selects implementation families, while review/consult uses the base model. Resolved slugs are checked against `agy models`; unavailable variants are not silently substituted. See [configuration](references/configuration.md#agy-모델-계열과-effort-분리-argon). Defaults remain unchanged.
 
 Codex implementation uses task-scoped JSONL threads, exact-ID resume only after compatible help probing, and actual turn usage; unsupported resume stays stateless. Reviews are fresh and read-only. See [codex-runtime](references/codex-runtime.md) for operator-only build cache/network options and configurable Claude/Grok turn ceilings. `allowed_vendors` narrows every worker role; `HF_ALLOWED_VENDORS` is an operator ceiling checked again at the bridge. Neither is a firewall/DLP. Metadata lives in `scripts/member-registry.mjs`; new CLIs still require audited adapters.
 

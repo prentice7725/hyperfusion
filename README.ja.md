@@ -4,12 +4,16 @@
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.22.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.23.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 作った理由
 
 1. **トークン節約。** 高価なモデル（Opus）がコードを書き、テストを回し、ログを読むのにトークンを使うのは無駄です。Opusは計画・差し戻し・最終検収だけを行い、実装とテストの反復はより安いモデルや別サブスクリプションのモデルが担当します。成功した作業あたりのOpusトークンを主要指標として計測し記録します。
 2. **相手にするのはリードだけ。** 複数のエージェントを一画面で管理するツールはすでにあります。このスキルは逆に、ユーザーが**Opus一人だけを相手にし、ワーカーの管理はOpusが行います。** ワーカーの「完了しました」は信用せず、空の差し戻しは許さず、具体的な指示書で詰め、同じミスを2回したら別のワーカーに交代させます。
+
+## AGYモデル系統とeffort (0.23.0)
+
+`executors.antigravity.model:"gemini-4-argon"`と`reasoning_effort:"high"`を別々に設定します。effortフラグを重複させず`gemini-4-argon-high`を選び、`-medium`で固定したモデルはmediumを維持します。明示的なeffortの矛盾は起動前に拒否します。任意の`models_by_difficulty`は実装の系統を選び、レビューは基本modelを使います。最終slugを`agy models`で確認し、利用できない組み合わせを別モデルに置き換えません。既定値・アカウント設定は変更しません。`usage_by_model_effort`で選択した系統/強度を分け、未指定はnullです。→ [設定案内](references/configuration.md#agy-모델-계열과-effort-분리-argon)。実AGY推論・利用権限は未検証です。
 
 ## Codexと送信ポリシーの改善 (0.22.0)
 

@@ -3,7 +3,7 @@
 // 계획은 기본 리뷰어와 자리 수를 정한다. 한도·장애로 기본 리뷰어가 못 하면 리드가 사유를 적고 다른 모델로 바꿔 끼운다.
 // 저장소 설정이나 워커 JSON은 자리 수를 줄이거나 리뷰어를 바꾸지 못한다. 최종 판정은 언제나 리드다.
 
-import {EXECUTORS,externalFirst,DIFFICULTY_EFFORT,automaticImplementer} from './executor-config.mjs';
+import {EXECUTORS,externalFirst,taskExecutorOptions,automaticImplementer} from './executor-config.mjs';
 import {vendorOf} from './member-registry.mjs';
 
 export const CRITICALITIES=['standard','important','apex'];
@@ -147,16 +147,12 @@ export function assertImplementRound(state,owner) {
 
 // 실행 직전과 검증이 같은 강도와 sandbox를 다시 만들게 한다. 승인 없는 Sol은 여기서 쓰기가 되지 않는다.
 export function implementDispatch(state,owner) {
- const options={...(state.configuration?.executors?.[owner]??{})};
+ const options=taskExecutorOptions(state.configuration,owner,state.routing?.difficulty);
  const grant=state.implement_grant;
  const adaptive=state.configuration?.review?.strategy==='lead-gated-adaptive';
  const round=state.iteration??0;
  const active=!!(adaptive&&grant&&grant.executor===owner&&grant.role==='implement'&&grant.set_by==='controller'&&(grant.round==null||grant.round===round));
  // External-First: 운영자가 강도를 직접 적지 않은 Grok/AGY는 작업 난이도에 맞춘다.
- const table=DIFFICULTY_EFFORT[owner];
- const difficulty=state.routing?.difficulty;
- if(options.max_turns===undefined&&options.max_turns_by_difficulty?.[difficulty]!==undefined)options.max_turns=options.max_turns_by_difficulty[difficulty];
- if(externalFirst(state.configuration)&&table&&table[difficulty]&&state.configuration?.effort_source?.[owner]==='default')options.reasoning_effort=table[difficulty];
  if(active&&grant.effort)options.reasoning_effort=grant.effort;
  const apexGrant=!!(active&&owner==='sol'&&grant.strategy==='sol_apex'&&grant.sandbox==='workspace-write'&&grant.criticality==='apex');
  return {options,apexGrant};

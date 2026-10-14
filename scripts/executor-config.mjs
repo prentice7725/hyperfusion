@@ -5,6 +5,7 @@ import {workspaceOf} from './memory-policy.mjs';
 import {validateLimits} from './budgets.mjs';
 import {MEMBERS} from './member-registry.mjs';
 import {validateVendors,assertVendor,vendorAllowed} from './vendor-policy.mjs';
+import {modelEffort,supportedAgyEfforts,selectAgyModel} from './adapters/agy-model.mjs';
 
 // 리드는 Claude Opus 5.5 하나로 고정. 구현 일꾼은 Grok, Antigravity, Sonnet·Haiku(Claude Code), Luna(Codex).
 export const EXECUTORS=Object.keys(MEMBERS).filter(n=>MEMBERS[n].implement);
@@ -62,6 +63,16 @@ export const ROUTING_POLICIES=['classic','external-first'];
 export const GRANT_ONLY=['sonnet','sol'];
 // 난이도별 시작 강도(작업지시서 v0.3 §5). 운영자가 reasoning_effort를 직접 적은 일꾼에는 적용하지 않는다.
 export const DIFFICULTY_EFFORT={grok:{low:'low',medium:'high',high:'xhigh'},antigravity:{low:'low',medium:'medium',high:'high'}};
+// Routing preflight and controller dispatch must inspect the same task profile.
+export function taskExecutorOptions(configuration,owner,difficulty) {
+ const options={...(configuration?.executors?.[owner]??{})};
+ if(owner==='antigravity'&&options.models_by_difficulty?.[difficulty])options.model=options.models_by_difficulty[difficulty];
+ delete options.models_by_difficulty;
+ if(options.max_turns===undefined&&options.max_turns_by_difficulty?.[difficulty]!==undefined)options.max_turns=options.max_turns_by_difficulty[difficulty];
+ const table=DIFFICULTY_EFFORT[owner];
+ if(externalFirst(configuration)&&table?.[difficulty]&&configuration?.effort_source?.[owner]==='default')options.reasoning_effort=table[difficulty];
+ return options;
+}
 // 설정에 policy가 없으면 adaptive 리뷰 전략일 때만 External-First다. 둘 다 없으면 이전 동작 그대로.
 export const routingPolicy=c=>c?.routing?.policy??(c?.review?.strategy==='lead-gated-adaptive'?'external-first':'classic');
 export const externalFirst=c=>routingPolicy(c)==='external-first';
@@ -91,6 +102,8 @@ export const DEFAULT_CONFIG={lead:'opus',lead_model:'claude-opus-5-5',lead_takeo
 const validRule=(r,c,strict)=>r&&Array.isArray(r.executors)&&r.executors.length&&r.executors.every(x=>EXECUTORS.includes(x))&&new Set(r.executors).size===r.executors.length
  &&(r.kind===undefined||TASK_KINDS.includes(r.kind))&&(r.kind===undefined||(strict?r.executors.every(x=>canDo(c,x,r.kind)):r.executors.some(x=>canDo(c,x,r.kind))))&&(r.difficulty===undefined||(Array.isArray(r.difficulty)&&r.difficulty.every(d=>DIFFICULTIES.includes(d))));
 const validCaps=v=>v===undefined||(Array.isArray(v)&&v.every(x=>CAPABILITIES.includes(x))&&new Set(v).size===v.length);
+const validModelMap=v=>v===undefined||(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length>0
+ &&Object.entries(v).every(([d,m])=>DIFFICULTIES.includes(d)&&typeof m==='string'&&/^[\w.:/-]{1,80}$/.test(m)&&!modelEffort(m)));
 
 export function config(root) {
  const file=path.join(root,'hyperfusion.config.json');
@@ -104,7 +117,14 @@ export function config(root) {
  v.executors??={};v.executors.antigravity??={sandbox:true};
  // 운영자가 직접 적은 강도인지 기록한다. 파일에 같은 키가 있어도 컨트롤러가 다시 계산해 덮어쓴다.
  const effortSource={};
- for(const [k,e] of Object.entries(DEFAULT_EFFORT)){v.executors[k]??={};if(v.executors[k].reasoning_effort===undefined){v.executors[k].reasoning_effort=e;effortSource[k]='default';}else if(v.executors[k].reasoning_effort===null){delete v.executors[k].reasoning_effort;effortSource[k]='cli-default';}else effortSource[k]='config';}
+ for(const [k,e] of Object.entries(DEFAULT_EFFORT)){
+  v.executors[k]??={};const o=v.executors[k],value=o.reasoning_effort;
+  const pin=k==='antigravity'?modelEffort(o.model):null;
+  if(pin&&value!==undefined&&value!==null&&value!==pin)throw Error(`EFFORT_CONFLICT: AGY model ${o.model} pins ${pin} but reasoning_effort is ${value}`);
+  if(value===undefined){o.reasoning_effort=pin??e;effortSource[k]=pin?'model':'default';}
+  else if(value===null){delete o.reasoning_effort;effortSource[k]='cli-default';}
+  else effortSource[k]='config';
+ }
  v.effort_source=effortSource;
  v.routing={...structuredClone(DEFAULT_CONFIG.routing),...(v.routing??{})};
  v.review={...structuredClone(DEFAULT_CONFIG.review),...(v.review??{})};
@@ -119,6 +139,7 @@ export function config(root) {
   &&Array.isArray(v.routing.rules)&&v.routing.rules.length&&v.routing.rules.every(r=>validRule(r,v,userRules))&&typeof v.routing.learn==='boolean'
   &&Object.entries(v.executors).every(([k,o])=>REVIEWERS.includes(k)&&o&&typeof o==='object'&&(o.timeout_ms===undefined||(Number.isSafeInteger(o.timeout_ms)&&o.timeout_ms>0))
    &&(o.model===undefined||(typeof o.model==='string'&&/^[\w.:/-]{1,80}$/.test(o.model)))&&(o.reasoning_effort===undefined||typeof o.reasoning_effort==='string')&&validCaps(o.caps)
+   &&(k==='antigravity'?validModelMap(o.models_by_difficulty):o.models_by_difficulty===undefined)
    &&(o.max_turns===undefined||(Number.isSafeInteger(o.max_turns)&&o.max_turns>0&&o.max_turns<=1000))
    &&(o.max_turns_by_difficulty===undefined||(o.max_turns_by_difficulty&&typeof o.max_turns_by_difficulty==='object'&&!Array.isArray(o.max_turns_by_difficulty)&&Object.entries(o.max_turns_by_difficulty).every(([d,n])=>DIFFICULTIES.includes(d)&&Number.isSafeInteger(n)&&n>0&&n<=1000))))
   &&['lead','delegate'].includes(v.review.by)&&Array.isArray(v.review.reviewers)&&v.review.reviewers.length>0&&v.review.reviewers.every(x=>REVIEWERS.includes(x))&&new Set(v.review.reviewers).size===v.review.reviewers.length&&typeof v.review.auto_apply==='boolean'
@@ -131,8 +152,12 @@ export function config(root) {
  // 추론 강도는 일꾼 CLI가 받는 값만 허용한다. 틀린 값을 조용히 넘기면 CLI가 실패하거나 무시하므로 여기서 막는다.
  for(const [k,o] of Object.entries(v.executors)){
   if((o.max_turns!==undefined||o.max_turns_by_difficulty!==undefined)&&!['grok','sonnet','haiku'].includes(k))throw Error('TURN_LIMIT_UNSUPPORTED: '+k+' does not expose --max-turns');
-  if(o.reasoning_effort!==undefined&&!(EFFORT_LEVELS[k]??[]).includes(o.reasoning_effort))
-   throw Error(`EFFORT_UNSUPPORTED: ${k} reasoning_effort must be one of ${(EFFORT_LEVELS[k]??[]).join(', ')||'(none)'}`);
+  const efforts=k==='antigravity'?supportedAgyEfforts(o.model):EFFORT_LEVELS[k]??[];
+  if(o.reasoning_effort!==undefined&&!efforts.includes(o.reasoning_effort))throw Error(`EFFORT_UNSUPPORTED: ${k} reasoning_effort must be one of ${efforts.join(', ')||'(none)'}`);
+  if(k==='antigravity'){
+   selectAgyModel(o);
+   for(const model of Object.values(o.models_by_difficulty??{}))selectAgyModel({...o,model});
+  }
  }
  v.limits=validateLimits(v.limits);
  // 저장소 안의 설정 파일은 일꾼이나 복제한 저장소가 쓴 것일 수 있다. 샌드박스 해제 같은 보안 완화는 설정 파일로 켤 수 없고,

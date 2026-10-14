@@ -4,12 +4,16 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.22.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
+> **Versions.** The package release is `0.23.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
 
 ## Why HyperFusion
 
 1. **Reduce lead-model token use.** Opus owns planning, rejection, and final review. Workers handle implementation and test loops. The project records lead tokens per successful task; unmeasured usage stays unknown.
 2. **One point of contact.** The user works with the lead, which assigns workers, checks their claims, sends concrete revision orders, and changes workers after repeated failures.
+
+## AGY model family and effort (0.23.0)
+
+Configure `executors.antigravity.model:"gemini-4-argon"` and `reasoning_effort:"high"` separately. The adapter selects `gemini-4-argon-high` without a duplicate effort flag. A pinned `-medium` suffix retains medium; conflicting explicit effort fails before launch. Optional `models_by_difficulty` selects implementation families; reviews use the base model. Resolved slugs are checked against `agy models`, and unavailable variants are not substituted. Defaults and account settings are unchanged. `usage_by_model_effort` separates dispatch-selected family/effort with unknown fields kept null. See [configuration](references/configuration.md#agy-모델-계열과-effort-분리-argon). Live AGY inference/access has not been tested here.
 
 ## Codex and egress improvements (0.22.0)
 

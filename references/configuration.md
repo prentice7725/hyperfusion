@@ -91,8 +91,30 @@ Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model 
 | 일꾼 | CLI 플래그 | 값 |
 |---|---|---|
 | Sonnet, Haiku (Claude Code) | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` |
-| Antigravity (agy) | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` |
+| Antigravity Gemini (agy) | effort를 포함한 `--model` 슬러그 또는 `--effort` | `low`, `medium`, `high` |
 | Grok | `--reasoning-effort` | `low`, `medium`, `high`, `xhigh`, `max` (도움말에 값 목록이 없어 Claude와 같게 둠) |
 | Luna, Sol (Codex) | `-c model_reasoning_effort=…` | `minimal`, `low`, `medium`, `high`, `xhigh` |
 
 기본값은 Sonnet `high`, Haiku `max`, Antigravity `high`, Grok `xhigh`, Luna `xhigh`, Sol `medium`이다. 설정에 값을 적으면 덮어쓰고, `null`을 적으면 플래그를 넘기지 않고 CLI 기본값을 쓴다(예전 CLI에 effort 플래그가 없을 때). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
+
+## AGY 모델 계열과 effort 분리 (Argon)
+
+```json
+{"executors":{"antigravity":{"sandbox":true,"model":"gemini-4-argon","reasoning_effort":"high"}}}
+```
+
+`model`은 모델 계열이고 `reasoning_effort`는 추론 강도다. 위 설정은 `--model gemini-4-argon-high` 하나로 전달하며 중복 `--effort`를 넣지 않는다. `model:"gemini-4-argon-medium"`처럼 완성된 Gemini 슬러그를 주면 suffix의 effort를 기록하고 자동 난이도 조정으로 덮어쓰지 않는다. 명시적으로 `reasoning_effort:"high"`를 함께 주면 `EFFORT_CONFLICT`로 거절한다. `null`도 이미 고정된 suffix를 지우지는 않는다. suffix 없는 모델과 effort null은 그대로 CLI에 전달하고 사용량 강도를 미측정으로 남긴다.
+
+Gemini headless는 `low|medium|high`를 받는다. `xhigh`는 거절하며, Enterprise AGY의 `claude-opus-*`/`claude-sonnet-*` 지정 모델은 공식 문서에 따라 별도 `max`를 허용한다. custom/Claude 모델에는 Gemini suffix를 만들어 붙이지 않고 기존 `--effort`를 유지한다. [headless CLI](https://www.antigravity.google/docs/cli/headless/)와 [Enterprise model/effort](https://www.antigravity.google/docs/enterprise)를 기준으로 한다.
+
+선택한 실제 Gemini 슬러그를 `agy models`로 검사한다. 없는 슬러그는 lease·시도 소모 전에 `MODEL_UNLISTED`로 거절하고 다른 모델로 자동 다운그레이드하지 않는다. 목록 조회 실패는 기존대로 `unverified`, 운영자 `HF_AGY_ALLOW_UNLISTED_MODEL=1`은 `skipped`로 기록한다. 모델 목록에 있다는 것은 계정 인증·잔량이나 실제 추론 성공의 증명이 아니다.
+
+구현 작업의 모델 계열도 난이도별로 고를 수 있다(AGY 전용, suffix 없는 모델 계열만 허용):
+
+```json
+{"executors":{"antigravity":{"sandbox":true,"models_by_difficulty":{"low":"gemini-3.8-flash","medium":"gemini-3.8-flash","high":"gemini-4-argon"}}}}
+```
+
+매핑에 없는 난이도와 상담·리뷰는 기본 `model`을 사용한다. External-First 기본 effort는 low/medium/high이며, 명시적 effort 또는 pinned 모델은 우선한다. classic은 기존 기본 effort high를 유지하므로 필요하면 명시한다. 실제 계정 목록에 해당 effort 슬러그가 없으면 실패한다. 이 옵션은 기본 설정이나 계정의 AGY 설정을 변경하지 않는다.
+
+dispatch·사용량에 `model`, `model_family`, `reasoning_effort`를 따로 기록하고 `usage_by_model_effort`로 분리한다. dispatch 선택 근거이며 실제 제공자 모델 인증이나 청구액이 아니다. 모델 미지정 호출은 family를 null로 유지한다.
