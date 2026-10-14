@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {extractResult,resultSchema,consultSchema,prompt,ACCEPTANCE} from '../scripts/adapters/common.mjs';
 import {strictSchema} from '../scripts/adapters/codex.mjs';
-import {commandOrders,currentResult} from '../scripts/adapters/antigravity.mjs';
+import {commandOrders,currentResult,dispatch as agyDispatch} from '../scripts/adapters/antigravity.mjs';
 
 // grok 1.0.50 실측: 중간 설명과 최종 JSON이 구분 없이 이어진 text
 const GROK_TEXT='I\'ll replace `hf-smoke.txt` with exactly `ok` and a newline, and leave everything else untouched.'
@@ -106,4 +106,27 @@ test('Antigravity never accepts a previous run\'s structured_output as the curre
  const c={task_id:'t',consult_id:'c2',member:'m1'};
  assert.throws(()=>currentResult({structured_output:{...c,consult_id:'c1'},response:'x'},{task_id:'t',round:2,consult_id:'c2',member:'m1'}),/belongs to consult c1/);
  assert.deepEqual(currentResult({structured_output:c,response:'x'},{task_id:'t',round:2,consult_id:'c2',member:'m1'}),c);
+});
+
+// agy는 셸 권한이 없는 헤드리스로 돌고, 거부된 명령이 하나라도 있으면 결과 없이 끝난다.
+// 공통 지시문의 "run the tests"가 그대로 가면 "셸을 쓰지 말라"는 지시와 부딪혀 테스트를 치려다 라운드를 날린다.
+const agyBrief=extra=>({task_id:'T',round:1,repo_root:'/tmp/r',objective:'Add a test for X, then run npm test',scope:{paths:['src'],allowed_expansion:'ask-lead'},constraints:[],success_criteria:['AC1'],allowed_actions:['read','edit','test'],forbidden_actions:['commit','push'],evidence_required:[],...extra});
+const agyInstructions=brief=>JSON.parse(agyDispatch(brief,{token:'x',owner:'antigravity',round:1},{session:null,resume:false,probe:{executable:'agy',prefix_args:[],supports:{'--model':true}},options:{}}).prompt).instructions;
+
+test('Antigravity is never told to run the tests while its shell is closed',()=>{
+ for(const brief of [agyBrief({}),agyBrief({acceptance_commands:[{id:'AC1',command:'npm test'}]}),agyBrief({executor_bash_rules:['Bash(git diff)']})]){
+  const orders=agyInstructions(brief);
+  assert.ok(!orders.some(x=>/run the tests, fix what fails/.test(x)),'the generic order that says run the tests is gone');
+  assert.ok(orders.some(x=>/check it by reading the files you changed/.test(x)),'replaced by a reading-based order');
+  assert.ok(orders.some(x=>/overrides any line in the objective, success criteria, constraints or lead_feedback/.test(x)),'a "run npm test" line in the brief does not win over the shell rule');
+ }
+});
+test('Antigravity with an allow-list does not both allow and forbid the acceptance commands',()=>{
+ const orders=agyInstructions(agyBrief({executor_bash_rules:['Bash(npm test)','Bash(git diff)'],acceptance_commands:[{id:'AC1',command:'npm test'}]}));
+ const shell=orders.find(x=>/auto-denies any shell command outside the operator allow-list/.test(x));
+ assert.match(shell,/"npm test", "git diff", and never the commands in brief\.acceptance_commands/);
+});
+test('other workers keep the original run-the-tests order',()=>{
+ const text=JSON.parse(prompt(agyBrief({}),{owner:'grok'})).instructions.join('\n');
+ assert.match(text,/Write the code, run the tests, fix what fails/);
 });
