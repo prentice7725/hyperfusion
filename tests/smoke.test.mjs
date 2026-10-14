@@ -1,12 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {fixture} from './support.mjs';
-import {smoke} from '../scripts/smoke.mjs';
+import {smoke,assertResumeSafety} from '../scripts/smoke.mjs';
 
 const DOCTOR=fileURLToPath(new URL('../scripts/setup-doctor.mjs',import.meta.url));
 const doctor=(f,...args)=>{const out=spawnSync(process.execPath,[DOCTOR,f.root,...args],{encoding:'utf8',env:process.env});return {code:out.status,report:JSON.parse(out.stdout)};};
+
+test('resume smoke accepts a Node launch prefix and equivalent paths but rejects displaced safety flags',t=>{
+ const f=fixture(t);
+ const args=['exec','resume','--sandbox','workspace-write','--cd',f.root,'--output-schema','schema.json','--model','luna','--json','thread','-'];
+ assertResumeSafety({args,prefix_args:[]},f.root);
+ assertResumeSafety({args,prefix_args:['worker.mjs']},f.root);
+ const alias=path.join(f.temp,'root-alias');fs.symlinkSync(f.root,alias,'junction');
+ assertResumeSafety({args:args.map(arg=>arg===f.root?alias:arg),prefix_args:[]},f.root);
+ assert.throws(()=>assertResumeSafety({args:['worker.mjs',...args],prefix_args:['worker.mjs']},f.root),/safety flags/);
+ assert.throws(()=>assertResumeSafety({args:['exec','--sandbox','workspace-write','resume',...args.slice(4)],prefix_args:[]},f.root),/safety flags/);
+ assert.throws(()=>assertResumeSafety({args,prefix_args:[]},f.temp),/safety flags/);
+});
 
 test('contract smoke runs a tiny real round per worker in a throwaway repository',async t=>{
  const f=fixture(t);f.mode('smoke');

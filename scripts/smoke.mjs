@@ -6,6 +6,16 @@ import {run} from './fusion-state.mjs';
 import {execute} from './executor-bridge.mjs';
 import {read} from './artifact.mjs';
 import {controlPath} from './control-dir.mjs';
+import {samePath} from './platform.mjs';
+
+export function assertResumeSafety(cli,root) {
+ // The bridge prepends prefix_args separately; cli.args is the raw command.
+ // Compare cwd by filesystem identity, not Windows long/8.3 string spelling.
+ const args=cli.args;
+ const option=flag=>{const i=args.indexOf(flag);return i<0?null:args[i+1];};
+ if(args[0]!=='exec'||args[1]!=='resume'||option('--sandbox')!=='workspace-write'
+  ||!option('--cd')||!samePath(option('--cd'),root)||args.indexOf('--output-schema')<2)throw Error('Resume safety flags missing from subcommand');
+}
 
 // 어댑터 계약 스모크: 일꾼 CLI에 아주 작은 작업 하나를 실제로 시켜, 플래그·출력 형식·결과 계약·파일 변경이
 // 지금 설치된 CLI 버전에서도 맞는지 확인한다. 이 바닥에서 자주 깨지는 건 모델보다 CLI 플래그다.
@@ -50,8 +60,7 @@ async function one(name,{timeoutMs}) {
     stage='resume-begin';run(root,'begin',second);
     const dispatch=read(controlPath(root,'tasks',BRIEF.task_id,'dispatch-2.json'));
     if(!dispatch.cli.resume||dispatch.cli.session_id!==read(controlPath(root,'state.json')).sessions.luna)throw Error('Resume did not bind the recorded thread');
-    const args=dispatch.cli.args;
-    if(args[1]!=='resume'||args[args.indexOf('--sandbox')+1]!=='workspace-write'||args[args.indexOf('--cd')+1]!==root||args.indexOf('--output-schema')<2)throw Error('Resume safety flags missing from subcommand');
+    assertResumeSafety(dispatch.cli,root);
     stage='resume-execute';await execute(root,{timeoutMs});
     stage='resume-finish';run(root,'finish',{token:read(controlPath(root,'state.json')).writer.token,quiescent:true});
     stage='resume-output';

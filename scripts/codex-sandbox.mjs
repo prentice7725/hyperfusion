@@ -9,7 +9,9 @@ import {stateHome} from './control-dir.mjs';
 export function canonicalPath(input) {
  let target=path.resolve(input),tail=[];
  while(!fs.existsSync(target)) {tail.unshift(path.basename(target));const up=path.dirname(target);if(up===target)break;target=up;}
- const real=path.join(fs.realpathSync(target),...tail);
+ // Native realpath expands Windows 8.3 names as well as junction targets.
+ // Git can report a long common-dir while TEMP still uses RUNNER~1.
+ const real=path.join(fs.realpathSync.native(target),...tail);
  return process.platform==='win32'?real.toLowerCase():real;
 }
 const contains=(a,b)=>{const rel=path.relative(a,b);return rel===''||(!path.isAbsolute(rel)&&rel!=='..'&&!rel.startsWith('..'+path.sep));};
@@ -31,7 +33,7 @@ export function sandboxArgs({consult=false,repoRoot}={},env=process.env) {
  if(env.HF_CODEX_WRITABLE_ROOTS!==undefined){
   let roots;try{roots=JSON.parse(env.HF_CODEX_WRITABLE_ROOTS);}catch{throw Error('CODEX_SANDBOX: writable roots must be a JSON array');}
   if(!Array.isArray(roots)||roots.length>20||roots.some(r=>typeof r!=='string'||!path.isAbsolute(r)||!fs.existsSync(r)||!fs.statSync(r).isDirectory()))throw Error('CODEX_SANDBOX: writable roots must be existing absolute directories');
-  const resolved=[...new Set(roots.map(r=>fs.realpathSync(r)))];
+  const resolved=[...new Set(roots.map(r=>fs.realpathSync.native(r)))];
   if(resolved.some(r=>r===path.parse(r).root))throw Error('CODEX_SANDBOX: filesystem root cannot be writable');
   const protectedPaths=protectedRoots(repoRoot,env);
   if(resolved.some(r=>protectedPaths.some(p=>contains(canonicalPath(r),p)||contains(p,canonicalPath(r)))))throw Error('CODEX_SANDBOX: writable root overlaps protected control, skill, Git or CLI configuration paths');

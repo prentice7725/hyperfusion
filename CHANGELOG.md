@@ -6,6 +6,8 @@
 
 ## 0.24.0 — 2026-10-14
 
+- Windows의 긴 경로·8.3 짧은 경로를 native realpath로 정규화해 linked worktree의 공통 Git 보호 경로를 동일하게 인식한다. Resume smoke의 cwd도 파일시스템 정체성으로 비교하고, 경로/스모크 회귀 검사를 전체 CI 앞에서 실행한다.
+
 - Codex 외부 쓰기 경로가 상태·CLI 설정·스킬·Git 메타데이터와 겹치면 거절한다. 부모·자식·링크·아직 없는 보호 경로와 linked worktree의 공통 Git 디렉터리도 검사한다. 빈 운영자 벤더 목록은 설정 오류다.
 - 호스트 사용량에 sidechain/subagent와 별도 subagent JSONL을 포함하며 역할별 수치를 기록한다. 끝의 미완성 줄은 재시도하고 토큰 메타데이터만 저장하는 증분 읽기를 추가했다.
 - A/B 기준군과 HF군에 같은 측정 창을 제공하고 고정 fixture 10개(Java 2개, Java/Spring MVC 1개 포함)를 추가했다. 시작 트리·fixture·scope·사용량 구성이 같아야 비교한다. 원시 토큰 수를 유지하면서 입력 등가 가중치와 명시적 가격표에 따른 전체 Claude 비용 추정을 제공한다. 실제 파일럿 절감 수치는 없다.
