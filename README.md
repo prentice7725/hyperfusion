@@ -1,12 +1,12 @@
 # HyperFusion
 
-v0.24.0 protects Codex external writable roots against control, CLI configuration, skill and Git metadata overlaps. Host usage now includes subagents and incremental transcript collection. The [reproducible A/B pilot](references/benchmark-pilot.md) provides paired measurement windows, ten fixed fixtures (including Java/Spring), component-weighted usage and explicit model-price estimates. Codex smoke adds an exact-thread REDO round when compatible resume flags are advertised; live compatibility remains environment-dependent.
+v0.25.0 adds immutable red-first test protection, flags changed acceptance tests and prevents their automatic approval. Claude/Grok deny built-in reads of common secret paths; host hook observations and active-task Bash guards are recorded with explicit limits. All inter-agent instructions and reports use English. See [acceptance and agent guards](references/agent-guards.md).
 
 English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.24.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
+> **Versions.** The package release is `0.25.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
 
 ## Why HyperFusion
 

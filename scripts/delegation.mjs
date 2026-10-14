@@ -51,7 +51,7 @@ export function sameDelegation(recorded,current) {
 }
 
 // 승인 때 브리프가 처음 계약에서 벗어나지 않았는지 비교하는 필드.
-export const CONTRACT_FIELDS=['verification','success_criteria','acceptance_commands','acceptance_map','acceptance_artifacts','acceptance_timeout_ms'];
+export const CONTRACT_FIELDS=['communication_language','verification','success_criteria','acceptance_commands','acceptance_map','acceptance_artifacts','acceptance_timeout_ms'];
 export function contractChanged(initial,current) {
  const same=(a,b)=>JSON.stringify(a??null)===JSON.stringify(b??null);
  return CONTRACT_FIELDS.filter(k=>!same(initial?.[k],current?.[k])).concat(same(initial?.scope?.paths,current?.scope?.paths)?[]:['scope.paths']);

@@ -31,11 +31,11 @@ export function scopeOverlap(scopePaths,protect) {
 export function checkPreserve(root,brief) {
  const {protect}=brief.verification;
  const overlap=scopeOverlap(brief.scope.paths,protect);
- if(overlap.length)throw Error(`VERIFICATION: protect overlaps the task scope (${overlap.slice(0,3).join('; ')}); protected files must be outside scope.paths`);
+ if(brief.verification.kind==='preserve'&&overlap.length)throw Error(`VERIFICATION: protect overlaps the task scope (${overlap.slice(0,3).join('; ')}); protected files must be outside scope.paths`);
  const files=git(root,['ls-files','-z','--cached','--others','--exclude-standard']).split('\0').filter(Boolean);
  const res=protect.map(g=>[g,globRegex(g)]);
  const empty=res.filter(([,re])=>!files.some(f=>re.test(f))).map(([g])=>g);
- if(empty.length)throw Error(`VERIFICATION: protect matches no file (${empty.join(', ')}); a preserve task needs real tests or fixtures to protect`);
+ if(empty.length)throw Error(`VERIFICATION: protect matches no file (${empty.join(', ')}); verification needs real tests or fixtures to protect`);
 }
 
 // 작업을 시작했을 때(baseline)와 지금 사이에 보호 경로의 파일이 바뀌었는지. 라운드 단위가 아니라 작업 전체로 본다.

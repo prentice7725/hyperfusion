@@ -59,7 +59,7 @@ test('lead guard fails closed on unreadable state and works as a hook process',t
  const out=JSON.parse(execFileSync(process.execPath,[SCRIPT],{input,encoding:'utf8',env:process.env}));
  assert.ok(denied(out));
  fs.writeFileSync(path.join(f.control,'state.json'),'{broken');
- assert.match(edit(f).hookSpecificOutput.permissionDecisionReason,/읽을 수 없어/);
+ assert.match(edit(f).hookSpecificOutput.permissionDecisionReason,/unreadable/);
  assert.equal(execFileSync(process.execPath,[SCRIPT],{input:'not json',encoding:'utf8',stdio:['pipe','pipe','pipe']}),'');
  const hook=settingsSnippet().hooks.PreToolUse[0];
  assert.equal(hook.matcher,'Edit|Write|MultiEdit|NotebookEdit');assert.match(hook.hooks[0].command,/lead-guard\.mjs"$/);

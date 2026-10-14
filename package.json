@@ -1,6 +1,6 @@
 {
   "name": "hyperfusion",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "private": true,
   "license": "MIT",
   "description": "Claude Opus-led orchestration with Grok, Antigravity, Sonnet, Haiku and Codex Luna workers plus Sol review",

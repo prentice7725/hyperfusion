@@ -22,6 +22,8 @@ import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
 import {compactView} from './lead-view.mjs';
 import {isPreserve,checkPreserve,protectedChanges} from './preserve.mjs';
+import {modifiedAcceptanceTests} from './acceptance-integrity.mjs';
+import {hookObservation} from './hook-observation.mjs';
 import {takeDelegation,sameDelegation,contractChanged,DELEGABLE_OWNERS,AUTO_RECOVERY_CAP,NON_RETRYABLE} from './delegation.mjs';
 import {acTable,failureCriteria,prDraft,draftInputs,taskChangeEvidence} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
@@ -203,6 +205,7 @@ function afterTransition(c,before) {
 // ── init ────────────────────────────────────────────────────────────
 
 function init(c,input) {
+  const observedHooks=hookObservation(c.root);
   let configuration=config(c.root);
 
   // 프로젝트가 있으면 사용자가 승인한 팀으로, 현재 마일스톤에 계획된 작업만 시작한다.
@@ -295,7 +298,8 @@ function init(c,input) {
     initial_executor:executor,active_executor:executor,owner:null,
     attempts:Object.fromEntries([...EXECUTORS,'lead'].map(e=>[e,0])),
     sessions:Object.fromEntries(EXECUTORS.map(e=>[e,null])),
-    task_id:input.task_id,phase:'PLAN',
+    task_id:input.task_id,phase:'PLAN',communication_language:'en',hook_observation:observedHooks,
+    hooks_observed:observedHooks.hooks_observed,warnings:observedHooks.warning?[observedHooks.warning]:[],
     ...(assignment?{assignment}:{}),
     ...(delegation?{delegation}:{}),
     ...(grant?{implement_grant:grant}:{}),
@@ -310,6 +314,7 @@ function init(c,input) {
     throw Error('VERIFICATION: a preserve task needs acceptance_commands that already pass on the untouched tree; these fail, so use red-first (drop verification and acceptance_baseline_green)');
   }
   c.art('initial-brief.json',input);
+  c.art('hook-observation.json',c.s.hook_observation);
   c.art('baseline.json',base);
   if(assignment)c.art('assignment.json',assignment);
   if(delegation)c.art('delegation.json',delegation);
@@ -370,10 +375,10 @@ function status(c,input={}) {
 // init 때 고정된 설정을 쓰므로 일꾼이 저장소 설정을 고쳐도 바뀌지 않는다.
 function roundRisk(c) {
   const s=c.s,globs=s.configuration.review?.risk_paths??[];
-  if(!globs.length||!s.iteration)return [];
+  if(!s.iteration)return [];
   const changed=taskChangeEvidence(c.taskdir(),s).changed;
   const res=globs.map(globRegex);
-  return changed.filter(f=>res.some(re=>re.test(f))).sort();
+  return [...new Set([...changed.filter(f=>res.some(re=>re.test(f))),...(s.acceptance_test_changes??[])])].sort();
 }
 
 // ── 상담(advisor / committee)과 위임 리뷰 ────────────────────────────
@@ -754,7 +759,14 @@ function applyDelegatedReview(c,open,member,result) {
 function begin(c,input) {
   const s=c.s;
   if(input?.delegation!==undefined)throw Error('DELEGATION: the lead grants discretion only at init; it cannot be added or changed in a later brief');
+  const initialBrief=c.optional('initial-brief.json'),initialVerification=initialBrief?.verification;
+  if(input&&!Object.hasOwn(input,'verification')&&initialVerification){
+    const inherited=Object.fromEntries(['verification','acceptance_commands','acceptance_map','acceptance_timeout_ms','acceptance_artifacts','acceptance_baseline_green']
+      .filter(key=>initialBrief[key]!==undefined).map(key=>[key,initialBrief[key]]));
+    input={...inherited,...input};
+  }
   input=contract.brief(input);
+  if(JSON.stringify(input.verification??null)!==JSON.stringify(initialVerification??null))throw Error('VERIFICATION_CONTRACT_CHANGED: protection must be declared at init and cannot change between rounds');
   if(input.task_id!==s.task_id)throw Error('Task ID mismatch');
   if(c.writerHeld())throw Error('Writer still present; recover');
   const start=snapshot(c.root);
@@ -928,14 +940,16 @@ function finish(c,input) {
     errors.push(`Earlier out-of-scope changes still present: ${lingering.join(', ')}; revert them, or record them with recover allow_out_of_scope [{path, reason}]`);
   }
   const guarded=protectedViolations(c,post);
-  if(guarded.length)errors.push(`Protected by verification.preserve (tests and fixtures must not change): ${guarded.join(', ')}; revert them`);
+  s.acceptance_test_changes=modifiedAcceptanceTests(baseline,post,c.optional('initial-brief.json'));
+  if(guarded.length)errors.push(`ACCEPTANCE_TEST_MODIFIED: Protected by verification.${c.optional('initial-brief.json')?.verification?.kind} (tests and fixtures must not change): ${guarded.join(', ')}; revert them`);
   if(post.head!==base.head||post.index_hash!==base.index_hash)errors.push('HEAD/index changed');
   if(!errors.length&&JSON.stringify([...new Set(input.result.files_changed)].sort())!==JSON.stringify(changed)){
     errors.push('Declared changes differ from snapshot');
   }
   s.post_digest=post.digest;
   s.last_errors=errors;
-  c.art(`validation-${n}.json`,{changed,errors});
+  c.art(`validation-${n}.json`,{changed,errors,acceptance_test_changes:s.acceptance_test_changes,
+    warnings:s.acceptance_test_changes.length?['ACCEPTANCE_TEST_MODIFIED: acceptance PASS is not independent evidence after existing verification inputs changed']:[]});
 
   if(errors.length){
     s.result_failures++;
@@ -1032,6 +1046,7 @@ function acceptanceContext(c,brief) {
   const ignored=a.ignored_after?c.optional(a.ignored_after):null;
   const current=a.tree_digest===snapshot(c.root).digest&&!!ignored&&!ignoredChanges(ignored,ignoredManifest(c.root,brief.acceptance_artifacts)).length;
   return {source:'controller',stage:record.stage,status:record.status,quiescent:record.quiescent===true,current,
+    acceptance_test_changes:s.acceptance_test_changes??[],trusted_test_baseline:!(s.acceptance_test_changes?.length),
     note:'The controller itself ran these commands on the worker\'s tree; they are not worker claims. current:true means the tree has not changed since. A pass proves only what the commands test: still check every success criterion in the code.',
     ...(record.reason?{reason:record.reason}:{}),
     results:(record.results??[]).map(r=>({command:r.command,status:r.status,exit_code:r.exit_code,timed_out:r.timed_out===true,
@@ -1216,7 +1231,9 @@ function verify(c,input) {
     throw Error(s.last_errors[0]);
   }
   const guarded=protectedViolations(c,now);
-  if(guarded.length)throw Error(`VERIFICATION: protected files changed since the task started (${guarded.join(', ')}); a preserve task cannot close with them changed`);
+  if(guarded.length)throw Error(`ACCEPTANCE_TEST_MODIFIED: protected files changed since the task started (${guarded.join(', ')}); verification cannot close with them changed`);
+  const modifiedTests=modifiedAcceptanceTests(read(path.join(c.taskdir(),'baseline.json')),now,c.optional('initial-brief.json'));
+  if(modifiedTests.length&&(typeof input.acceptance_test_change_reason!=='string'||!input.acceptance_test_change_reason.trim()))throw Error(`ACCEPTANCE_TEST_MODIFIED: ${modifiedTests.join(', ')}; independently inspect the tests and implementation, then provide acceptance_test_change_reason before CLOSE. PASS alone is insufficient`);
   // 마지막 관문: 라운드 단위 검사를 다 통과했어도, 최초 기준선과 비교해 허용 범위 밖 변경이 남아 있으면 닫지 않는다.
   const before=s.scope_exceptions;
   s.scope_exceptions=[...(before??[]),...stampExceptions(accepted,s.iteration)];
@@ -1260,7 +1277,7 @@ function verify(c,input) {
   const ac=acTable(brief,results,{reviewed:true});
   const unproven=ac.filter(r=>r.status==='FAIL'||r.status==='NOT_RUN');
   if(unproven.length){s.scope_exceptions=before;throw Error('AC_NOT_PROVEN: '+unproven.map(r=>r.id).join(', ')+' has no passing acceptance result');}
-  c.art('verification.json',{...input,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{}),ac_table:ac,
+  c.art('verification.json',{...input,acceptance_test_changes:modifiedTests,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{}),ac_table:ac,
     changed_files:cumulative.changed,unattributed_changes:cumulative.unattributed_changes});
   s.phase='CLOSE';
   s.closed_at=new Date().toISOString();
@@ -1481,7 +1498,7 @@ function leadDecision(c,input) {
 // 보존 작업의 보호 경로가 작업을 시작한 뒤 하나라도 바뀌었는지. init의 brief가 정본이고 이후 brief로는 풀 수 없다.
 function protectedViolations(c,now=snapshot(c.root)) {
   const v=c.optional('initial-brief.json')?.verification;
-  if(v?.kind!=='preserve')return [];
+  if(!v?.protect?.length)return [];
   return protectedChanges(read(path.join(c.taskdir(),'baseline.json')),now,v.protect);
 }
 
@@ -1501,6 +1518,8 @@ function policyEvaluation(c) {
   need(snapshot(c.root).digest===s.post_digest,'tree unchanged since the round','the tree changed after the round');
   const cumulative=taskChangeEvidence(c.taskdir(),s);
   need(!cumulative.unattributed_changes.length,'all net changes belong to validated worker rounds',`changes outside worker rounds need lead review: ${cumulative.unattributed_changes.join(', ')}`);
+  const testChanges=modifiedAcceptanceTests(read(path.join(c.taskdir(),'baseline.json')),snapshot(c.root),c.optional('initial-brief.json'));
+  need(!testChanges.length,'acceptance tests unchanged',`ACCEPTANCE_TEST_MODIFIED: ${testChanges.join(', ')}; automatic approval is forbidden`);
   need(!budgetStatus(c.root,s).reason,'within budget','the task budget is exhausted');
   const brief=c.optional(`brief-${n}.json`),initial=c.optional('initial-brief.json');
   const changed=brief&&initial?contractChanged(initial,brief):['(brief missing)'];
@@ -1518,11 +1537,11 @@ function policyEvaluation(c) {
   need(!repeatedCriteria(s,panelBlocking(all)).length,'no repeated rejection','the same criterion was rejected twice');
   const raw=c.optional(`raw-result-${n}.json`);
   need(raw?.status==='complete'&&raw.needs_lead_decision!==true&&!(raw.unresolved?.length)&&(raw.tests??[]).every(t=>t.status!=='fail'),'worker reported complete with nothing unresolved','the worker result is incomplete, has unresolved items or a failed test');
+  const guarded=protectedViolations(c);
+  need(!guarded.length,'protected files unchanged',`protected files changed: ${guarded.slice(0,3).join(', ')}`);
   if(isPreserve(initial)){
     need(d.allow_preserve===true,'the lead allowed a preserve task','the lead did not allow a preserve (refactor) task for delegated approval at init');
     need(s.acceptance_baseline?.status==='green-acknowledged','green baseline acknowledged','the preserve baseline was not recorded as already passing');
-    const guarded=protectedViolations(c);
-    need(!guarded.length,'protected files unchanged',`protected files changed: ${guarded.slice(0,3).join(', ')}`);
   } else need(s.acceptance_baseline?.status==='red','red-first proven','the acceptance commands were not proven to fail on the untouched tree');
   const a=s.acceptance,evidence=a?.round===n&&a.file?c.optional(a.file):null;
   const ignored=a?.ignored_after?c.optional(a.ignored_after):null;
@@ -1691,7 +1710,8 @@ function nextStep(c) {
   case 'VERIFY':{
     const brief=c.optional(`brief-${s.iteration}.json`);
     return step({step:'verify: the controller reruns the acceptance commands itself',action:'verify',command_line:line('verify'),
-      input:brief?.acceptance_commands?{acceptance_satisfied:true}:{acceptance_satisfied:true,tests:[{command:'<what you ran>',status:'pass'}]}});}
+      input:brief?.acceptance_commands?{acceptance_satisfied:true,...(s.acceptance_test_changes?.length?{acceptance_test_change_reason:'<why the reviewed test changes preserve meaningful acceptance evidence>'}:{})}:{acceptance_satisfied:true,tests:[{command:'<what you ran>',status:'pass'}]},
+      ...(s.acceptance_test_changes?.length?{acceptance_test_changes:s.acceptance_test_changes,warning:'ACCEPTANCE_TEST_MODIFIED: PASS alone cannot authorize CLOSE'}:{})});}
   case 'DECISION_REQUIRED':
     return step({step:'record the architecture decision',action:'decide',command_line:line('decide'),input:{decision:'<text>'}});
   case 'RECOVERY_REQUIRED':
