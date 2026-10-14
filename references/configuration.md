@@ -74,13 +74,13 @@ v0.3 신규 작업용 설정은 [hyperfusion.v03.config.example.json](../hyperfu
 
 ## 공통 벤더 허용 정책 (0.22.0)
 
-`allowed_vendors:["anthropic","openai"]`는 구현·리뷰·상담 후보를 함께 제한한다. 생략하면 기존 풀을 유지하며 빈 배열은 모든 일꾼을 차단한다. 이름은 `anthropic`, `openai`, `xai`, `google`만 받고 중복·오타는 거절한다. 운영자 환경변수 `HF_ALLOWED_VENDORS=anthropic,openai`와 교집합으로 적용하므로 저장소에서 상한을 넓힐 수 없다. 자동 배치·명시 지정·실행 직전 bridge에서 재검사하고, 미허용 팀원은 팀 초안에서 제외한다.
+`allowed_vendors:["anthropic","openai"]`는 구현·리뷰·상담 후보를 함께 제한한다. 생략하면 기존 풀을 유지하며 빈 배열은 모든 일꾼을 차단한다. 이름은 `anthropic`, `openai`, `xai`, `google`만 받고 중복·오타는 거절한다. 빈 `HF_ALLOWED_VENDORS`나 빈 목록 항목은 설정 오류다. 전체 차단은 저장소의 `allowed_vendors:[]`로 명시한다. 운영자 환경변수 `HF_ALLOWED_VENDORS=anthropic,openai`와 교집합으로 적용하므로 저장소에서 상한을 넓힐 수 없다. 자동 배치·명시 지정·실행 직전 bridge에서 재검사하고, 미허용 팀원은 팀 초안에서 제외한다.
 
 CLI registry의 기본 벤더 기준이며 임의 model override의 실 제공자, CLI 내부 MCP·프록시·추가 네트워크 요청 또는 이미 실행 중인 호스트 리드는 검증하거나 차단하지 않는다. 방화벽·DLP 대신이 아니다. 업무상 외부 전송을 완전히 막아야 하면 별도의 운영자 네트워크·CLI 정책도 필요하다.
 
 ## Codex 캐시·네트워크와 턴 상한
 
-`HF_CODEX_WRITABLE_ROOTS`는 이미 있는 절대 디렉터리의 JSON 배열, `HF_CODEX_NETWORK_ACCESS`는 `0` 또는 `1`이다. 구현에만 적용하며 읽기 전용 리뷰·상담에는 전달하지 않는다. 저장소의 동명 실행기 옵션은 권한을 넓히지 못한다. 캐시는 스냅샷 검증 밖이므로 소스나 인증 폴더를 허용하지 말 것. [Codex 운영 안내](codex-runtime.md)를 따른다.
+`HF_CODEX_WRITABLE_ROOTS`는 이미 있는 절대 디렉터리의 JSON 배열, `HF_CODEX_NETWORK_ACCESS`는 `0` 또는 `1`이다. 구현에만 적용하며 읽기 전용 리뷰·상담에는 전달하지 않는다. 저장소의 동명 실행기 옵션은 권한을 넓히지 못한다. 홈 전체, 상태·CLI 설정·스킬·Git 메타데이터와 겹치는 경로(부모·자식·링크 포함)는 거절한다. 캐시는 스냅샷 검증 밖이므로 소스나 인증 폴더를 허용하지 말 것. [Codex 운영 안내](codex-runtime.md)를 따른다.
 
 Claude/Grok만 `executors.<이름>.max_turns` 및 `max_turns_by_difficulty:{low:20,medium:40,high:80}`를 받는다(1~1000, 명시 상한 우선). 생략 시 40이며 supervisor 시간·라운드 예산은 바뀌지 않는다. Codex/AGY에 이 옵션을 주면 지원하지 않는 계약으로 거절한다.
 

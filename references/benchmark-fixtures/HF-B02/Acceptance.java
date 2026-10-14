@@ -1,0 +1,1 @@
+public class Acceptance {static void eq(Object actual,Object expected){if(!actual.equals(expected))throw new AssertionError("expected "+expected+" got "+actual);} public static void main(String[] args){eq(Task.stem("REPORT.CSV","csv"),"REPORT");eq(Task.stem("README","csv"),"README");eq(Task.stem("a.b.csv","csv"),"a.b");} }

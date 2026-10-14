@@ -4,6 +4,13 @@ import {read} from './artifact.mjs';
 import {controlPath} from './control-dir.mjs';
 
 export const knownNumber=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
+export function reportedComponents(record) {
+ const u=record?.usage??record;
+ const input=u?.input_tokens??u?.inputTokens,output=u?.output_tokens??u?.outputTokens;
+ const cacheRead=u?.cache_read_input_tokens??u?.cacheReadInputTokens??0,cacheWrite=u?.cache_creation_input_tokens??u?.cacheCreationInputTokens??0;
+ if(![input,output,cacheRead,cacheWrite].every(knownNumber))return null;
+ return {input_tokens:input,output_tokens:output,cache_read_input_tokens:cacheRead,cache_creation_input_tokens:cacheWrite};
+}
 export function reportedTokens(record) {
  const u=record?.usage??record;
  if(knownNumber(u?.total_tokens))return u.total_tokens;
@@ -33,8 +40,8 @@ export function collectRunUsage(root,state) {
    role:usage?.role??(consult?context?.mode==='review'?'review':'consult':'implement'),
    round:usage?.round??(consult?dispatch?.round??null:Number(tag)),model:usage?.model??dispatch?.cli?.model??null,
    model_family:usage?.model_family??dispatch?.cli?.model_family??null,reasoning_effort:usage?.reasoning_effort??dispatch?.cli?.reasoning_effort??null,
-   tokens:usage?reportedTokens(usage):null,cost_usd:knownNumber(usage?.total_cost_usd)?usage.total_cost_usd:null,
-   model_usage:usage?.modelUsage&&typeof usage.modelUsage==='object'&&!Array.isArray(usage.modelUsage)?Object.entries(usage.modelUsage).map(([model,u])=>({model,tokens:reportedTokens(u),cost_usd:knownNumber(u?.costUSD)?u.costUSD:null})):null,
+   tokens:usage?reportedTokens(usage):null,components:usage?reportedComponents(usage):null,cost_usd:knownNumber(usage?.total_cost_usd)?usage.total_cost_usd:null,
+   model_usage:usage?.modelUsage&&typeof usage.modelUsage==='object'&&!Array.isArray(usage.modelUsage)?Object.entries(usage.modelUsage).map(([model,u])=>({model,tokens:reportedTokens(u),components:reportedComponents(u),cost_usd:knownNumber(u?.costUSD)?u.costUSD:null})):null,
    wall_ms:usage?.wall_ms??envelope?.wall_ms??null,started_at:usage?.started_at??envelope?.started_at??launch?.at??null,
    reported:!!usage,exit_code:envelope?.exit?.code??null,cost_basis:'client-side report, not billed cost'};
  });

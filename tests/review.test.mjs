@@ -154,7 +154,7 @@ test('Codex model and reasoning effort reach the CLI; Codex can sit on a committ
  const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sol:{model:'gpt-6.1-sol',reasoning_effort:'high'}}}));
  run(f.root,'init',{...f.brief,executor:'grok'});
  const c=run(f.root,'consult',{mode:'committee',question:'Why?',executors:['sol','sonnet']});await consult(f.root,c.consult_id);run(f.root,'consult-finish',{quiescent:true});
- const a=argsOf(f,'codex');assert.equal(a[a.indexOf('-m')+1],'gpt-6.1-sol');assert.ok(a.includes('model_reasoning_effort="high"'));
+ const a=argsOf(f,'codex');assert.equal(a[a.indexOf('--model')+1],'gpt-6.1-sol');assert.ok(a.includes('model_reasoning_effort="high"'));
 });
 test('review is the lead\'s by default; delegate-review only in REVIEW',t=>{
  const f=fixture(t);assert.equal(f.state().configuration.review.by,'lead');

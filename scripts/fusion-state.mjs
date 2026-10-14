@@ -253,7 +253,17 @@ function init(c,input) {
   if(input.verification)checkPreserve(c.root,input);
   const limits=validateLimits({...configuration.limits,...validateLimits(input.limits)});
   if(c.writerHeld())throw Error('Existing writer; recover first');
-  if(fs.existsSync(path.join(c.dir,'tasks',input.task_id)))throw Error('Task ID already used');
+  const pendingDir=path.join(c.dir,'tasks',input.task_id);
+  if(fs.existsSync(pendingDir)){
+    // benchmark start may reserve only usage metadata before implementation.
+    // A previously initialized task still has other artifacts and cannot reuse
+    // its ID. This exception never authorizes reuse of a completed window.
+    const windowPath=path.join(pendingDir,'host-usage-window.json');
+    const window=fs.existsSync(windowPath)?read(windowPath):null;
+    const files=fs.readdirSync(pendingDir);
+    if(window?.benchmark?.arm!=='hyperfusion'||window?.benchmark?.case_id!==input.task_id||window.ended_at
+      ||files.some(n=>!['host-usage-window.json','lead-usage.json'].includes(n)))throw Error('Task ID already used');
+  }
 
   // auto면 router가 고르고, 명시 지정이면 그 일꾼을 맨 앞에 두고 router 순서를 예비로 붙인다.
   let routing;

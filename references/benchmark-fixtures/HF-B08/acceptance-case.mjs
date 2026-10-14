@@ -1,0 +1,2 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import * as m from './task.mjs';
+let calls=0;let reject;const refresh=m.createRefresh(()=>{calls++;return new Promise((r,j)=>{reject=j;});});const a=refresh(),b=refresh();assert.equal(calls,1);reject(Error('network'));await Promise.allSettled([a,b]);const c=refresh();assert.equal(calls,2);reject(Error('again'));await Promise.allSettled([c]);

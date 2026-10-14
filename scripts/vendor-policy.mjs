@@ -6,7 +6,8 @@ export function validateVendors(list) {
 export function vendorAllowed(configuration,name,env=process.env) {
  const vendor=vendorOf(name);
  if(!vendor)return false;
- const operator=env.HF_ALLOWED_VENDORS===undefined?null:validateVendors(env.HF_ALLOWED_VENDORS.split(',').map(s=>s.trim()).filter(Boolean));
+ if(env.HF_ALLOWED_VENDORS!==undefined&&!env.HF_ALLOWED_VENDORS.trim())throw Error('VENDOR_POLICY: HF_ALLOWED_VENDORS is empty; unset it or specify vendors');
+ const operator=env.HF_ALLOWED_VENDORS===undefined?null:validateVendors(env.HF_ALLOWED_VENDORS.split(',').map(s=>s.trim()));
  const repo=configuration?.allowed_vendors===undefined?null:validateVendors(configuration.allowed_vendors);
  return (!operator||operator.includes(vendor))&&(!repo||repo.includes(vendor));
 }

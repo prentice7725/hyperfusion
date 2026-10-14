@@ -1,12 +1,92 @@
 [
- {"case_id":"HF-B01","kind":"code","difficulty":"low","objective":"Fix an off-by-one pagination bound","acceptance":"Empty, first, last and out-of-range pages return the specified slices"},
- {"case_id":"HF-B02","kind":"code","difficulty":"low","objective":"Normalize a filename extension case-insensitively","acceptance":"Uppercase, no extension and multiple dots preserve the required basename"},
- {"case_id":"HF-B03","kind":"code","difficulty":"low","objective":"Deduplicate an ordered list without mutating its input","acceptance":"First occurrence order and input immutability hold"},
- {"case_id":"HF-B04","kind":"tests","difficulty":"medium","objective":"Add missing retry-budget regression coverage","acceptance":"Transient failure retries within the bound; permission failures never retry"},
- {"case_id":"HF-B05","kind":"code","difficulty":"medium","objective":"Implement a BOM-tolerant JSON reader","acceptance":"BOM input succeeds and malformed JSON retains an actionable error"},
- {"case_id":"HF-B06","kind":"refactor","difficulty":"medium","objective":"Extract path normalization without changing behavior","acceptance":"Existing protected path fixtures remain unchanged and pass"},
- {"case_id":"HF-B07","kind":"code","difficulty":"medium","objective":"Make a temporary-file write atomic","acceptance":"Failed writes retain the previous file and concurrent temp names do not collide"},
- {"case_id":"HF-B08","kind":"code","difficulty":"high","objective":"Coalesce concurrent refresh requests","acceptance":"Concurrent callers share one request; rejection releases the in-flight state"},
- {"case_id":"HF-B09","kind":"code","difficulty":"high","objective":"Enforce a bounded state-transition recovery gate","acceptance":"Invalid transitions do not consume attempts; drift requires explicit recovery"},
- {"case_id":"HF-B10","kind":"docs","difficulty":"low","objective":"Refresh one CLI quickstart from its implementation","acceptance":"All local links and documented command flags are valid"}
+  {
+    "case_id": "HF-B01",
+    "kind": "code",
+    "difficulty": "low",
+    "objective": "Fix an off-by-one pagination bound",
+    "acceptance": "Empty, first, last and out-of-range pages return the specified slices",
+    "fixture": "benchmark-fixtures/HF-B01",
+    "acceptance_command": "node run.mjs"
+  },
+  {
+    "case_id": "HF-B02",
+    "kind": "code",
+    "difficulty": "low",
+    "objective": "Normalize Java filename extensions case-insensitively",
+    "acceptance": "Uppercase, no extension and multiple dots preserve the required basename",
+    "fixture": "benchmark-fixtures/HF-B02",
+    "acceptance_command": "node run.mjs"
+  },
+  {
+    "case_id": "HF-B03",
+    "kind": "code",
+    "difficulty": "low",
+    "objective": "Deduplicate an ordered list without mutating its input",
+    "acceptance": "First occurrence order and input immutability hold",
+    "fixture": "benchmark-fixtures/HF-B03",
+    "acceptance_command": "node run.mjs"
+  },
+  {
+    "case_id": "HF-B04",
+    "kind": "code",
+    "difficulty": "medium",
+    "objective": "Fix Java service retry policy: transient vs permission/authentication failures",
+    "acceptance": "Transient failure retries within the bound; permission failures never retry",
+    "fixture": "benchmark-fixtures/HF-B04",
+    "acceptance_command": "node run.mjs"
+  },
+  {
+    "case_id": "HF-B05",
+    "kind": "code",
+    "difficulty": "medium",
+    "objective": "Implement a BOM-tolerant JSON reader",
+    "acceptance": "BOM input succeeds and malformed JSON retains an actionable error",
+    "fixture": "benchmark-fixtures/HF-B05",
+    "acceptance_command": "node run.mjs"
+  },
+  {
+    "case_id": "HF-B06",
+    "kind": "code",
+    "difficulty": "medium",
+    "objective": "Normalize separator and dot-prefix paths without mutating protected tests",
+    "acceptance": "Existing protected path fixtures remain unchanged and pass",
+    "fixture": "benchmark-fixtures/HF-B06",
+    "acceptance_command": "node run.mjs"
+  },
+  {
+    "case_id": "HF-B07",
+    "kind": "code",
+    "difficulty": "medium",
+    "objective": "Make a temporary-file write atomic",
+    "acceptance": "Failed writes retain the previous file; successful writes replace the full content",
+    "fixture": "benchmark-fixtures/HF-B07",
+    "acceptance_command": "node run.mjs"
+  },
+  {
+    "case_id": "HF-B08",
+    "kind": "code",
+    "difficulty": "high",
+    "objective": "Coalesce concurrent refresh requests",
+    "acceptance": "Concurrent callers share one request; rejection releases the in-flight state",
+    "fixture": "benchmark-fixtures/HF-B08",
+    "acceptance_command": "node run.mjs"
+  },
+  {
+    "case_id": "HF-B09",
+    "kind": "code",
+    "difficulty": "high",
+    "objective": "Fix Java/Spring MVC transitions: invalid changes return HTTP 409 and require explicit recovery",
+    "acceptance": "Invalid transitions do not consume attempts; drift requires explicit recovery",
+    "fixture": "benchmark-fixtures/HF-B09",
+    "acceptance_command": "node run.mjs"
+  },
+  {
+    "case_id": "HF-B10",
+    "kind": "docs",
+    "difficulty": "low",
+    "objective": "Refresh one CLI quickstart from its implementation",
+    "acceptance": "All local links and documented command flags are valid",
+    "fixture": "benchmark-fixtures/HF-B10",
+    "acceptance_command": "node run.mjs"
+  }
 ]

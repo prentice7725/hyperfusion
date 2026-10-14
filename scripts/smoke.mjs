@@ -37,7 +37,29 @@ async function one(name,{timeoutMs}) {
   stage='output';
   const text=fs.readFileSync(path.join(root,FILE),'utf8');
   if(text.replace(/\r\n/g,'\n')!=='ok\n')throw Error(`${FILE} is ${JSON.stringify(text.slice(0,40))}, expected "ok\\n"`);
-  return {executor:name,ok:true,ms:Date.now()-started};
+  let resume_check='not-applicable';
+  if(name==='luna'){
+   const first=read(controlPath(root,'tasks',BRIEF.task_id,'dispatch-1.json'));
+   if(!first.cli.supports?.resume)resume_check='unsupported-stateless';
+   else{
+    stage='resume-review';
+    run(root,'review',{verdict:'redo',rationale:'Exercise exact-thread resume and round-two schema',
+     blocking_criteria:['AC1'],commands_run:['inspection'],independent_diff_review:true});
+    const second={...BRIEF,objective:`Replace ${FILE} with exactly "resumed" followed by a newline. Change nothing else.`,
+     lead_feedback:[`${FILE}:1 replace ok with resumed followed by a newline`],success_criteria:[`AC1: ${FILE} is exactly resumed followed by a newline`]};
+    stage='resume-begin';run(root,'begin',second);
+    const dispatch=read(controlPath(root,'tasks',BRIEF.task_id,'dispatch-2.json'));
+    if(!dispatch.cli.resume||dispatch.cli.session_id!==read(controlPath(root,'state.json')).sessions.luna)throw Error('Resume did not bind the recorded thread');
+    const args=dispatch.cli.args;
+    if(args[1]!=='resume'||args[args.indexOf('--sandbox')+1]!=='workspace-write'||args[args.indexOf('--cd')+1]!==root||args.indexOf('--output-schema')<2)throw Error('Resume safety flags missing from subcommand');
+    stage='resume-execute';await execute(root,{timeoutMs});
+    stage='resume-finish';run(root,'finish',{token:read(controlPath(root,'state.json')).writer.token,quiescent:true});
+    stage='resume-output';
+    if(fs.readFileSync(path.join(root,FILE),'utf8').replace(/\r\n/g,'\n')!=='resumed\n')throw Error('Resume ignored the round-two instruction');
+    resume_check='two-round-contract';
+   }
+  }
+  return {executor:name,ok:true,resume_check,sandbox_check:'dispatch flags; OS boundary not independently tested',ms:Date.now()-started};
  }catch(e){
   return {executor:name,ok:false,stage,error:e.message.slice(0,500),ms:Date.now()-started};
  }finally{

@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+## 0.24.0 — 2026-10-14
+
+- Codex 외부 쓰기 경로가 상태·CLI 설정·스킬·Git 메타데이터와 겹치면 거절한다. 부모·자식·링크·아직 없는 보호 경로와 linked worktree의 공통 Git 디렉터리도 검사한다. 빈 운영자 벤더 목록은 설정 오류다.
+- 호스트 사용량에 sidechain/subagent와 별도 subagent JSONL을 포함하며 역할별 수치를 기록한다. 끝의 미완성 줄은 재시도하고 토큰 메타데이터만 저장하는 증분 읽기를 추가했다.
+- A/B 기준군과 HF군에 같은 측정 창을 제공하고 고정 fixture 10개(Java 2개, Java/Spring MVC 1개 포함)를 추가했다. 시작 트리·fixture·scope·사용량 구성이 같아야 비교한다. 원시 토큰 수를 유지하면서 입력 등가 가중치와 명시적 가격표에 따른 전체 Claude 비용 추정을 제공한다. 실제 파일럿 절감 수치는 없다.
+- Codex resume은 probe가 확인한 subcommand에 안전 옵션을 배치한다. 필요한 옵션이 없으면 stateless로 남는다. Luna smoke는 호환 버전에서 REDO까지 실행하며 대역 CLI도 resume 위치를 검사한다. 실제 CLI 호환성과 OS 경계는 이 로컬 환경에서 미검증이다.
+
 ## 0.23.0 — 2026-10-14
 
 - AGY 모델 계열과 effort를 분리했다. Gemini 계열+강도는 하나의 슬러그로 합쳐 보내고 중복 effort 플래그는 생략한다. pinned effort는 기본값·자동 난이도로 덮어쓰지 않고 명시 충돌은 거절한다. 모델 목록 검사는 최종 선택 슬러그에 적용한다.

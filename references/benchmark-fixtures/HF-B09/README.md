@@ -1,0 +1,1 @@
+Java 17+ and Maven required. The service-core assertions run first; after they pass, Maven runs a real Spring MVC 409/200 regression. Maven dependencies require an authorized network or prefilled cache. Neither missing tools nor download failures count as an assertion-red baseline. Keep Acceptance.java, SpringAcceptanceTest.java, TransitionController.java and pom.xml unchanged.
