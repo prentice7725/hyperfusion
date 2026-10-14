@@ -32,7 +32,7 @@ test('baseline window collects with no HF task and a late hook refreshes the met
  assert.equal(fs.existsSync(controlPath(p.root,'state.json')),false);
  const result=stopWindow('HF-B01',p.root,{success:false});assert.equal(result.lead_usage,null);
  const transcript=path.join(f.temp,'baseline.jsonl');
- fs.writeFileSync(transcript,JSON.stringify(row('baseline-host',Date.parse(window.started_at)+1))+'\n');
+ fs.writeFileSync(transcript,JSON.stringify(row('baseline-host',Date.parse(window.started_at)+1))+'\n'+JSON.stringify(row('baseline-host',Date.now()+50,'after-stop'))+'\n');
  collectHostUsage(p.root,{hook_event_name:'Stop',session_id:'baseline-host',transcript_path:transcript},{at:Date.now()+100});
  const metric=read(controlPath(p.root,'metrics','HF-B01.json'));
  assert.equal(metric.case_id,'HF-B01');assert.equal(metric.initial_tree,p.initial_tree);

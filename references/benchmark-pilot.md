@@ -50,8 +50,11 @@ then run `benchmark.mjs recover CASE REPO --quiescent --reason "confirmed shutdo
 to record the operator confirmation and clear only that benchmark lock. Never rerun
 automatically. The HF result must match
 CLOSE/BLOCKED. Changed acceptance fixtures, active writers, dirty initial trees and
-reused measurement windows are rejected. The final host Stop can refresh usage
-with the closing summary, so export metric records after that Stop. No transcript
+reused measurement windows are rejected. Both benchmark arms end at the explicit
+stop command: hook latency cannot add later messages to either arm. The final host
+Stop can refresh streamed usage for API messages already in that window, so export
+metric records after that Stop. Ordinary HF task windows still include the closing
+summary; benchmark windows intentionally use the same command cutoff. No transcript
 path/text or raw session ID is saved. A manually stopped window cannot be restarted;
 prepare a fresh repository for another trial.
 

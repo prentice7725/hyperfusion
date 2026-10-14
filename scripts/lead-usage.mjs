@@ -164,7 +164,9 @@ export function collectHostUsage(root,input,{at=Date.now()}={}) {
   const ended=w.ended_at!==null;
   // Include the closing summary on the first terminal Stop only. Subsequent
   // prompts or SessionEnd must not extend a finished task's collection window.
-  const end=w.collected_end_at??(ended&&index===windows.length-1?new Date(at).toISOString():w.ended_at??new Date(at).toISOString());
+  // Benchmark arms end at the explicit stop command in either collection mode.
+  // Hook latency must not add later host messages to one arm's cost.
+  const end=w.collected_end_at??(w.benchmark&&ended?w.ended_at:ended&&index===windows.length-1?new Date(at).toISOString():w.ended_at??new Date(at).toISOString());
   const start=Date.parse(w.started_at),until=Date.parse(end);
   const selected=messages.filter(m=>m.last_at>=start&&m.first_at<=until&&(!owners[m.id]||owners[m.id]===w.task_id));
   if(!selected.length||selected.some(m=>!m.valid)){collected.push({task_id:w.task_id,status:'unavailable'});continue;}
