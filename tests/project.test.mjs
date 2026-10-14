@@ -138,7 +138,7 @@ test('Luna implements through Codex with workspace-write; Sol never takes the wr
  const f=fixture(t,{executor:'luna'});
  const d=f.begin();
  assert.equal(d.executor,'luna');assert.equal(d.cli.model,'gpt-6-luna');
- const a=d.cli.args;assert.equal(a[a.indexOf('--sandbox')+1],'workspace-write');assert.equal(a[a.indexOf('-m')+1],'gpt-6-luna');
+ const a=d.cli.args;assert.equal(a[a.indexOf('--sandbox')+1],'workspace-write');assert.equal(a[a.indexOf('--model')+1],'gpt-6-luna');
  f.mode('edit');const out=await execute(f.root);f.finish(read(out.result_file));
  assert.equal(f.state().phase,'REVIEW');assert.equal(fs.readFileSync(path.join(f.root,'a.txt'),'utf8'),'fixed');
  assert.throws(()=>run(f.root,'init',{...f.brief,task_id:'x2',executor:'sol'}),/Existing unfinished|only reviews/);

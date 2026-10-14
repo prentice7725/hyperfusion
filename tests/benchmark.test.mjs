@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CASES,comparePilot} from '../scripts/benchmark.mjs';
-const rows=(tokens,success=true)=>CASES.map(c=>({case_id:c.case_id,success,lead_usage:{lead_tokens:tokens,scope:'prompt-to-terminal'},claude_total_tokens:tokens,claude_usage:{opus:tokens,sonnet:0,haiku:0},lead_takeovers:0}));
+const rows=(tokens,success=true)=>CASES.map(c=>({case_id:c.case_id,success,initial_tree:'tree-'+c.case_id,fixture_id:'fixture-'+c.case_id,lead_usage:{lead_tokens:tokens,scope:'benchmark-window',by_model:{'claude-opus-5-5':{components:{input_tokens:tokens,output_tokens:0,cache_read_input_tokens:0,cache_creation_input_tokens:0}}}},claude_total_tokens:tokens,claude_usage:{opus:tokens,sonnet:0,haiku:0},lead_takeovers:0}));
 test('a paired pilot compares actual costs and includes failed task costs',()=>{
  const base=rows(100),hf=rows(50);hf[0].success=false;
  const out=comparePilot(base,hf);assert.equal(out.status,'measured-pilot');assert.equal(out.expected_pairs,10);

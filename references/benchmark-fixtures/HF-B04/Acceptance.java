@@ -1,0 +1,1 @@
+public class Acceptance {static void eq(Object actual,Object expected){if(!actual.equals(expected))throw new AssertionError("expected "+expected+" got "+actual);} public static void main(String[] args){eq(Task.attempts("transient",3),3);eq(Task.attempts("permission",3),1);eq(Task.attempts("authentication",3),1);eq(Task.attempts("transient",1),1);} }

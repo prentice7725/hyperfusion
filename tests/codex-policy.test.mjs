@@ -51,7 +51,7 @@ test('Luna redo binds one task-scoped thread and records each turn usage',async 
  await f.bridge();assert.equal(f.state().sessions.luna,sid);
  assert.equal(read(path.join(f.control,'tasks/HF-test/usage-1.json')).usage.total_tokens,25);
  f.review('redo');const next=f.begin();assert.equal(next.cli.session_id,sid);assert.ok(next.cli.resume);
- assert.equal(next.cli.args[next.cli.args.indexOf('resume')+1],sid);assert.ok(!next.cli.args.includes('--last'));
+ assert.equal(next.cli.args[1],'resume');assert.equal(next.cli.args.at(-2),sid);assert.ok(!next.cli.args.includes('--last'));
  await f.bridge();assert.equal(f.state().phase,'REVIEW');
 });
 test('Codex review stays ephemeral/read-only and unsupported resume stays stateless',t=>{
@@ -65,7 +65,7 @@ test('Codex review stays ephemeral/read-only and unsupported resume stays statel
  assert.throws(()=>luna.dispatch({...brief,consult:undefined},{owner:'luna'},{probe:cli,session:sid,resume:true,promptFile:path.join(f.temp,'prompt.txt')}),/RESUME_UNSUPPORTED/);
 });
 test('Codex writable cache/network options are operator-only, implementation-only and bounded',t=>{
- const f=fixture(t,{initialize:false});const e={HF_CODEX_WRITABLE_ROOTS:JSON.stringify([f.temp]),HF_CODEX_NETWORK_ACCESS:'1'};
+ const f=fixture(t,{initialize:false});const cache=path.join(f.temp,'cache');fs.mkdirSync(cache);const e={HF_CODEX_WRITABLE_ROOTS:JSON.stringify([cache]),HF_CODEX_NETWORK_ACCESS:'1'};
  assert.match(sandboxArgs({},e).join(' '),/network_access=true/);assert.match(sandboxArgs({},e).join(' '),/writable_roots/);
  assert.deepEqual(sandboxArgs({consult:true},e),[]);
  assert.throws(()=>sandboxArgs({}, {HF_CODEX_WRITABLE_ROOTS:'["/"]'}),/root cannot/);

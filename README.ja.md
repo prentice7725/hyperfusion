@@ -1,10 +1,12 @@
 # HyperFusion
 
+v0.24.0では、Codexの外部書き込み先が制御状態・CLI設定・スキル・Gitメタデータと重なる場合に拒否します。ホスト使用量にサブエージェントを含め、transcriptを差分読み取りします。[再現可能なA/Bパイロット](references/benchmark-pilot.md)は両群の計測窓、Java/Springを含む固定fixture 10件、成分別の加重指標と明示的なモデル価格表を提供します。Codexのスモークは互換resumeオプションがある場合、同じthreadのREDOまで検証します。実際のCLI互換性はインストール環境で確認してください。
+
 [English](README.md) | [한국어](README.ko.md) | 日本語
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.23.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.24.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 作った理由
 

@@ -1,3 +1,4 @@
+import {weightedUsage} from './usage-weights.mjs';
 import {readInput,printError} from './cli.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -50,7 +51,7 @@ export function measure(root,observations=null) {
  const v={task_id:s.task_id,success:s.phase==='CLOSE',initial_executor:s.initial_executor??null,attempts:s.attempts??null,
   objective:'minimize total Claude (Opus + Sonnet + Haiku) tokens per successful task',
   lead_target_model:s.lead_target_model??null,lead_model:s.lead_model??null,
-  lead_usage:lead,lead_tokens_per_success:s.phase==='CLOSE'&&lead?lead.lead_tokens:null,
+  lead_weighted_usage:weightedUsage(lead),lead_usage:lead,lead_tokens_per_success:s.phase==='CLOSE'&&lead?lead.lead_tokens:null,
   lead_observed_model:hostModel,run_usage:runs,usage_by_executor:accounting.by_executor,usage_by_model:accounting.by_model,usage_by_model_effort:accounting.by_model_effort,
   claude_usage:accounting.claude,claude_total_tokens:accounting.claude_total_tokens,claude_tokens_per_success:s.phase==='CLOSE'?accounting.claude_total_tokens:null,
   unreported_calls:accounting.unreported_calls,review_calls:runs.filter(r=>r.role==='review').length,consult_calls:runs.filter(r=>r.role==='consult').length,
@@ -86,7 +87,7 @@ export function refreshHostUsage(root,taskId,observation) {
  if(prior.lead_usage&&prior.lead_usage.source_kind!=='claude-transcript')return prior;
  if(observation?.complete!==true||!knownNumber(observation.lead_tokens))return prior;
  const accounting=summarizeUsage(prior.run_usage??[],observation,observation.lead_model);
- const updated={...prior,lead_usage:observation,lead_observed_model:observation.lead_model,
+ const updated={...prior,lead_weighted_usage:weightedUsage(observation),lead_usage:observation,lead_observed_model:observation.lead_model,
   lead_tokens_per_success:prior.success?observation.lead_tokens:null,
   usage_by_executor:accounting.by_executor,usage_by_model:accounting.by_model,usage_by_model_effort:accounting.by_model_effort,claude_usage:accounting.claude,
   claude_total_tokens:accounting.claude_total_tokens,claude_tokens_per_success:prior.success?accounting.claude_total_tokens:null};

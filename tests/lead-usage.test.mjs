@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
-import {read} from '../scripts/artifact.mjs';
+import {read,hash} from '../scripts/artifact.mjs';
 import {measure} from '../scripts/metrics.mjs';
 import {rememberHost,collectHostUsage,transcriptMessages} from '../scripts/lead-usage.mjs';
 import {settingsSnippet} from '../scripts/lead-guard.mjs';
@@ -27,10 +27,10 @@ test('Stop counts planning, cache and duplicate API blocks once and persists no 
  const f=setup(t);close(f);const at=Date.now()+100;
  put(f,[row('old',f.anchor-10),row('plan',f.anchor+10),row('plan',f.anchor+20,{message:{id:'plan',model:'claude-opus-5-5',usage:{...usage,output_tokens:7},content:[{text:'secret-content'}]}}),
   row('child',f.anchor+30,{isSidechain:true}),row('other',f.anchor+30,{sessionId:'other'}),row('later',at+1000)]);
- assert.equal(collect(f,at).tasks[0].lead_tokens,39);
- assert.equal(metric(f).lead_tokens_per_success,39);assert.equal(metric(f).claude_usage.opus,39);
+ assert.equal(collect(f,at).tasks[0].lead_tokens,76);
+ assert.equal(metric(f).lead_tokens_per_success,76);assert.equal(metric(f).claude_usage.opus,76);
  const text=fs.readFileSync(path.join(f.control,'tasks',f.brief.task_id,'lead-usage.json'),'utf8');
- assert.doesNotMatch(text,/secret-content|session\.jsonl/);assert.equal(JSON.parse(text).message_count,1);
+ assert.doesNotMatch(text,/secret-content|session\.jsonl/);assert.equal(JSON.parse(text).message_count,2);
  assert.equal(JSON.parse(text).scope,'prompt-to-terminal');
 });
 
@@ -63,7 +63,8 @@ test('missing hook binding and wrong-session events remain unknown',t=>{
 });
 
 test('malformed JSONL and unrecognized usage cannot silently create zero usage',()=>{
- assert.throws(()=>transcriptMessages('{partial',sid),/INCOMPLETE/);
+ assert.deepEqual(transcriptMessages('{partial',sid),[]);
+ assert.throws(()=>transcriptMessages('{broken\n',sid),/INCOMPLETE/);
  const [message]=transcriptMessages(JSON.stringify(row('bad',Date.now(),{message:{id:'bad',model:'claude-opus-5-5',usage:{input_tokens:10}}})),sid);
  assert.equal(message.valid,false);
  assert.throws(()=>transcriptMessages(JSON.stringify(row('same',1))+'\n'+JSON.stringify(row('same',2,{message:{id:'same',model:'claude-sonnet-5-5',usage}})),sid),/MODEL_CONFLICT/);
@@ -103,4 +104,38 @@ test('manual non-Opus host observations retain their actual Claude family',t=>{
  const f=setup(t);close(f);
  const result=measure(f.root,{source:'manual',lead_tokens:75,lead_model:'claude-sonnet-5-5'});
  assert.equal(result.claude_usage.sonnet,75);assert.equal(result.claude_usage.opus,0);
+});
+
+test('incremental transcript reads merge appended blocks and retry the unfinished last line',t=>{
+ const f=setup(t);close(f);const at=Date.now()+100;
+ fs.writeFileSync(f.transcript,JSON.stringify(row('one',f.anchor+10))+'\n{"type":');
+ assert.equal(collect(f,at).tasks[0].status,'partial');
+ assert.equal(metric(f).lead_usage,null);
+ fs.writeFileSync(f.transcript,JSON.stringify(row('one',f.anchor+10))+'\n'+JSON.stringify(row('two',f.anchor+20))+'\n');collect(f,at+10);
+ assert.equal(metric(f).lead_usage.lead_tokens,74);
+ fs.appendFileSync(f.transcript,JSON.stringify(row('two',f.anchor+20))+'\n');collect(f,at+20);
+ assert.equal(metric(f).lead_usage.lead_tokens,74);
+ const cache=path.join(f.control,'host-transcripts');
+ for(const name of fs.readdirSync(cache))assert.doesNotMatch(fs.readFileSync(path.join(cache,name),'utf8'),/session\.jsonl|host-session|"content"/);
+});
+
+test('subagent files contribute once, separately from the main host',t=>{
+ const f=setup(t);close(f);const at=Date.now()+100;put(f,[row('main',f.anchor+10)]);
+ const subdir=path.join(path.dirname(f.transcript),sid,'subagents');fs.mkdirSync(subdir,{recursive:true});
+ fs.writeFileSync(path.join(subdir,'agent-one.jsonl'),JSON.stringify(row('child-only',f.anchor+20))+'\n');
+ collect(f,at);collect(f,at+10);
+ const m=metric(f);assert.equal(m.lead_usage.lead_tokens,74);assert.equal(m.lead_usage.subagent_tokens,37);
+ assert.equal(m.lead_usage.by_role.lead.input_tokens,10);assert.equal(m.lead_usage.by_role.subagent.input_tokens,10);
+ assert.equal(m.lead_weighted_usage.input_equivalent,79);
+});
+
+test('API copies in parent/subagent files dedupe globally and retain legacy message IDs',t=>{
+ const f=setup(t);close(f);const at=Date.now()+100;
+ put(f,[row('shared-api',f.anchor+10)]);
+ const children=path.join(path.dirname(f.transcript),sid,'subagents');fs.mkdirSync(children,{recursive:true});
+ fs.writeFileSync(path.join(children,'agent-copy.jsonl'),JSON.stringify(row('shared-api',f.anchor+10,{isSidechain:true}))+'\n');
+ collect(f,at);assert.equal(metric(f).lead_usage.lead_tokens,37);
+ const owner=read(path.join(f.control,'host-usage-owners.json'));
+ assert.equal(Object.keys(owner).length,1);
+ assert.equal(owner[hash('shared-api')],f.brief.task_id);
 });

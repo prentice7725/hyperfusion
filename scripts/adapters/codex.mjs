@@ -25,7 +25,7 @@ function member(name,{model,canWrite}) {
  const probe=()=>{
   const cli=probeCli(`Codex (${name})`,binary(),requiredFlags,['--ephemeral'],{help:['exec','--help'],executor:name});
   // Resume contracts vary by CLI version. Never guess or use --last.
-  try{probeCli(`Codex (${name}) resume`,binary(),['--json','--output-schema','--model'],[],{help:['exec','resume','--help'],executor:name});cli.supports.resume=true;}catch{cli.supports.resume=false;}
+  try{probeCli(`Codex (${name}) resume`,binary(),['--json','--output-schema','--model','--sandbox','--cd'],[],{help:['exec','resume','--help'],executor:name});cli.supports.resume=true;}catch{cli.supports.resume=false;}
   return cli;
  };
  function dispatch(brief,lease,{session,resume,probe:cli,promptFile,options={},apexGrant=false}) {
@@ -39,12 +39,12 @@ function member(name,{model,canWrite}) {
   // 상담·리뷰는 읽기 전용, 구현은 작업 폴더 쓰기만. 커밋 등은 HEAD/index 스냅샷 검사로 잡는다.
   const sandbox=consult?'read-only':'workspace-write';
   if(resume&&(!cli.supports?.resume||!validSession(session)))throw Error('CODEX_RESUME_UNSUPPORTED: explicit session resume requires compatible CLI help and a recorded thread ID');
-  const args=['exec','--sandbox',sandbox,'--cd',brief.repo_root,'--output-schema',schemaFile,
+  const args=['exec',...(resume?['resume']:[]),'--sandbox',sandbox,'--cd',brief.repo_root,'--output-schema',schemaFile,
    ...((consult||!cli.supports?.resume)&&cli.supports?.['--ephemeral']?['--ephemeral']:[]),
-   '-m',options.model??model,
+   '--model',options.model??model,
    ...(options.reasoning_effort?['-c',`model_reasoning_effort="${options.reasoning_effort}"`]:[]),
-   ...sandboxArgs({consult}),
-   ...(resume?['resume',session]:[]),'--json',
+   ...sandboxArgs({consult,repoRoot:brief.repo_root}),
+   '--json',...(resume?[session]:[]),
    // 프롬프트는 stdin('-')으로 넘긴다. 명령줄 길이 제한과 따옴표 문제를 피한다.
    '-'];
   return {cli:{...cli,args,session_id:resume?session:null,resume:!!resume,persistence:!consult&&cli.supports?.resume?'task':'ephemeral',model:options.model??model,extra_files:[{path:schemaFile,content:JSON.stringify(strictSchema(schemaFor(brief)))}]},prompt:text,stdin:text};

@@ -35,7 +35,7 @@ const finish=(request,id)=>{
  PLANT[mode]?.();
  const result={...request.result_template,summary:'Fake transport result; no live model'};
  if(mode==='edit'){fs.writeFileSync('a.txt','fixed');result.files_changed=['a.txt'];}
- if(mode==='smoke'){fs.writeFileSync('hf-smoke.txt','ok\\n');result.files_changed=['hf-smoke.txt'];}
+ if(mode==='smoke'){fs.writeFileSync('hf-smoke.txt',request.result_template.round===2?'resumed\\n':'ok\\n');result.files_changed=['hf-smoke.txt'];}
  if(mode==='tamper')result.files_changed=['stray.txt'];
  if(mode==='lazy'){result.status='blocked';result.unresolved=['did not bother'];}
  // 위임 리뷰 모드: 기본은 pass, review-redo면 AC1 반려와 파일·줄 지적을 낸다.
@@ -90,7 +90,7 @@ console.log(JSON.stringify({conversation_id:id,status:mode==='agy-fail'?'failed'
 
 const FAKE_CODEX=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE codex for protocol tests');process.exit(0);}
-if(args[0]==='exec'&&args.includes('--help')){console.log('--sandbox --output-schema -C, --cd --ephemeral -m, --model --json resume');process.exit(0);}
+if(args[0]==='exec'&&args.includes('--help')){console.log(args[1]==='resume'?'--sandbox --output-schema --cd --model --json':'--sandbox --output-schema -C, --cd --ephemeral -m, --model --json resume');process.exit(0);}
 if(args.includes('--help')){console.log('Commands: exec');process.exit(0);}
 fs.writeFileSync(HERE+'/fake-codex-args.json',JSON.stringify(args));
 // reviewer-fail-once: 첫 Codex 호출만 실패한다(리뷰어 하나가 못 끝낸 상황).
@@ -99,7 +99,8 @@ const schema=JSON.parse(fs.readFileSync(args[args.indexOf('--output-schema')+1],
 if(!schema.properties)process.exit(3);
 const request=JSON.parse(fs.readFileSync(0,'utf8'));
 if(mode==='codex-crash')process.exit(1);
-const session=args.includes('resume')?args[args.indexOf('resume')+1]:'0199a213-81c0-7800-8aa1-bbab2a035a53';
+if(args.includes('resume')&&(args[1]!=='resume'||['--sandbox','--cd','--output-schema','--model','--json'].some(flag=>args.indexOf(flag)<2))){console.error('resume options must be on the probed subcommand');process.exit(2);}
+const session=args.includes('resume')?args.at(-2):'0199a213-81c0-7800-8aa1-bbab2a035a53';
 console.log(JSON.stringify({type:'thread.started',thread_id:session}));
 console.log(JSON.stringify({type:'item.completed',item:{id:'final',type:'agent_message',text:JSON.stringify(finish(request,session))}}));
 console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:20,cached_input_tokens:10,output_tokens:5}}));

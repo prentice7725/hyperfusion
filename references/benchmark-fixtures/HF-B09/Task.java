@@ -1,0 +1,1 @@
+public class Task { private String state="NEW"; private int attempts=0; public boolean transition(String next){attempts++;state=next;return true;} public String state(){return state;} public int attempts(){return attempts;} }

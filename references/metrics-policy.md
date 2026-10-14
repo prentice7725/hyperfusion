@@ -26,10 +26,16 @@ v0.3의 주 지표는 `sum(전체 Claude 토큰, 실패 작업 포함) / 성공 
 
 컨트롤러 init이 마지막 프롬프트~작업 종료 구간을 고정한다(`prompt-to-terminal`). 프롬프트 연결이 없거나 뒤늦게 연결하면 `controller-window`이며 두 구간을 같은 파일럿으로 섞지 않는다. 종료 후 첫 Stop의 마무리 보고까지 포함하고 이후 턴은 제외한다. 동일 턴의 연속 작업은 이전 종료 이후부터 기록한다. 경계에 걸친 메시지는 먼저 겹친 작업에 한 번 귀속한다. 작업 중 재개한 다른 호스트 세션도 해시로 연결해 합친다.
 
-메인 assistant만 읽고 sidechain/subagent·synthetic 오류 응답은 제외한다. 실제 message ID별 component 최대값으로 스트리밍 중복을 제거하고 input/output/cache read/cache creation을 실제 모델별로 기록한다. 모델 전환도 분리한다. 불완전 행·누락 usage·다른 세션·읽기 실패는 0으로 대체하지 않는다. 진행 중 수집은 partial이며 최종 합계를 만들지 않는다. 종료 후 수집은 이미 기록된 CLOSE/BLOCKED 지표를 보정한다. 명시적 수동 관측은 자동 값보다 우선하며 보존된다.
+assistant와 sidechain/subagent를 읽고 synthetic 오류 응답은 제외한다. 실제 message ID별 component 최대값으로 스트리밍 중복을 제거하고 input/output/cache read/cache creation을 실제 모델별로 기록한다. 모델 전환도 분리한다. 불완전 행·누락 usage·다른 세션·읽기 실패는 0으로 대체하지 않는다. 진행 중 수집은 partial이며 최종 합계를 만들지 않는다. 종료 후 수집은 이미 기록된 CLOSE/BLOCKED 지표를 보정한다. 명시적 수동 관측은 자동 값보다 우선하며 보존된다.
 
 제어 폴더에는 해시 식별자·시각·숫자·모델명만 저장한다. 원문 프롬프트·응답·transcript 경로는 복사하지 않는다. CLI JSON stdin으로 같은 훅 입력을 `node scripts/lead-usage.mjs`에 다시 주면 재수집할 수 있다.
 
 ## 고정 A/B 파일럿
 
 `benchmark.mjs cases`와 `references/benchmark-cases.json`에 10개 고정 과제·수용 기준이 있다. 동일 시작 트리·요구 사항·환경에서 Opus 단독과 HyperFusion을 각각 실행하고 실제 지표 배열에 `case_id`를 붙인다. `benchmark.mjs compare BASELINE.json HYPERFUSION.json`은 명시적 성공 여부와 완전한 사용량·같은 측정 scope가 있는 paired 결과만 비교한다. 실패 비용도 포함하며 누락이 있으면 절감률은 null이다. 이 도구는 모델을 실행하지 않는다. 실제 A/B 파일럿은 미실행이며 절감률 근거가 없다.
+
+## v0.24 측정 보강
+
+호스트의 sidechain/subagent와 표준 `SESSION/subagents/agent-*.jsonl`도 집계한다. 중복 API 메시지는 한 번만 세고 `by_role`과 `subagent_tokens`를 별도로 기록한다. 끝의 미완성 JSONL 줄은 다음 수집에서 재시도하며, 줄바꿈으로 끝난 손상된 줄은 계속 오류다. 증분 읽기는 offset과 토큰 메타데이터만 저장하며 경로·본문은 저장하지 않는다. 회전·축소·끝부분 변경을 확인하면 다시 읽는다. 이는 로컬 append transcript의 관측 캐시이며 전체 파일 무결성 인증이 아니다.
+
+`lead_weighted_usage`는 구성 요소별 수치와 입력 등가량(1/5/0.1/1.25)을 함께 보여 준다. 원시 합계는 호환 필드로 유지한다. 가중치는 청구액이 아니며 실제 비용 비교에는 모델별 가격표가 필요하다. 독립 기준군 측정 창, 고정 fixture, 같은 시작 트리 검사와 가격표 기반 전체 Claude 비용 비교는 [A/B pilot](benchmark-pilot.md)을 따른다. 기존 텍스트 과제·수동 합계만으로는 엄격한 비교를 완료할 수 없다.
