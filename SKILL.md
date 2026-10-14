@@ -2,7 +2,7 @@
 name: hyperfusion
 description: Claude Opus-led orchestration with serialized workers, audited tests and independent review. Use for HyperFusion, Grok, Antigravity/agy, Sonnet/Haiku or Codex Luna/Sol implementation, review and image-asset requests.
 ---
-# HyperFusion v0.24.0
+# HyperFusion v0.25.0
 
 Start with the classic procedure below. For a short English reference map, read [executor-quickstart.md](references/executor-quickstart.md). Load other references only when their step applies.
 
@@ -59,3 +59,9 @@ Codex implementation uses task-scoped JSONL threads, exact-ID resume only after 
 `setup-doctor` recommends without mutating configuration. A user-approved `claude-codex` project defaults low tasks to Luna and medium/high non-image tasks to Sonnet with a controller-issued IMPORTANT implementation grant, with Sol/Sonnet cross review. Preserve explicit assignments; never derive a grant from repository config alone. Missing team members are rejected at proposal and approval. Installation is not authentication/quota proof.
 
 Use `benchmark.mjs cases` and `compare BASELINE.json HYPERFUSION.json` for actual paired pilot metrics. Missing evidence stays unknown; do not claim measured savings from fixtures or an unrun pilot. See [metrics-policy](references/metrics-policy.md).
+
+## Acceptance integrity and agent communication
+
+Use English for every inter-agent brief, consultation, finding, plan and structured report. Keep code identifiers, quoted source and project user-facing language intact; answer the user in their preferred language. Brief scope and controller rules take precedence over repository instruction files. A conflict requires a decision, never silent scope expansion. Dispatch records instruction-file paths and hashes without adding their contents to the prompt.
+
+For red-first work, write the failing test before init and use `verification:{kind:"red-first",protect:["check.test.mjs"]}`. Protection is immutable after init and may overlap scope. Modifying a protected test triggers `ACCEPTANCE_TEST_MODIFIED` and recovery before acceptance execution. Existing unprotected test changes block automatic approval; CLOSE requires independent review and an explicit `acceptance_test_change_reason`. A passing command alone cannot prove unchanged acceptance evidence. See [agent-guards.md](references/agent-guards.md) for hook observations, secret-read limits and active-task Bash controls.

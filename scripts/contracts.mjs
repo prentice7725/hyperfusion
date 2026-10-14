@@ -23,7 +23,9 @@ export function safePath(v) {
  return reportedPath(v)&&!/[*?\[\]{}:~]/.test(v)&&!v.split('/').some(x=>x!==x.trimEnd()||x.endsWith('.')||/^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\.|$)/i.test(x));
 }
 export function brief(v) {
+ requireThat(v?.communication_language===undefined||v.communication_language==='en','Inter-agent communication_language must be en');
  v={...v,scope:{...v?.scope,allowed_expansion:v?.scope?.allowed_expansion??'ask-lead'},
+  communication_language:'en',
   forbidden_actions:v?.forbidden_actions??['commit','push','deploy','release','scope-expansion'],
   evidence_required:v?.evidence_required??['files_changed','commands_run','test_results','remaining_risks']};
  requireThat(v&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(v.task_id),'Invalid task_id');
@@ -48,11 +50,12 @@ export function brief(v) {
  requireThat(v.acceptance_commands!==undefined||(v.acceptance_timeout_ms===undefined&&v.acceptance_artifacts===undefined&&v.acceptance_baseline_green===undefined),'acceptance options need acceptance_commands');
  // 보존(preserve) 검증: 수정 전에도 통과하는 명령(리팩터링)에서, 보호 경로의 파일이 바뀌지 않았음을 컨트롤러가 증거로 삼는다.
  requireThat(v.verification===undefined||(v.verification&&typeof v.verification==='object'&&!Array.isArray(v.verification)
-  &&Object.keys(v.verification).every(k=>['kind','protect'].includes(k))&&v.verification.kind==='preserve'
+    &&Object.keys(v.verification).every(k=>['kind','protect'].includes(k))&&['preserve','red-first'].includes(v.verification.kind)
   &&strs(v.verification.protect)&&v.verification.protect.length>=1&&v.verification.protect.length<=10
-  &&v.verification.protect.every(g=>reportedPath(g.replace(/\*\*?|\?/g,'x'))&&!/^(?:\*\*\/)*\*{1,2}$/.test(g)&&!g.endsWith('/'))),'Invalid verification: {kind:"preserve", protect:[1-10 repository-relative globs]}');
+  &&v.verification.protect.every(g=>reportedPath(g.replace(/\*\*?|\?/g,'x'))&&!/^(?:\*\*\/)*\*{1,2}$/.test(g)&&!g.endsWith('/'))),'Invalid verification: {kind:"preserve"|"red-first", protect:[1-10 repository-relative globs]}');
  requireThat(v.verification===undefined||v.acceptance_commands!==undefined,'verification needs acceptance_commands');
- requireThat(v.verification===undefined||str(v.acceptance_baseline_green),'verification preserve needs acceptance_baseline_green: say why the commands already pass before any change');
+ requireThat(v.verification?.kind!=='preserve'||str(v.acceptance_baseline_green),'verification preserve needs acceptance_baseline_green: say why the commands already pass before any change');
+ requireThat(v.verification?.kind!=='red-first'||v.acceptance_baseline_green===undefined,'verification red-first cannot waive the failing baseline');
  // AC 추적: 어떤 수용 명령이 어떤 수용 기준(AC ID)을 증명하는지. 선택 항목이다.
  checkAcceptanceMap(v);
  checkPrior(v.prior_experience);

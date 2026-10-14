@@ -5,6 +5,7 @@ import {isMain} from './platform.mjs';
 import {read} from './artifact.mjs';
 import {controlPath} from './control-dir.mjs';
 import {TERMINAL_PHASES,nextAction} from './state-policy.mjs';
+import {dangerousBash,bashDirectories} from './lead-bash-guard.mjs';
 import {readStatusLine} from './status-line.mjs';
 
 // Claude Code 훅. SKILL.md의 리드 규칙을 지시가 아니라 차단으로 강제한다.
@@ -29,22 +30,41 @@ const deny=reason=>({hookSpecificOutput:{hookEventName:'PreToolUse',permissionDe
 
 // 허용이면 null, 차단이면 Claude Code가 읽는 훅 출력.
 export function decide(input) {
+ if(input?.tool_name==='Bash')return decideBash(input);
  if(!GUARDED_TOOLS.includes(input?.tool_name))return null;
  const target=input.tool_input?.file_path??input.tool_input?.notebook_path;
  if(typeof target!=='string'||!target)return null;
  const root=repoRootOf(path.resolve(input.cwd??process.cwd(),target));
  if(!root)return null;
- if(fs.existsSync(controlPath(root,'locks/acceptance.json')))return deny('HyperFusion: 수용 테스트의 프로세스 정지가 확인되지 않았습니다. 남은 프로세스를 중지하고 recover 또는 archive로 기록하기 전에는 트리를 수정할 수 없습니다.');
+ if(fs.existsSync(controlPath(root,'locks/acceptance.json')))return deny('HyperFusion: acceptance process shutdown is unproven. Stop remaining processes and record recovery before editing the tree.');
  const stateFile=controlPath(root,'state.json'),writerFile=controlPath(root,'locks/writer.json');
  if(!fs.existsSync(stateFile)&&!fs.existsSync(writerFile))return null;
  // 상태가 있는데 읽지 못하면 막는다. 규칙을 확인할 수 없을 때 열어 두면 강제가 아니다.
  let s,lease;
  try{s=fs.existsSync(stateFile)?read(stateFile):null;lease=fs.existsSync(writerFile)?read(writerFile):null;}
- catch(e){return deny(`HyperFusion 상태를 읽을 수 없어 리드의 수정을 막았습니다(${e.message}). status로 확인하세요.`);}
+ catch(e){return deny(`HyperFusion: state is unreadable (${e.message}); lead edits are blocked. Inspect status.`);}
  if(lease)return lease.owner==='lead'?null
-  :deny(`HyperFusion: ${lease.owner}가 writer lease를 잡고 있습니다(작업 ${lease.task_id}, 라운드 ${lease.round}). lease가 걸린 동안 리드는 트리를 수정하지 않습니다. 브리지 실행 후 finish하고 review에서 판정하세요.`);
+  :deny(`HyperFusion: ${lease.owner} holds the writer lease (task ${lease.task_id}, round ${lease.round}). The lead must not edit the tree; execute the bridge, finish after quiescence, then review.`);
  if(!s||TERMINAL_PHASES.includes(s.phase))return null;
- return deny(`HyperFusion: 작업 ${s.task_id}가 ${s.phase} 단계입니다. 일꾼 예산이 남아 있는 동안 리드는 코드를 쓰지 않습니다. 다음 동작: ${nextAction(s.phase,!!s.open_consult)}. 리드가 직접 고치려면 takeover로 lease를 받아야 합니다.`);
+ return deny(`HyperFusion: task ${s.task_id} is in ${s.phase}. The lead cannot edit while worker budget remains. Next: ${nextAction(s.phase,!!s.open_consult)}. Record takeover and acquire the lead lease before implementation.`);
+}
+
+// Task-local restrictions expire at CLOSE/BLOCKED. User-authorized publication
+// takes place after task shutdown, so it needs no additional approval prompt.
+export function decideBash(input) {
+ const danger=dangerousBash(input?.tool_input?.command);if(!danger)return null;
+ const cwd=path.resolve(input?.cwd??process.cwd());
+ for(const dir of bashDirectories(input.tool_input.command,cwd)){
+ const root=repoRootOf(path.join(dir,'.hf-bash'));if(!root)continue;
+ const stateFile=controlPath(root,'state.json'),writerFile=controlPath(root,'locks/writer.json');
+ if(fs.existsSync(controlPath(root,'locks/acceptance.json')))return deny('HyperFusion: process shutdown is unproven; '+danger+' is blocked until recovery.');
+ let state,lease;
+ try{state=fs.existsSync(stateFile)?read(stateFile):null;lease=fs.existsSync(writerFile)?read(writerFile):null;}
+ catch{return deny('HyperFusion: state is unreadable; '+danger+' is blocked.');}
+ if(!lease&&(!state||TERMINAL_PHASES.includes(state.phase)))continue;
+ return deny('HyperFusion: '+danger+' is blocked during the active task. Finish the worker, review and verify before user-authorized publication. This guard does not grant authority after closure.');
+ }
+ return null;
 }
 
 // 리드가 바로 다음 동작을 해야 하는 단계. 일꾼 실행 중(EXECUTING)이나 사용자 판단이 필요한 단계
@@ -64,7 +84,7 @@ export function decideStop(input) {
  try{s=read(stateFile);}catch{return null;}
  const consult=!!s.open_consult;
  if(!consult&&!LEAD_TURN.includes(s.phase))return null;
- return {decision:'block',reason:`HyperFusion: 작업 ${s.task_id}가 ${s.phase} 단계에 남아 있습니다. 다음 동작: ${nextAction(s.phase,consult)}. 사용자 판단이 필요해서 멈추는 거라면 그 이유를 보고하고 끝내세요.`};
+ return {decision:'block',reason:`HyperFusion: task ${s.task_id} remains in ${s.phase}. Next: ${nextAction(s.phase,consult)}. If user input is required, report the reason before stopping.`};
 }
 
 // SessionStart 훅: 대화가 요약(compact)되거나 새 세션이 같은 저장소에서 시작될 때, 진행 중인 작업이 있으면
@@ -81,10 +101,10 @@ export function decideSessionStart(input) {
  const self=fileURLToPath(new URL('./fusion-state.mjs',import.meta.url)).replaceAll('\\','/');
  const consult=!!s.open_consult;
  const lines=[
-  `HyperFusion: 이 저장소에 진행 중인 작업이 있습니다. 작업 ${s.task_id}, 단계 ${s.phase}${s.owner?`, 일꾼 ${s.owner}`:''}, 라운드 ${s.iteration}${consult?', 열린 상담 있음':''}.`,
-  `다음 동작: ${nextAction(s.phase,consult)}.`,
-  `지금 칠 명령과 채워 둔 입력 틀: node "${self}" next "${root}"`,
-  '요약 전의 기억보다 이 상태를 믿으세요. 일꾼 예산이 남아 있는 동안 리드는 코드를 직접 쓰지 않습니다.'];
+  `HyperFusion: active task ${s.task_id}, phase ${s.phase}${s.owner?`, worker ${s.owner}`:''}, round ${s.iteration}${consult?', consultation open':''}.`,
+  `Next: ${nextAction(s.phase,consult)}.`,
+  `Prepared command and input: node "${self}" next "${root}"`,
+  'Use controller state after compaction. The lead must not implement while worker budget remains. Use English for inter-agent instructions and reports.'];
  return {hookSpecificOutput:{hookEventName:'SessionStart',additionalContext:lines.join('\n')}};
 }
 
@@ -104,7 +124,7 @@ export function settingsSnippet() {
  const command=[{type:'command',command:`node "${script}"`}];
  const usage=fileURLToPath(new URL('./lead-usage.mjs',import.meta.url)).replaceAll('\\','/');
  const collect=[{type:'command',command:`node "${usage}" --hook`,timeout:10}];
- return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command},{matcher:'Bash',hooks:collect}],
+ return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command},{matcher:'Bash',hooks:[...command,...collect]}],
   Stop:[{hooks:[...command,...collect]}],SessionStart:[{matcher:'startup|resume|compact',hooks:[...command,...collect]}],
   UserPromptSubmit:[{hooks:[...command,...collect]}],SessionEnd:[{hooks:collect}],StopFailure:[{hooks:collect}]}};
 }

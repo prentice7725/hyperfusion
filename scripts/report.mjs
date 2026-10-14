@@ -38,7 +38,11 @@ export function report(root,taskId) {
  if(metrics){metrics.claude_tokens_per_success=m.claude_tokens_per_success??null;metrics.claude_usage=m.claude_usage??null;metrics.review_calls=m.review_calls??null;metrics.unreported_calls=m.unreported_calls??null;}
  const draft=path.join(dir,'pr-draft.md');
  const verification=optional('verification.json');
- return {task_id:taskId,rounds,lead_load,metrics,ac_table:verification?.ac_table??null,
+ const currentFile=controlPath(root,'state.json'),current=fs.existsSync(currentFile)?read(currentFile):null;
+ const hook=optional('hook-observation.json')??(current?.task_id===taskId?current.hook_observation:null);
+ return {task_id:taskId,communication_language:'en',hooks_observed:hook?.hooks_observed??false,hook_observation:hook,
+  acceptance_test_changes:verification?.acceptance_test_changes??(current?.task_id===taskId?current.acceptance_test_changes:null),
+  rounds,lead_load,metrics,ac_table:verification?.ac_table??null,
   changed_files:verification?.changed_files??null,unattributed_changes:verification?.unattributed_changes??null,
   pr_draft:fs.existsSync(draft)?draft:null};
 }

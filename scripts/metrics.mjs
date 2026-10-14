@@ -48,7 +48,10 @@ export function measure(root,observations=null) {
  }
  const runs=collectRunUsage(root,s),accounting=summarizeUsage(runs,lead,hostModel);
  const countedImplementers=[...EXECUTORS,...(runs.some(r=>r.executor==='sol'&&r.role==='implement')?['sol']:[])];
- const v={task_id:s.task_id,success:s.phase==='CLOSE',initial_executor:s.initial_executor??null,attempts:s.attempts??null,
+ const outcomes=s.reviews??[];
+ const v={task_id:s.task_id,success:s.phase==='CLOSE',hooks_observed:s.hook_observation?.hooks_observed??false,hook_observation:s.hook_observation??null,
+  communication_language:s.communication_language??null,rework_rate:outcomes.length?outcomes.filter(r=>['redo','alternative'].includes(r.verdict)).length/outcomes.length:null,
+  initial_executor:s.initial_executor??null,attempts:s.attempts??null,
   objective:'minimize total Claude (Opus + Sonnet + Haiku) tokens per successful task',
   lead_target_model:s.lead_target_model??null,lead_model:s.lead_model??null,
   lead_weighted_usage:weightedUsage(lead),lead_usage:lead,lead_tokens_per_success:s.phase==='CLOSE'&&lead?lead.lead_tokens:null,

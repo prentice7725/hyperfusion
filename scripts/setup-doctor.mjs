@@ -12,6 +12,7 @@ import {errorRecord} from './cli.mjs';
 import {SCHEMA_VERSION} from './versions.mjs';
 import {smoke} from './smoke.mjs';
 import {installationRoster,recommendPreset} from './installation.mjs';
+import {hookObservation} from './hook-observation.mjs';
 
 // 실행 전 점검. 일꾼 CLI는 모두 프로브해서 교체 가능한 인력을 미리 파악한다.
 const checks=[];
@@ -73,6 +74,8 @@ if(c?.review.by==='delegate'){
  check('reviewers',()=>{const ok=reviewers.filter(r=>r.ok).map(r=>r.name);if(!ok.length)throw Error('review.by is delegate but no reviewer CLI is installed');return ok.join(', ');});
 }
 // 기억 계층은 선택 사항이라 실패해도 전체 점검을 막지 않는다.
+const hook_observation=root?hookObservation(root):null;
+if(hook_observation?.warning)warnings.push(hook_observation.warning);
 let memory=null;
 try{const w=c?workspaceOf(c):null;if(w){memory={...memoryStats(w),binding:root?bindingStatus(w,repoId(root)):'unknown'};if(memory.binding==='foreign'||memory.binding==='unclaimed')warnings.push(`memory workspace "${w}" is ${memory.binding==='foreign'?'bound to other repositories':'not bound to any repository'}; memory commands will refuse until the user approves: node memory.mjs bind REPO`);}}catch(e){memory={error:e.message};}
 let project=null;
@@ -95,6 +98,6 @@ if(smokeWanted&&c){
   check('smoke',()=>{const broken=smoke_results.filter(r=>!r.ok);if(broken.length)throw Error('Contract broken: '+broken.map(r=>`${r.executor} at ${r.stage}: ${r.error}`).join(' | '));return smoke_results.map(r=>`${r.executor} ok ${Math.round(r.ms/1000)}s`).join(', ');});
  }
 }
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,smoke:smoke_results,bench,reviewers,memory,project,probe_file,review:c?.review??null,
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,hook_observation,smoke:smoke_results,bench,reviewers,memory,project,probe_file,review:c?.review??null,
  installation,recommended_preset,roster:{lead:`${c?.lead_model??'Claude Opus'} (host)`,workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;

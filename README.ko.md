@@ -1,12 +1,12 @@
 # HyperFusion
 
-v0.24.0은 Codex 외부 쓰기 경로가 상태·CLI 설정·스킬·Git 메타데이터와 겹치면 거절합니다. 호스트 사용량에 서브에이전트를 포함하고 transcript를 증분 수집합니다. [재현 가능한 A/B 파일럿](references/benchmark-pilot.md)은 양쪽 측정 창, Java/Spring을 포함한 고정 fixture 10개, 구성 요소별 가중 지표와 명시적 모델 가격표를 제공합니다. Codex 스모크는 호환 resume 옵션이 있을 때 같은 thread의 REDO 라운드까지 확인합니다. 실제 CLI 호환성은 설치 환경에서 검증해야 합니다.
+v0.25.0은 red-first 테스트 보호 계약을 고정하고, 기존 수용 테스트 변경을 표시하여 자동 승인을 막습니다. Claude·Grok의 일반 비밀 경로 Read deny, 호스트 훅 관측 기록, 진행 중 작업의 위험 Bash 차단을 추가했습니다. 에이전트 간 지시·보고는 영어로 통일하며 각 보호 장치의 한계도 명시합니다. [수용 테스트와 에이전트 보호](references/agent-guards.md)를 참고하세요.
 
 [English](README.md) | 한국어 | [日本語](README.ja.md)
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.24.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.25.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 왜 만들었나
 

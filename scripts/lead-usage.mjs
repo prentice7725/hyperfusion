@@ -26,7 +26,7 @@ export function rememberHost(root,input,at=Date.now()) {
  const file=controlPath(root,'host-session.json'),prior=optional(file);
  const session=hash(input.session_id);
  const fresh=input.hook_event_name==='UserPromptSubmit'||prior?.session!==session;
- atomic(file,{session,turn_started_at:fresh?new Date(at).toISOString():prior.turn_started_at,observed_at:new Date(at).toISOString()});
+ atomic(file,{session,turn_started_at:fresh?new Date(at).toISOString():prior.turn_started_at,observed_at:new Date(at).toISOString(),hook_event_name:input.hook_event_name,tool_name:input.tool_name??null});
  const tasks=controlPath(root,'tasks');
  if(fs.existsSync(tasks))for(const item of fs.readdirSync(tasks,{withFileTypes:true})){
   if(!item.isDirectory())continue;const w=optional(windowFile(root,item.name));

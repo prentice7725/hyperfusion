@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import {denyRules} from '../bash-policy.mjs';
-import {prompt,bashRules,editDeny,probe as probeCli,extractResult} from './common.mjs';
+import {prompt,bashRules,editDeny,secretReadDeny,probe as probeCli,extractResult} from './common.mjs';
 import {memberBinary} from '../member-registry.mjs';
 
 // Grok Build CLI 헤드리스 모드. stdin을 프롬프트로 읽지 않으므로 --prompt-file을 쓴다.
@@ -23,7 +23,7 @@ export function dispatch(brief,lease,{session,resume,probe:cli,promptFile,option
  // 쓰기 권한은 scope 경로로만 연다. 이 규칙은 협업 통제이지 OS 샌드박스가 아니다.
  const allow=[...(edit?brief.scope.paths.flatMap(p=>[`Edit(${p})`,`Edit(${p}/**)`]):[]),...bashRules(brief)];
  const args=['--prompt-file',promptFile,'--output-format','json','--cwd',brief.repo_root,'--max-turns',String(options.max_turns??40),...(options.model?['--model',options.model]:[]),...(options.reasoning_effort?['--reasoning-effort',options.reasoning_effort]:[]),
-  resume?'--resume':'--session-id',session,...allow.flatMap(r=>['--allow',r]),...[...editDeny(brief),...DENY,...(brief.consult?CONSULT_DENY:[])].flatMap(r=>['--deny',r])];
+  resume?'--resume':'--session-id',session,...allow.flatMap(r=>['--allow',r]),...[...editDeny(brief),...secretReadDeny(),...DENY,...(brief.consult?CONSULT_DENY:[])].flatMap(r=>['--deny',r])];
  return {cli:{...cli,args,session_id:session,resume,prompt_file:promptFile},prompt:prompt(brief,lease)};
 }
 
