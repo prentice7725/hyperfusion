@@ -79,7 +79,9 @@ export function transcriptMessages(text,sessionId,forcedRole=null) {
   if(row.isApiErrorMessage===true||message?.model==='<synthetic>')continue;
   if(typeof message?.id!=='string'||!message.id||!Number.isFinite(at))throw Error('HOST_USAGE_UNRECOGNIZED_ROW');
   const role=forcedRole??(row.isSidechain===true||row.isSubagent===true?'subagent':'lead');
-  const id=hash(JSON.stringify([role,message.id])),usage=message.usage;
+  // API IDs are global: parent/child transcript copies must count once. Keep
+  // the original hash so owners/segments from earlier releases still dedupe.
+  const id=hash(message.id),usage=message.usage;
   const tokens={input_tokens:usage?.input_tokens,output_tokens:usage?.output_tokens,
    cache_read_input_tokens:usage?.cache_read_input_tokens??0,cache_creation_input_tokens:usage?.cache_creation_input_tokens??0};
   const valid=Object.values(tokens).every(numeric)&&typeof message.model==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/.test(message.model);
@@ -105,7 +107,7 @@ export function readTranscriptIncremental(root,file,sessionId,forcedRole=null) {
  try{
   const anchorAt=Math.max(0,offset-256),anchor=Buffer.alloc(offset-anchorAt);
   fs.readSync(fd,anchor,0,anchor.length,anchorAt);
-  if(!cache||cache.version!==1||cache.dev!==st.dev||cache.ino!==st.ino||st.size<offset||hash(anchor)!==cache.anchor
+  if(!cache||cache.version!==2||cache.dev!==st.dev||cache.ino!==st.ino||st.size<offset||hash(anchor)!==cache.anchor
     ||(st.size===cache.size&&st.mtimeMs!==cache.mtimeMs)) {cache=null;offset=0;}
   const length=st.size-offset;
   if(length>MAX_BYTES)throw Error('HOST_USAGE_TRANSCRIPT_LIMIT');
@@ -131,7 +133,7 @@ export function readTranscriptIncremental(root,file,sessionId,forcedRole=null) {
   let incompleteTail=false;
   const suffix=chunk.subarray(complete).toString('utf8').trim();
   if(suffix){try{JSON.parse(suffix);}catch{incompleteTail=true;}}
-  atomic(cacheFile,{version:1,dev:st.dev,ino:st.ino,size:st.size,mtimeMs:st.mtimeMs,offset,anchor:hash(nextAnchor),messages:[...groups.values()]});
+  atomic(cacheFile,{version:2,dev:st.dev,ino:st.ino,size:st.size,mtimeMs:st.mtimeMs,offset,anchor:hash(nextAnchor),messages:[...groups.values()]});
   const messages=[...groups.values()];messages.incompleteTail=incompleteTail;return messages;
  }finally{fs.closeSync(fd);}
 }

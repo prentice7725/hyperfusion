@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
-import {read} from '../scripts/artifact.mjs';
+import {read,hash} from '../scripts/artifact.mjs';
 import {measure} from '../scripts/metrics.mjs';
 import {rememberHost,collectHostUsage,transcriptMessages} from '../scripts/lead-usage.mjs';
 import {settingsSnippet} from '../scripts/lead-guard.mjs';
@@ -127,4 +127,15 @@ test('subagent files contribute once, separately from the main host',t=>{
  const m=metric(f);assert.equal(m.lead_usage.lead_tokens,74);assert.equal(m.lead_usage.subagent_tokens,37);
  assert.equal(m.lead_usage.by_role.lead.input_tokens,10);assert.equal(m.lead_usage.by_role.subagent.input_tokens,10);
  assert.equal(m.lead_weighted_usage.input_equivalent,79);
+});
+
+test('API copies in parent/subagent files dedupe globally and retain legacy message IDs',t=>{
+ const f=setup(t);close(f);const at=Date.now()+100;
+ put(f,[row('shared-api',f.anchor+10)]);
+ const children=path.join(path.dirname(f.transcript),sid,'subagents');fs.mkdirSync(children,{recursive:true});
+ fs.writeFileSync(path.join(children,'agent-copy.jsonl'),JSON.stringify(row('shared-api',f.anchor+10,{isSidechain:true}))+'\n');
+ collect(f,at);assert.equal(metric(f).lead_usage.lead_tokens,37);
+ const owner=read(path.join(f.control,'host-usage-owners.json'));
+ assert.equal(Object.keys(owner).length,1);
+ assert.equal(owner[hash('shared-api')],f.brief.task_id);
 });
