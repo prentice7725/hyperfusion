@@ -11,7 +11,7 @@
 - `executor_bash_rules`(선택): 테스트·린트·빌드·읽기 전용 조회 모양의 규칙만 받는다(`Bash(npm test*)`, `Bash(node --test*)`, `Bash(pytest*)`, `Bash(git diff*)` 등). 와일드카드는 맨 끝의 `*` 하나만, 셸 메타문자(`; & | < > ` + "`" + ` $ ( )`)·따옴표·줄바꿈·인터프리터·네트워크 도구(`node *`, `sh -c`, `curl`)·`npm *`처럼 열린 규칙은 `init` 때 거절된다. 모양 제한은 `HF_BASH_POLICY=permissive`로만 풀 수 있다.
 - **브리지는 dispatch 파일을 믿지 않는다.** 실행 직전에 brief와 상태로 같은 요청을 다시 만들어 실행 파일, 인자, 프롬프트가 하나라도 다르면 `DISPATCH_TAMPERED`로 멈춘다(상담도 읽기 전용 brief인지 확인). 일꾼에게는 필요한 환경변수만 넘긴다(`HF_ENV_PASS` 참고).
 - **전송 마스킹:** 무결성 확인 뒤, 실제 stdin·prompt 파일·Antigravity `-p` 인자로 보내기 직전에 공통 마스킹을 적용한다. brief·diff·이전 결과·기억의 이메일, IPv4/IPv6, 알려진 키·토큰 형식, 비밀번호/비밀값 할당, PEM 개인키를 가린다. JSON 안에 다시 인코딩된 JSON도 처리한다. 원본 dispatch는 로컬 감사용으로 보존하고 `redaction-*.json`에는 종류별 개수만 남긴다. 필수 작업 ID·경로·CLI 규칙에 민감값이 있으면 바꾸어 전송하지 않고 `REDACTION_UNSAFE`로 거절한다. CLI 도움말 프로브도 실행과 동일한 벤더별 환경변수 허용 목록을 쓴다. 벤더 인증값은 인증을 위해 유지한다.
-- **자동 정지 확인:** 오토파일럿이 실행하는 브리지는 프로세스 표를 관측해 PID·생성 시각으로 자손을 추적하고, 종료 뒤 남은 프로세스가 없는지 다시 확인하여 `quiescence-*.json`에 기록한다. 확인 실패·남은 자손·불확실한 종료에서는 자동 finish하지 않는다. 부모 연결을 끊고 관측 사이에 빠져나간 자손까지 완전하게 추적하는 OS 격리는 아니며, 수동 실행에는 기존 리드 정지 확인 절차가 계속 적용된다.
+- **자동 정지 확인:** 오토파일럿이 실행하는 브리지는 프로세스 표를 관측해 PID·생성 시각으로 자손을 추적하고, 종료 뒤 남은 프로세스가 없는지 다시 확인하여 `quiescence-*.json`에 기록한다. 종료 뒤 남은 자손 중 감독 중에 관측한 바로 그 프로세스(PID와 생성 시각이 모두 같은 것)는 한 번 SIGKILL하고 `reaped`에 남긴 뒤 다시 확인한다. agy의 도구 자식은 저마다 자기 프로세스 그룹을 만들어 그룹 kill로는 죽지 않고 init 밑에 고아로 남기 때문이다(AionCore가 agy 1.1.9에서 실측, 여기서는 같은 모양의 프로세스로 재현). 생성 시각이 다르면 재사용된 PID로 보고 건드리지 않는다. 폴링(1초) 사이에 태어나 바로 빠져나간 자손은 목록에 없어 정리하지 못하고, 그런 것은 그대로 정지 증명 실패로 남는다. 확인 실패·남은 자손·불확실한 종료에서는 자동 finish하지 않는다. 부모 연결을 끊고 관측 사이에 빠져나간 자손까지 완전하게 추적하는 OS 격리는 아니며, 수동 실행에는 기존 리드 정지 확인 절차가 계속 적용된다.
 
 ## Grok (`grok`)
 
@@ -24,7 +24,9 @@
 ## Antigravity (`agy`)
 
 - 모든 플래그는 `-p` 앞에 오고 프롬프트는 `-p`의 인자다.
-- 인자: `--output-format json --json-schema <결과 스키마> --add-dir REPO`, edit 허용 시 `--mode accept-edits`, 기본 `--sandbox`, 재개 시 `--conversation <id>`.
+- 인자: `--output-format json --json-schema <결과 스키마> --add-dir REPO`, edit 허용 시 `--mode accept-edits`, 기본 `--sandbox`, 재개 시 `--conversation <id>`. 새 대화(첫 라운드·상담)는 설치된 agy가 도움말에 `--new-project`를 내보일 때만 그 플래그를 붙인다. 없으면 agy가 전역으로 활성화된 다른 프로젝트를 재사용해 엉뚱한 workspace의 플러그인·훅을 읽는다(AionCore가 agy 1.1.13에서 실측). 재개는 그 대화의 프로젝트를 이어 쓰므로 붙이지 않는다.
+- 일꾼 프로세스의 `PWD`는 저장소 루트로 고정한다. agy는 cwd나 `--add-dir`이 아니라 `PWD`로 workspace를 정하기도 하는데, 환경변수 정리에서 `PWD`가 빠지면 엉뚱한 곳을 본다(같은 출처의 실측). 모든 일꾼에 같게 적용한다.
+- agy는 저장소의 `.agents/`(또는 `.agent/`, `_agents/`, `_agent/`)에서 `hooks.json`과 `skills/`를 읽어 라운드 중에 실행한다. 저장소 내용이 일꾼 실행 중 명령을 돌릴 수 있다는 뜻이라, 스냅샷은 이 폴더들을 gitignore 여부와 관계없이 감시하고(라운드 중 바뀌면 범위 밖 변경으로 복구), doctor는 이미 있는 것을 경고한다. 막지는 않는다(husky처럼 정상 사용이 있다).
 - 대화 ID는 CLI가 발급한다. 첫 라운드 envelope의 `conversation_id`를 `session-N.json`에 남기고 finish에서 상태에 묶는다. 이후 다른 ID로 바꾸려면 recovery가 필요하다.
 - 설치된 agy가 `--print-timeout`을 지원하면 브리지 timeout보다 30초 짧게 넘긴다(기본 1170s). agy가 스스로 끝내면 강제 종료 대신 정상 envelope가 남는다.
 - agy는 Go 형식 도움말(`Usage of agy.EXE:`)을 stderr로 출력한다. 프로브는 stdout과 stderr를 합쳐서 확인한다.
@@ -58,7 +60,7 @@
 ## Windows
 
 - **실행 파일 찾기**: PATH와 PATHEXT(.exe, .cmd …)로 찾는다. npm이 만든 `.cmd` 래퍼는 cmd.exe를 거치지 않고 안의 실제 진입점(.js → 현재 node로 실행, 또는 .exe)을 꺼내 직접 실행한다. cmd.exe는 JSON 프롬프트의 따옴표·`%`·`^`를 망가뜨리기 때문이다. 진입점을 못 찾으면 `HF_GROK_BIN`/`HF_AGY_BIN`/`HF_CLAUDE_BIN`에 .exe나 .js 진입점 경로를 직접 넣는다.
-- **프로세스 정리**: Windows에는 프로세스 그룹이 없다. 일꾼이 살아 있을 때만 `taskkill /T /F`로 트리를 끝낸다(PID 재사용 때문에 죽은 PID에는 쓰지 않는다). 따라서 **일꾼이 먼저 정상 종료한 뒤 남은 자손 프로세스는 브리지가 잡지 못한다.** finish 전에 리드가 확인한다. 예: PowerShell `Get-CimInstance Win32_Process | ? ParentProcessId -eq <process-N.json의 pid>`.
+- **프로세스 정리**: Windows에는 프로세스 그룹이 없다. 일꾼이 살아 있을 때만 `taskkill /T /F`로 트리를 끝낸다(PID 재사용 때문에 죽은 PID에는 쓰지 않는다). 따라서 **일꾼이 먼저 정상 종료한 뒤 남은 자손 프로세스는 `taskkill`로 잡지 못한다.** 오토파일럿 브리지는 감독 중 관측한 자손을 정지 확인 단계에서 개별로 정리한다(위 자동 정지 확인). 수동 실행이나 그래도 남은 경우에는 finish 전에 리드가 확인한다. 예: PowerShell `Get-CimInstance Win32_Process | ? ParentProcessId -eq <process-N.json의 pid>`.
 - **명령줄 길이**: Antigravity는 프롬프트를 명령줄 인자로 받는데 Windows는 약 32,000자 제한이 있다. 넘으면 lease 획득 전에 거절하므로 brief를 줄인다.
 - **경로 표기**: 일꾼이 `src\a.ts`처럼 역슬래시로 보고해도 브리지가 `src/a.ts`로 맞춘 뒤 검증한다.
 - **알려진 문제**: agy `-p`가 TTY 없는 Windows 환경에서 멈춘다는 보고가 있다([antigravity-cli#318](https://github.com/google-antigravity/antigravity-cli/issues/318)). 브리지는 파이프로 실행하므로 해당 버전에서는 timeout까지 기다리게 된다. `executors.antigravity.timeout_ms`를 짧게(예: 300000) 잡아 두면 빨리 실패하고 router가 다음 일꾼으로 넘긴다. Grok Build CLI의 Windows 지원 여부는 확인하지 못했다.

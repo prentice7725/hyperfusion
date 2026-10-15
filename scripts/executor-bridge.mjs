@@ -43,7 +43,8 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
  }catch{activity=null;}
  // 감시 기록 실패가 라운드의 성공·실패나 lease 처리를 바꾸면 안 된다.
  const guard=fn=>{try{if(activity)fn();}catch{/* observation only */}};
- const monitor=proveQuiescence?watchProcessTree():null;
+ // 일꾼이 끝난 뒤 남은 자손 중 감독 중에 관측한 바로 그 프로세스는 컨트롤러가 정리한다(그룹 밖으로 빠져나간 agy 도구 자식 등).
+ const monitor=proveQuiescence?watchProcessTree({reap:true}):null;
  // create-once 실행 표식이 크래시나 재실행에서도 중복 프로세스를 막는다.
  immutable(path.join(dir,`launch-${tag}.json`),{executor:request.executor,bridge_pid:process.pid,session_id:request.cli.session_id,at:new Date().toISOString()});
  if(request.cli.prompt_file)fs.writeFileSync(request.cli.prompt_file,request.prompt,{flag:'wx',mode:0o600});
@@ -66,7 +67,8 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
   exit=await new Promise(resolve=>{
    forceResolve=resolve;
    // Windows에는 프로세스 그룹이 없어 detached를 쓰지 않고(새 콘솔이 뜬다) taskkill /T로 트리를 정리한다.
-   child=spawn(request.cli.executable,[...(request.cli.prefix_args??[]),...request.cli.args],{cwd:root,stdio:[request.stdin===undefined?'ignore':'pipe','pipe','pipe'],shell:false,env:workerEnv(request.executor),detached:!isWin,windowsHide:true});
+   // PWD를 작업 폴더로 고정한다. agy는 cwd나 --add-dir이 아니라 PWD로 workspace를 정하기도 하는데, 환경 정리에서 PWD가 빠지면 엉뚱한 곳을 본다.
+   child=spawn(request.cli.executable,[...(request.cli.prefix_args??[]),...request.cli.args],{cwd:root,stdio:[request.stdin===undefined?'ignore':'pipe','pipe','pipe'],shell:false,env:{...workerEnv(request.executor),PWD:root},detached:!isWin,windowsHide:true});
    alive=!!child.pid;child.on('exit',()=>{alive=false;exited=true;});
    if(child.pid)monitor?.start(child.pid);
    if(child.pid)guard(()=>activity.started());
@@ -85,7 +87,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
   clearTimeout(timer);clearTimeout(killTimer);clearInterval(activityTimer);process.off('SIGTERM',onTerm);process.off('SIGINT',onTerm);
   signal?.removeEventListener('abort',onTerm);
   // 잔존 자식을 정리한다. POSIX는 그룹 전체, Windows는 일꾼이 살아 있을 때만 트리 종료.
-  // 그룹 밖으로 빠져나간 자손(Windows에서는 일꾼이 먼저 끝난 뒤 남은 자손)은 리드가 확인해야 한다.
+  // 그룹 밖으로 빠져나간 자손(Windows에서는 일꾼이 먼저 끝난 뒤 남은 자손)은 정지 증명 단계에서 감독 중 관측한 것만 정리하고, 그래도 남으면 리드가 확인한다.
   killTree(child,{force:true,alive});
  }
  const proof=monitor?await monitor.finish({exited,aborted:exit.signal==='SUPERVISOR_ABORT'}):null;

@@ -88,3 +88,21 @@ test('unknown/default models remain unknown and effort pairs cannot collide',()=
  assert.equal(Object.keys(r.by_model_effort).length,3);assert.equal(r.by_model_effort['[null,null]'].model_family,null);
  assert.equal(r.by_model_effort['[null,null]'].cost_usd,null);
 });
+
+// agy는 강도를 모델 ID에서 읽는다. 모델을 정하지 않은 실행에 --effort를 줘도 효과가 확인되지 않으므로 보내지도, 기록하지도 않는다.
+test('without a model, agy gets no --effort and no effort is recorded; an operator effort with no model is refused',async t=>{
+ assert.deepEqual(selectAgyModel({reasoning_effort:'high'}),{model:null,model_family:null,reasoning_effort:null,effort_flag:null});
+ const f=fixture(t,{initialize:false});
+ // 기본 설정: 기본 강도가 채워지지만 모델이 없으니 빠진다(CLI 기본값으로 돈다).
+ run(f.root,'init',{...f.brief,executor:'antigravity'});
+ const d=f.begin();
+ assert.ok(!d.cli.args.includes('--effort'),JSON.stringify(d.cli.args));
+ assert.equal(d.cli.reasoning_effort,null);
+ await execute(f.root);
+ assert.equal(read(path.join(f.control,'tasks/HF-test/usage-1.json')).reasoning_effort,null,'usage does not claim an effort that was never applied');
+ // 운영자가 모델 없이 강도만 적으면 설정 단계에서 막는다.
+ write(f,{reasoning_effort:'high'});
+ assert.throws(()=>config(f.root),/EFFORT_NEEDS_MODEL/);
+ write(f,{reasoning_effort:null});assert.doesNotThrow(()=>config(f.root));
+ write(f,{model:'gemini-4-argon',reasoning_effort:'high'});assert.doesNotThrow(()=>config(f.root));
+});

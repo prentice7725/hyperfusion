@@ -15,7 +15,7 @@ v0.25.0ではred-firstテスト保護契約を固定し、既存の受け入れ�
 
 ## AGYモデル系統とeffort (0.23.0)
 
-`executors.antigravity.model:"gemini-4-argon"`と`reasoning_effort:"high"`を別々に設定します。effortフラグを重複させず`gemini-4-argon-high`を選び、`-medium`で固定したモデルはmediumを維持します。明示的なeffortの矛盾は起動前に拒否します。任意の`models_by_difficulty`は実装の系統を選び、レビューは基本modelを使います。最終slugを`agy models`で確認し、利用できない組み合わせを別モデルに置き換えません。既定値・アカウント設定は変更しません。`usage_by_model_effort`で選択した系統/強度を分け、未指定はnullです。→ [設定案内](references/configuration.md#agy-모델-계열과-effort-분리-argon)。実AGY推論・利用権限は未検証です。
+`executors.antigravity.model:"gemini-4-argon"`と`reasoning_effort:"high"`を別々に設定します。effortフラグを重複させず`gemini-4-argon-high`を選び、`-medium`で固定したモデルはmediumを維持します。明示的なeffortの矛盾は起動前に拒否します。任意の`models_by_difficulty`は実装の系統を選び、レビューは基本modelを使います。最終slugを`agy models`で確認し、利用できない組み合わせを別モデルに置き換えません。modelがなければeffortを渡さず記録もしません(agyはeffortをモデルIDから読みます)。modelなしで`reasoning_effort`だけを書くと`EFFORT_NEEDS_MODEL`です。既定値・アカウント設定は変更しません。`usage_by_model_effort`で選択した系統/強度を分け、未指定はnullです。→ [設定案内](references/configuration.md#agy-모델-계열과-effort-분리-argon)。実AGY推論・利用権限は未検証です。
 
 ## Codexと送信ポリシーの改善 (0.22.0)
 
@@ -111,7 +111,7 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 ワーカーがユーザーのファイルを勝手に触れないよう、何層かで防ぎます。ただしこれは**協調的な統制であり、OSのサンドボックスではありません。**
 
 - 制御ファイル（状態、brief、スナップショット）は作業フォルダの外`~/.hyperfusion/state/`に置きます（`HF_STATE_DIR`で変更）。ワーカーが自分で範囲を広げることはできません。
-- スナップショットは`.git`の設定・フック、リンクworktreeの専用`config.worktree`、`.env`、無視された`.gitignore`、`node_modules/.bin`まで見ます。コントローラのgitは呼び出し直前にinclude・条件付きinclude・worktreeを含む実際の適用設定を読み直し、実行可能なドライバーを無効化します。設定を読めなければ`GIT_CONFIG_UNREADABLE`で停止し、ドットを含むドライバー・条件付きinclude名も検査します。安全性のため設定照会プロセスは増えますが、HEADと両Gitフォルダは引き続き1回のrev-parseで取得します。
+- スナップショットは`.git`の設定・フック、リンクworktreeの専用`config.worktree`、`.env`、無視された`.gitignore`、`node_modules/.bin`、agyのworkspaceフォルダ(`.agents/`・`.agent/`・`_agents/`・`_agent/`。agyがラウンド中に実行するフックとスキル)まで見ます。コントローラのgitは呼び出し直前にinclude・条件付きinclude・worktreeを含む実際の適用設定を読み直し、実行可能なドライバーを無効化します。設定を読めなければ`GIT_CONFIG_UNREADABLE`で停止し、ドットを含むドライバー・条件付きinclude名も検査します。安全性のため設定照会プロセスは増えますが、HEADと両Gitフォルダは引き続き1回のrev-parseで取得します。
 - ブリッジは実行直前にリクエストを再生成して照合します。ワーカーには必要な環境変数だけを渡します。
 - Bashの許可ルールはテスト・lint・ビルドの形だけを受け付けます。サンドボックス解除などの緩和は、リポジトリ設定ではなくオペレーターの環境変数でのみ有効にします（[configuration](references/configuration.md#보안-관련-환경변수)）。
 - 読み取り専用の相談・レビューは、ツールのサンドボックスではなく前後のスナップショット比較で保証します（破った回答は捨てます）。Antigravityの`--sandbox`はターミナルだけを制限し、ファイル書き込みツールは止められません。

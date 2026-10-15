@@ -155,6 +155,8 @@ export function config(root) {
   const efforts=k==='antigravity'?supportedAgyEfforts(o.model):EFFORT_LEVELS[k]??[];
   if(o.reasoning_effort!==undefined&&!efforts.includes(o.reasoning_effort))throw Error(`EFFORT_UNSUPPORTED: ${k} reasoning_effort must be one of ${efforts.join(', ')||'(none)'}`);
   if(k==='antigravity'){
+   // 운영자가 직접 적은 강도만 막는다. 기본 강도(DEFAULT_EFFORT)는 모델이 없으면 selectAgyModel이 빼고 CLI 기본값으로 돈다.
+   if(v.effort_source.antigravity==='config'&&o.model==null&&o.models_by_difficulty===undefined)throw Error('EFFORT_NEEDS_MODEL: executors.antigravity.reasoning_effort has no effect without a model; agy reads effort from the model id. Set executors.antigravity.model (e.g. gemini-4-argon with reasoning_effort, or gemini-4-argon-high), or remove reasoning_effort');
    selectAgyModel(o);
    for(const model of Object.values(o.models_by_difficulty??{}))selectAgyModel({...o,model});
   }

@@ -17,7 +17,7 @@ export const binary=()=>memberBinary('antigravity');
 const unsandboxed=(options,brief)=>options.sandbox===false&&!brief?.consult;
 export const probe=(options={})=>{
  const choice=selectAgyModel(options);
- const cli=probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(choice.model||options.models_by_difficulty?['--model']:[]),...(choice.effort_flag?['--effort']:[])],['--print-timeout','--model','--effort'],{executor:'antigravity'});
+ const cli=probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(choice.model||options.models_by_difficulty?['--model']:[]),...(choice.effort_flag?['--effort']:[])],['--print-timeout','--model','--effort','--new-project'],{executor:'antigravity'});
  return choice.model?{...cli,model_check:checkModel(cli,choice.model)}:cli;
 };
 
@@ -60,8 +60,11 @@ export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
  const args=['--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),...(choice.model?['--model',choice.model]:[]),...(choice.effort_flag?['--effort',choice.effort_flag]:[]),
   // 상담은 plan 모드(읽기·계획만), 구현은 accept-edits.
   ...(brief.consult?['--mode','plan']:brief.allowed_actions.includes('edit')?['--mode','accept-edits']:[]),'--add-dir',brief.repo_root,
-  ...(unsandboxed(options,brief)?[]:['--sandbox']),...(cli.supports?.['--print-timeout']?['--print-timeout',printTimeout(options)]:[]),
-  ...(resume?['--conversation',session]:[]),'-p',text];
+  ...(unsandboxed(options,brief)?[]:['--sandbox']),
+  // 새 대화는 --new-project로 연다. 없으면 agy가 전역으로 활성화된 다른 프로젝트를 재사용해 엉뚱한 workspace의 플러그인·훅을 읽는다
+  // (AionCore가 agy 1.1.13에서 실측). 재개 라운드는 --conversation이 그 대화의 프로젝트를 이어 쓰므로 붙이지 않는다. 모르는 agy에는 넘기지 않는다.
+...(cli.supports?.['--print-timeout']?['--print-timeout',printTimeout(options)]:[]),
+  ...(resume?['--conversation',session]:cli.supports?.['--new-project']?['--new-project']:[]),'-p',text];
  // 프롬프트를 명령줄로 넘기므로 Windows 길이 제한을 lease 획득 전에 확인한다.
  assertCommandLine(cli.executable,[...(cli.prefix_args??[]),...args]);
  return {cli:{...cli,args,session_id:session??null,resume,model:choice.model,model_family:choice.model_family,reasoning_effort:choice.reasoning_effort,ignored_bash_rules:ignored},prompt:text};

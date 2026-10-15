@@ -25,6 +25,7 @@ if(mode==='tamper'&&!args.includes('--version')&&!args.includes('--help')){
 }
 // 일꾼이 받은 환경변수 이름을 남겨, 비밀값이 새지 않는지 테스트가 확인한다.
 fs.writeFileSync(HERE+'/fake-env.json',JSON.stringify(Object.keys(process.env)));
+fs.writeFileSync(HERE+'/fake-pwd.txt',process.env.PWD??'');
 // 보이지 않는 곳에 심는 공격: git 훅, git 설정, .gitignore된 .env와 node_modules/.bin.
 const PLANT={
  'guard-hook':()=>{fs.mkdirSync('.git/hooks',{recursive:true});fs.writeFileSync('.git/hooks/pre-commit','#!/bin/sh\\necho pwned\\n',{mode:0o755});return ['.git/hooks/pre-commit'];},

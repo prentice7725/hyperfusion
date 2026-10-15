@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {config,selectExecutor,EXECUTORS,CAP,automaticImplementer} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
-import {repo,git,read,atomic,riskyGitConfig} from './artifact.mjs';
+import {repo,git,read,atomic,riskyGitConfig,agentCustomizations} from './artifact.mjs';
 import {controlRoot,controlPath,isLegacy,ensureControl} from './control-dir.mjs';
 import {workspaceOf} from './memory-policy.mjs';
 import {stats as memoryStats,bindingStatus} from './memory-store.mjs';
@@ -54,6 +54,8 @@ if(root){
  });
  // 저장소 설정에 실행 가능한 항목(훅, fsmonitor, filter, 외부 diff)이 있으면 알린다. 막지는 않는다(husky 같은 정상 사용이 있다).
  try{const risky=riskyGitConfig(root);if(risky.length)warnings.push('git config can run commands (verify they are yours): '+risky.join('; '));}catch(e){warnings.push('git config scan failed: '+e.message);}
+ // agy는 저장소의 .agents/hooks.json과 skills를 라운드마다 읽어 실행한다. 막지는 않는다(스냅샷이 라운드 중 변경을 잡는다).
+ try{const agents=agentCustomizations(root);if(agents.length)warnings.push('Antigravity (agy) runs these repository hooks/skills during its rounds (verify they are yours): '+agents.join(', '));}catch{}
  // 중단 흔적이 있으면 무엇이 남았는지와 다음 명령까지 보여 준다. 잠금은 절대 자동으로 지우지 않는다.
  check('recovery',()=>{
   const lock=f=>controlPath(root,'locks',f),sf=controlPath(root,'state.json');

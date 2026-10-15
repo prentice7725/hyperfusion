@@ -67,7 +67,12 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 // 시작 시각 앞의 여유: Linux의 lstart는 초 단위로 잘리고, 시계 해상도도 플랫폼마다 다르다. 이 여유 안에서 태어난 프로세스는
 // 자손으로 인정하는 쪽(실패를 닫는 쪽)으로 기운다.
 const START_SLACK_MS=2000;
-export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETTLE,baseline=null}={}) {
+// reap: 일꾼이 끝난 뒤에도 남은 자손 중 "감독 중에 관측한 바로 그 프로세스"(PID와 생성 시각이 모두 같은 것)만 죽인다.
+// agy의 도구 자식은 저마다 자기 프로세스 그룹을 만들어서, 그룹 kill로는 agy만 죽고 자식은 init 밑에 고아로 남는다.
+// 부모가 죽으면 부모 연결이 끊기므로, 감독 중 폴링으로 모아 둔 (PID, 생성 시각) 목록이 그 자식을 알아보는 유일한 근거다.
+// 생성 시각이 다르면 재사용된 PID이므로 건드리지 않는다. 폴링 사이에 태어나 바로 빠져나간 자손은 목록에 없어 죽이지 못하지만,
+// 그런 것도 아래 정지 증명이 그대로 잡아낸다(정리는 증명을 대신하지 않는다).
+export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETTLE,baseline=null,reap=false,kill=(pid)=>process.kill(pid,'SIGKILL')}={}) {
  const tracked=new Map();let pid=null,timer=null,pending=Promise.resolve(),error=null,querying=false,stopped=false,bornAfter=null;
  const observe=async()=>{
   try{const rows=await readTable();for(const p of descendants(rows,pid,tracked,{bornAfter})){
@@ -89,11 +94,19 @@ export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETT
    if(!pid||!exited||aborted)return {quiescent:false,reason:'Executor termination was not confirmed'};
    try{
     if(error)return {quiescent:false,reason:error};
-    let remaining=[],checks=0,owned=[];
+    let remaining=[],checks=0,owned=[];const reaped=[];
     for(;;){
      const rows=await readTable(),live=descendants(rows,pid,tracked,{bornAfter});checks++;owned=live;
      // Same PID with a different creation time is a reused PID, not our process.
      remaining=live.filter(p=>p.pid!==pid||!tracked.has(pid)||tracked.get(pid)===p.created);
+     // 첫 확인에서 한 번만 정리한다. 정리한 뒤에도 남은 것은 다음 확인이 그대로 보고한다.
+     if(reap&&checks===1){
+      for(const p of remaining){
+       if(p.pid<=1||p.pid===process.pid||tracked.get(p.pid)!==p.created)continue;
+       try{kill(p.pid);reaped.push({pid:p.pid,parent:p.parent,created:p.created,...(p.name?{name:p.name}:{})});}catch(e){if(e.code!=='ESRCH')reaped.push({pid:p.pid,error:e.code??e.message});}
+      }
+      if(reaped.length){await sleep(settle.delayMs);continue;}
+     }
      if(baseline){
       const ids=new Set(remaining.map(p=>p.pid));
       for(const p of unattributedProcesses(rows,baseline,process.pid))if(!ids.has(p.pid)){remaining.push(p);ids.add(p.pid);}
@@ -102,7 +115,7 @@ export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETT
      await sleep(settle.delayMs);
     }
     return {quiescent:remaining.length===0,reason:remaining.length?'Supervised processes remain':'Supervised process tree stopped',
-     tracked:tracked.size,checks,// 실패 원인을 남긴 쪽이 우리 명령의 자손인지, 출처를 알 수 없는 새 프로세스인지 보이게 한다.
+     tracked:tracked.size,checks,...(reaped.length?{reaped}:{}),// 실패 원인을 남긴 쪽이 우리 명령의 자손인지, 출처를 알 수 없는 새 프로세스인지 보이게 한다.
      remaining:remaining.map(p=>({pid:p.pid,parent:p.parent,created:p.created,...(p.name?{name:p.name}:{}),orphan_check:!owned.some(x=>x.pid===p.pid)})),checked_at:new Date().toISOString(),platform:process.platform};
    }catch(e){return {quiescent:false,reason:e.code??'PROCESS_TABLE_UNAVAILABLE'};}
   }

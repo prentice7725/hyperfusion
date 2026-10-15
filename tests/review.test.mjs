@@ -122,15 +122,17 @@ test('reasoning_effort reaches every worker CLI with its own flag, and bad value
  cfg({executors:{luna:{reasoning_effort:'max'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: luna/,'Codex has no max');
  cfg({executors:{grok:{reasoning_effort:'turbo'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: grok/);
  cfg({executors:{antigravity:{reasoning_effort:'xhigh'}}});assert.throws(()=>config(f.root),/EFFORT_UNSUPPORTED: antigravity/,'AGY Gemini has no xhigh');
- cfg({executors:{sonnet:{reasoning_effort:'max'},haiku:{reasoning_effort:'low'},grok:{reasoning_effort:'high'},antigravity:{reasoning_effort:'high'},luna:{reasoning_effort:'minimal'}}});
+ cfg({executors:{sonnet:{reasoning_effort:'max'},haiku:{reasoning_effort:'low'},grok:{reasoning_effort:'high'},luna:{reasoning_effort:'minimal'}}});
  const c=config(f.root);
- const flag={sonnet:['--effort','max'],haiku:['--effort','low'],grok:['--reasoning-effort','high'],antigravity:['--effort','high']};
+ const flag={sonnet:['--effort','max'],haiku:['--effort','low'],grok:['--reasoning-effort','high']};
  for(const [name,[option,value]] of Object.entries(flag)){
   const a=adapter(name),cli=a.probe(c.executors[name]);
   const brief={task_id:'T',round:1,repo_root:f.root,objective:'o',scope:{paths:['a.txt'],allowed_expansion:'ask-lead'},constraints:[],success_criteria:['AC1'],allowed_actions:['read','edit']};
   const d=a.dispatch(brief,{token:'x',owner:name},{session:a.newSession()??null,resume:false,probe:cli,promptFile:path.join(f.temp,'p.txt'),options:c.executors[name]});
   assert.equal(d.cli.args[d.cli.args.indexOf(option)+1],value,name);
  }
+ // agy는 강도를 모델 ID에서 읽는다. 모델 없이 강도만 적으면 설정 오류이고, 모델 슬러그·custom 모델의 경로는 agy-model 테스트가 다룬다.
+ cfg({executors:{antigravity:{reasoning_effort:'high'}}});assert.throws(()=>config(f.root),/EFFORT_NEEDS_MODEL/);
 });
 
 test('a worker CLI without an effort flag is refused instead of silently ignoring the setting',t=>{

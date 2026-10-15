@@ -97,6 +97,19 @@ const walk=(dir,limit=5000)=>{
 // - .env*, .npmrc, .yarnrc*: 비밀값과 패키지 설치 설정
 // - node_modules/.bin/*: 테스트나 빌드가 실행하는 실행 파일
 // - .husky, .githooks, .vscode: 훅과 에디터 자동 실행 작업
+// - .agents, .agent, _agents, _agent: agy가 workspace에서 읽는 hooks.json과 skills(라운드 중에 명령이 실행된다)
+export const AGENT_DIRS=['.agents','.agent','_agents','_agent'];
+// 저장소에 들어 있는 agy 훅·스킬. agy는 라운드마다 이것을 읽어 실행하므로, 저장소 내용이 일꾼 실행 중 명령을 돌릴 수 있다.
+export function agentCustomizations(root) {
+ const out=[];
+ for(const dir of AGENT_DIRS){
+  for(const name of ['hooks.json','skills']){
+   const rel=`${dir}/${name}`;
+   try{fs.lstatSync(path.join(root,rel));out.push(rel);}catch{}
+  }
+ }
+ return out;
+}
 export function guardFiles(root,common,gitDir) {
  const out={};
  const add=(file,key)=>{try{const e=entryOf(file);if(e)out[key]=e;}catch(e){if(e.code!=='ENOENT')throw e;}};
@@ -118,7 +131,7 @@ export function guardFiles(root,common,gitDir) {
  for(const name of ignores)add(path.join(root,name),name);
  let top=[];try{top=fs.readdirSync(root);}catch{}
  for(const name of top)if(/^\.env(\..*)?$/.test(name)||['.npmrc','.yarnrc','.yarnrc.yml','.pnpmfile.cjs'].includes(name))add(path.join(root,name),name);
- for(const dir of ['.husky','.githooks','.vscode','node_modules/.bin'])for(const f of walk(path.join(root,dir)))add(f,rel(f));
+ for(const dir of ['.husky','.githooks','.vscode',...AGENT_DIRS,'node_modules/.bin'])for(const f of walk(path.join(root,dir)))add(f,rel(f));
  return out;
 }
 
