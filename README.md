@@ -15,7 +15,7 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 ## AGY model family and effort (0.23.0)
 
-Configure `executors.antigravity.model:"gemini-4-argon"` and `reasoning_effort:"high"` separately. The adapter selects `gemini-4-argon-high` without a duplicate effort flag. A pinned `-medium` suffix retains medium; conflicting explicit effort fails before launch. Optional `models_by_difficulty` selects implementation families; reviews use the base model. Resolved slugs are checked against `agy models`, and unavailable variants are not substituted. Defaults and account settings are unchanged. `usage_by_model_effort` separates dispatch-selected family/effort with unknown fields kept null. See [configuration](references/configuration.md#agy-모델-계열과-effort-분리-argon). Live AGY inference/access has not been tested here.
+Configure `executors.antigravity.model:"gemini-4-argon"` and `reasoning_effort:"high"` separately. The adapter selects `gemini-4-argon-high` without a duplicate effort flag. A pinned `-medium` suffix retains medium; conflicting explicit effort fails before launch. Optional `models_by_difficulty` selects implementation families; reviews use the base model. Resolved slugs are checked against `agy models`, and unavailable variants are not substituted. Without a model no effort is sent or recorded (agy reads effort from the model id); an operator `reasoning_effort` with no model fails with `EFFORT_NEEDS_MODEL`. Defaults and account settings are unchanged. `usage_by_model_effort` separates dispatch-selected family/effort with unknown fields kept null. See [configuration](references/configuration.md#agy-모델-계열과-effort-분리-argon). Live AGY inference/access has not been tested here.
 
 ## Codex and egress improvements (0.22.0)
 

@@ -91,7 +91,7 @@ Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model 
 | 일꾼 | CLI 플래그 | 값 |
 |---|---|---|
 | Sonnet, Haiku (Claude Code) | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` |
-| Antigravity Gemini (agy) | effort를 포함한 `--model` 슬러그 또는 `--effort` | `low`, `medium`, `high` |
+| Antigravity Gemini (agy) | effort를 포함한 `--model` 슬러그(모델이 없으면 보내지 않음) 또는 custom/Claude 모델의 `--effort` | `low`, `medium`, `high` |
 | Grok | `--reasoning-effort` | `low`, `medium`, `high`, `xhigh`, `max` (도움말에 값 목록이 없어 Claude와 같게 둠) |
 | Luna, Sol (Codex) | `-c model_reasoning_effort=…` | `minimal`, `low`, `medium`, `high`, `xhigh` |
 
@@ -104,6 +104,8 @@ Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model 
 ```
 
 `model`은 모델 계열이고 `reasoning_effort`는 추론 강도다. 위 설정은 `--model gemini-4-argon-high` 하나로 전달하며 중복 `--effort`를 넣지 않는다. `model:"gemini-4-argon-medium"`처럼 완성된 Gemini 슬러그를 주면 suffix의 effort를 기록하고 자동 난이도 조정으로 덮어쓰지 않는다. 명시적으로 `reasoning_effort:"high"`를 함께 주면 `EFFORT_CONFLICT`로 거절한다. `null`도 이미 고정된 suffix를 지우지는 않는다. suffix 없는 모델과 effort null은 그대로 CLI에 전달하고 사용량 강도를 미측정으로 남긴다.
+
+`model`이 없으면 effort를 보내지 않는다. agy는 강도를 모델 ID에서 읽고, 모델을 정하지 않은 실행에 준 `--effort`는 효과가 확인되지 않는다. 기본 강도(Antigravity `high`)와 난이도별 자동 강도는 모델이 없으면 빠지고 CLI 기본값으로 돌며, dispatch·사용량 기록의 강도도 `null`(미측정)이다. 운영자가 모델 없이 `reasoning_effort`만 적으면 `EFFORT_NEEDS_MODEL` 설정 오류다(`models_by_difficulty`가 있으면 허용하고, 그 표에 없는 난이도는 같은 방식으로 강도가 빠진다).
 
 Gemini headless는 `low|medium|high`를 받는다. `xhigh`는 거절하며, Enterprise AGY의 `claude-opus-*`/`claude-sonnet-*` 지정 모델은 공식 문서에 따라 별도 `max`를 허용한다. custom/Claude 모델에는 Gemini suffix를 만들어 붙이지 않고 기존 `--effort`를 유지한다. [headless CLI](https://www.antigravity.google/docs/cli/headless/)와 [Enterprise model/effort](https://www.antigravity.google/docs/enterprise)를 기준으로 한다.
 
