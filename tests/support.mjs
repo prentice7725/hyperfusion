@@ -12,6 +12,8 @@ const FAKE_COMMON=`#!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
 const args=process.argv.slice(2);
+// Windows에서 컨트롤러가 일꾼을 고르기 전에 부르는 Codex 샌드박스 자가 점검. 다른 모드(fail-once 등)를 소모하지 않게 맨 먼저 답한다.
+if(args[0]==='sandbox'){console.log('HF_SANDBOX_OK');process.exit(0);}
 // 대역 CLI의 기록 파일은 작업 폴더가 아니라 이 스크립트가 있는 폴더에 둔다(작업 폴더에는 아무것도 남기지 않는다).
 const HERE=path.dirname(process.argv[1]);
 const mode=fs.existsSync(HERE+'/fake-mode')?fs.readFileSync(HERE+'/fake-mode','utf8'):'ok';

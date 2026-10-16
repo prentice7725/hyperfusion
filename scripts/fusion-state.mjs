@@ -84,6 +84,8 @@ function openControl(root) {
       try{
         const a=adapter(name);
         resolveExecutable(name,a.binary());
+        // 설치돼 있어도 이 PC에서 실제로 일을 못 하면(Codex의 Windows 샌드박스가 프로세스를 못 띄움 등) 설치 안 된 것과 같이 다룬다.
+        a.preflight?.({root:c.root});
         installMemo.set(name,null);
       } catch(err){
         installMemo.set(name,err.message);
@@ -471,7 +473,7 @@ function consult(c,input) {
     if(members.length===size)break;
     if(!vendorAllowed(s.configuration,e)){if(explicit||adaptive)assertVendor(s.configuration,e);continue;}
     let cli;
-    try{cli=adapter(e).probe(s.configuration.executors[e]??{});}
+    try{cli=adapter(e).probe(s.configuration.executors[e]??{});adapter(e).preflight?.({root:c.root});}
     catch(err){if(explicit||adaptive)throw err;continue;}
     members.push({member:'m'+(members.length+1),executor:e,cli});
   }

@@ -80,7 +80,7 @@ CLI registry의 기본 벤더 기준이며 임의 model override의 실 제공�
 
 ## Codex 캐시·네트워크와 턴 상한
 
-`HF_CODEX_WRITABLE_ROOTS`는 이미 있는 절대 디렉터리의 JSON 배열, `HF_CODEX_NETWORK_ACCESS`는 `0` 또는 `1`이다. 구현에만 적용하며 읽기 전용 리뷰·상담에는 전달하지 않는다. 저장소의 동명 실행기 옵션은 권한을 넓히지 못한다. 홈 전체, 상태·CLI 설정·스킬·Git 메타데이터와 겹치는 경로(부모·자식·링크 포함)는 거절한다. 캐시는 스냅샷 검증 밖이므로 소스나 인증 폴더를 허용하지 말 것. [Codex 운영 안내](codex-runtime.md)를 따른다.
+`HF_CODEX_WRITABLE_ROOTS`는 이미 있는 절대 디렉터리의 JSON 배열, `HF_CODEX_NETWORK_ACCESS`는 `0` 또는 `1`이다. `HF_CODEX_WINDOWS_SANDBOX`(`elevated` 또는 `unelevated`)는 Windows에서 Codex 샌드박스 방식을 고르며 구현·리뷰·상담 모두에 적용된다([Codex 운영 안내](codex-runtime.md)의 Windows sandbox). 구현에만 적용하며 읽기 전용 리뷰·상담에는 전달하지 않는다. 저장소의 동명 실행기 옵션은 권한을 넓히지 못한다. 홈 전체, 상태·CLI 설정·스킬·Git 메타데이터와 겹치는 경로(부모·자식·링크 포함)는 거절한다. 캐시는 스냅샷 검증 밖이므로 소스나 인증 폴더를 허용하지 말 것. [Codex 운영 안내](codex-runtime.md)를 따른다.
 
 Claude/Grok만 `executors.<이름>.max_turns` 및 `max_turns_by_difficulty:{low:20,medium:40,high:80}`를 받는다(1~1000, 명시 상한 우선). 생략 시 40이며 supervisor 시간·라운드 예산은 바뀌지 않는다. Codex/AGY에 이 옵션을 주면 지원하지 않는 계약으로 거절한다.
 
