@@ -25,7 +25,10 @@ export function report(root,taskId) {
  const recoveries=names.filter(f=>/^recovery-\d+\.json$/.test(f)).map(f=>optional(f));
  const auto=recoveries.filter(r=>String(r?.reason??'').startsWith('auto-recover')).length;
  const delegation=optional('delegation.json');
+ const redo=optional('redo-delegation.json');
  const lead_load={delegation:delegation?{policy:delegation.policy,reason:delegation.reason}:null,
+  redo_delegation:redo?{policy:redo.policy,reason:redo.reason,max_redos:redo.max_redos}:null,
+  redos_by_policy:decisions.filter(d=>d?.authority?.source==='delegated-policy'&&d.decision==='REDO').length,
   decisions_by_lead:decisions.filter(d=>d?.authority?.source!=='delegated-policy').length,
   decisions_by_policy:decisions.filter(d=>d?.authority?.source==='delegated-policy').length,
   reviews_recorded:names.filter(f=>/^review-\d+\.json$/.test(f)).length,

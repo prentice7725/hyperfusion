@@ -173,6 +173,8 @@ VERIFY, LEAD_DECISION_REQUIRED, DECISION_REQUIRED, BLOCKED, TAKEOVER_REQUIRED, R
 
 **재량권(delegation)이 있는 작업.** 리드가 init에서 `delegation:{policy:"standard-auto",reason}`을 준 STANDARD 작업은 오토파일럿이 리드 게이트에서 멈추지 않고 이어 간다: 컨트롤러가 조건을 전부 확인했을 때만 `policy-approve`로 라운드를 승인하고(`authority.source: delegated-policy`로 기록), `verify`까지 진행해 CLOSE에 닿는다. 일꾼이 결과 없이 일시 장애로 끝났고 종료 증명·트리 불변·예산이 맞으면 `auto-recover`로 되돌려 REDO에서 다시 시도한다(작업당 2번까지, 권한·로그인·한도 실패는 제외). 리뷰어가 한도·장애로 못 끝냈으면 `auto-substitute-review`로 다른 회사 모델에게 다시 맡긴다. 조건이 하나라도 부족하면 승인하지 않고 이유와 함께 리드 게이트에 남는다. 규칙 전문은 [universal-supervisor](universal-supervisor.md), 재량권이 실제로 얼마나 개입을 줄였는지는 `report`의 `lead_load`로 본다.
 
+**반려 위임(redo_delegation)이 있는 작업.** 승인 권한과 별개로, 리드가 init에서 `redo_delegation:{reason,max_redos}`(1~2, 기본 2)를 준 STANDARD 작업은 필수 리뷰어 전원이 AC ID와 파일·줄 근거를 들어 redo라고 하면 컨트롤러가 같은 일꾼에게 돌려보낸다. 오토파일럿은 그대로 다음 라운드로 이어 가고, 조건이 하나라도 부족하면 리드 게이트에서 멈춘다. 조건과 패킷의 `delegated_redos`는 [universal-supervisor](universal-supervisor.md#반려-위임).
+
 오토파일럿 브리지는 프로세스 표를 관측하고 PID와 생성 시각으로 자손을 추적해 `quiescence-*.json`에 정지 증거를 남긴다. 확인 불가·잔존 자손·불확실한 종료에서는 자동 finish하지 않고 writer lease 또는 open_consult를 유지한다. 관측 사이에 부모 연결을 끊고 빠져나간 프로세스까지 완전히 추적하는 OS 격리는 아니다. 그런 실행이 가능한 회사 환경에서는 별도 프로세스 격리가 필요하다.
 
 동시 실행은 `autopilot.lock`으로 막으며, 실행 장부는 작업 폴더의 `autopilot-<UUID>.json`에 남긴다. 반환값은 `NEEDS_LEAD`, 현재 단계, 중단 사유, 수행 단계 수와 다음 동작을 담는다. 단계 상한·중단·전송 실패 후에는 status와 장부를 확인한다. 기존 launch 표식이나 open_consult가 있으면 재실행하거나 결과만 보고 자동 finish하지 않는다. 리드가 정지를 확인하고 finish/consult-finish 또는 recover한 후 다시 실행한다. 자동 commit·push나 프로젝트 승인·범위 확대는 하지 않는다.
