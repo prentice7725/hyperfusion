@@ -59,7 +59,10 @@ export function sandboxArgs({consult=false,repoRoot}={},env=process.env) {
 export const SANDBOX_FAILURE=/CreateProcess(?:AsUser|WithLogon)W failed: (?:5|1312)\b|setup refresh (?:failed|had errors)|helper_unknown_error/i;
 const SANDBOX_ERROR=/windows sandbox(?: failed)?:.*/i;
 export const WINDOWS_SANDBOX_ENV='HF_CODEX_WINDOWS_SANDBOX';
-export const SANDBOX_HINT=`If the shell is the Microsoft Store PowerShell (a path under WindowsApps), install PowerShell from the MSI or winget instead. `
+// 실측(Windows, codex-cli 0.162.0): 패키지판(MSIX) pwsh는 CreateProcessAsUserW failed: 5로 막히고 cmd.exe·Windows PowerShell은 뜬다.
+// `winget install --id Microsoft.PowerShell --source winget`도 이 패키지판을 설치했다(경로 WindowsApps\Microsoft.PowerShell_8wekyb3d8bbwe).
+export const SANDBOX_HINT=`If pwsh is the packaged (Store/MSIX) PowerShell under WindowsApps, remove it (Get-AppxPackage Microsoft.PowerShell | Remove-AppxPackage) `
+ +`and install the MSI build from the PowerShell GitHub releases (plain winget may install the package again). `
  +`Or the operator may set ${WINDOWS_SANDBOX_ENV}=unelevated (weaker isolation; the controller still checks scope) and retry. Retrying unchanged fails the same way; use another worker meanwhile`;
 
 // 운영자 환경변수로만 고른다(저장소 설정·일꾼 출력으로는 바꾸지 못한다). 읽기 전용 상담·리뷰도 같은 샌드박스로 셸을 띄우므로 모두에 적용한다.
@@ -71,14 +74,17 @@ export function windowsSandboxArgs(env=process.env) {
 }
 
 const MARK='HF_SANDBOX_OK';
-// PATH에서 pwsh.exe를 찾는다. Codex가 이 셸을 쓰면 cmd.exe가 되는 것만으로는 부족하다.
-function findPwsh(env) {
+// 오류 문구에 쓰려고 PATH의 pwsh.exe 위치만 찾는다. 패키지판은 앱 실행 별칭(재분석 지점)이라 stat이 실패할 수 있어 lstat으로 본다.
+// 점검 자체는 이름(pwsh)으로 한다. 파일을 못 찾았다고 점검을 건너뛰면 바로 그 패키지판을 놓친다.
+function locatePwsh(env) {
  for(const dir of String(env.PATH??env.Path??'').split(path.delimiter).filter(Boolean)){
   const f=path.join(dir,'pwsh.exe');
-  try{if(fs.statSync(f).isFile())return f;}catch{}
+  try{fs.lstatSync(f);return f;}catch{}
  }
  return null;
 }
+// 실행할 프로그램을 못 찾음(2): 샌드박스가 막은 것이 아니라 그 셸이 없는 것이다.
+const NOT_FOUND=/CreateProcess(?:AsUser|WithLogon)W failed: 2\b/i;
 // 모델을 부르지 않고 `codex sandbox windows <셸> ...`로 샌드박스 안에서 프로세스가 뜨는지 본다.
 // 실패 문구가 보일 때만 막는다. 하위 명령이 없거나 시간이 초과되는 등 판단할 수 없으면 unverified로 두고 막지 않는다.
 // 하위 명령 문법이 버전마다 다르다: `codex sandbox <명령>`(이 PC의 버전) 또는 `codex sandbox windows <명령>`.
@@ -89,9 +95,10 @@ function sandboxCommand(cli,env) {
 }
 export function windowsSandboxSelfTest(cli,{root,platform=process.platform,env=process.env,shells}={}) {
  if(platform!=='win32')return {status:'skipped',reason:'not Windows'};
- const pwsh=shells?shells.pwsh:findPwsh(env);
+ const pwshPath=shells?shells.pwsh:locatePwsh(env);
  const command=sandboxCommand(cli,env);
- const targets=[['cmd.exe','/c','echo',MARK],...(pwsh?[[pwsh,'-NoProfile','-Command','Write-Output '+MARK]]:[])];
+ // cmd.exe는 반드시, pwsh는 이름으로 점검한다(설치돼 있지 않으면 파일 없음으로 끝나고 그것은 건너뛴다).
+ const targets=[['cmd.exe','/c','echo',MARK],['pwsh','-NoProfile','-Command','Write-Output '+MARK]];
  const checked=[];
  for(const target of targets){
   const r=spawnSync(cli.executable,[...(cli.prefix_args??[]),...windowsSandboxArgs(env),...command,...target],
@@ -99,9 +106,10 @@ export function windowsSandboxSelfTest(cli,{root,platform=process.platform,env=p
   const out=`${r.stdout??''}\n${r.stderr??''}`;
   const failure=out.split(/\r?\n/).find(l=>SANDBOX_FAILURE.test(l));
   if(failure){
-   const store=/[\\/]WindowsApps[\\/]/i.test(target[0])?' (this pwsh is the Microsoft Store build)':'';
+   const store=target[0]==='pwsh'&&/[\\/]WindowsApps[\\/]/i.test(pwshPath??'')?` (${pwshPath}, the packaged Store/MSIX build)`:'';
    throw Error(`ADAPTER_UNAVAILABLE: CODEX_WINDOWS_SANDBOX: Codex could not start ${target[0]}${store} inside its Windows sandbox (access denied: "${failure.trim().slice(0,200)}"). ${SANDBOX_HINT}`);
   }
+  if(target[0]==='pwsh'&&NOT_FOUND.test(out))continue;
   if(!out.split(/\r?\n/).some(l=>l.trim()===MARK)){
    const said=out.match(SANDBOX_ERROR)?.[0];
    return {status:'unverified',reason:`codex ${command.join(' ')} ${target[0]} gave no result (${said?said.slice(0,200):r.error?.code??'exit '+r.status})`,checked};

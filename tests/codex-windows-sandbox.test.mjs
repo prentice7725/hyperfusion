@@ -12,6 +12,8 @@ import {NON_RETRYABLE} from '../scripts/delegation.mjs';
 // 실제 출력 형식(이 PC의 Codex). 코드 2는 그대로 받은 것이고, 5는 같은 형식에 이슈의 오류 코드를 넣은 것이다.
 const line=code=>`windows sandbox failed: CreateProcessAsUserW failed: ${code} (msg) | cwd=C:\\workspace | cmd=cmd.exe /c echo HF_SANDBOX_OK | env_u16_len=4228 | si_flags=256 | creation_flags=134743040`;
 const DENIED=line(5);
+// 이 PC에서 패키지판 pwsh로 실제로 나온 출력 그대로.
+const MSIX_DENIED='windows sandbox failed: CreateProcessAsUserW failed: 5 (액세스가 거부되었습니다.) | cwd=C:\\Users\\seung | cmd=pwsh -NoProfile -Command "Write-Output HF_SANDBOX_OK" | env_u16_len=4059 | si_flags=256 | creation_flags=134743040';
 // behavior는 대역 안에서 실행되는 코드다. target은 샌드박스 안에서 띄우라고 받은 셸이다.
 // help가 'windows'면 `sandbox --help`에 windows 하위 명령을 내보이는 버전을 흉내 낸다.
 function fakeCodex(t,behavior,{help=''}={}) {
@@ -30,7 +32,7 @@ const win={platform:'win32',env:{},shells:{pwsh:null}};
 
 test('the self-test passes only when the sandboxed shell really printed the mark, in the syntax the installed Codex takes',t=>{
  const ok=fakeCodex(t,`console.log('HF_SANDBOX_OK');`);
- assert.deepEqual(windowsSandboxSelfTest(ok.cli,win),{status:'ok',checked:['cmd.exe']});
+ assert.deepEqual(windowsSandboxSelfTest(ok.cli,win),{status:'ok',checked:['cmd.exe','pwsh']});
  assert.deepEqual(ok.calls()[0].slice(0,2),['sandbox','cmd.exe'],'this version takes the command right after sandbox');
  const newer=fakeCodex(t,`console.log('HF_SANDBOX_OK');`,{help:'windows'});
  windowsSandboxSelfTest(newer.cli,win);
@@ -46,10 +48,21 @@ test('an access-denied launch blocks the worker with the cause and the way out',
   assert.ok(NON_RETRYABLE.test(e.message),'automatic recovery must not retry it');
   return true;
  },'the echoed command line in the error is not mistaken for success');
- // cmd.exe는 되지만 Store판 pwsh가 막히는 경우
- const store=fakeCodex(t,`if(String(target).includes('WindowsApps')){console.error(${JSON.stringify(DENIED)});process.exit(1);}console.log('HF_SANDBOX_OK');`);
- const pwsh='C:\\\\Program Files\\\\WindowsApps\\\\Microsoft.PowerShell_7\\\\pwsh.exe';
- assert.throws(()=>windowsSandboxSelfTest(store.cli,{...win,shells:{pwsh}}),/could not start .*pwsh\.exe \(this pwsh is the Microsoft Store build\)/);
+ // 실측: cmd.exe는 뜨고 패키지판(MSIX) pwsh만 CreateProcessAsUserW failed: 5로 막혔다(codex-cli 0.162.0).
+ const msix=fakeCodex(t,`if(target==='pwsh'){console.error(${JSON.stringify(MSIX_DENIED)});process.exit(1);}console.log('HF_SANDBOX_OK');`);
+ const pwsh='C:\\Users\\seung\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.PowerShell_8wekyb3d8bbwe\\pwsh.exe';
+ assert.throws(()=>windowsSandboxSelfTest(msix.cli,{...win,shells:{pwsh}}),e=>{
+  assert.match(e.message,/could not start pwsh \(C:.*Microsoft\.PowerShell_8wekyb3d8bbwe.*pwsh\.exe, the packaged Store\/MSIX build\)/);
+  assert.match(e.message,/Remove-AppxPackage/);
+  return true;
+ });
+ // pwsh를 PATH에서 못 찾아도 이름으로 점검하므로 막힌다(별칭은 파일 확인에서 놓칠 수 있다).
+ assert.throws(()=>windowsSandboxSelfTest(msix.cli,win),/could not start pwsh inside/);
+});
+
+test('pwsh that is not installed is skipped, not counted as a failure',t=>{
+ const absent=fakeCodex(t,`if(target==='pwsh'){console.error(${JSON.stringify(line(2))});process.exit(1);}console.log('HF_SANDBOX_OK');`);
+ assert.deepEqual(windowsSandboxSelfTest(absent.cli,win),{status:'ok',checked:['cmd.exe']});
 });
 
 test('a launch that failed only because the program was not found does not block the worker',t=>{
