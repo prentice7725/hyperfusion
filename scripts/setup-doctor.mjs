@@ -22,7 +22,8 @@ const probeMember=name=>{
   if(probeEvidence[name].error)throw Error(probeEvidence[name].error);
   return probeEvidence[name];
  }
- try{const p=adapter(name).probe(c.executors[name]??{});probeEvidence[name]={...p,help:p.help};return p;}
+ // 실행 전 점검(Codex의 Windows 샌드박스 등)도 같이 본다. 실패하면 이 일꾼은 사용 불가로 보고된다.
+ try{const p=adapter(name).probe(c.executors[name]??{});const sandbox=adapter(name).preflight?.({root:process.argv[2]??process.cwd()});if(sandbox)p.sandbox=sandbox;probeEvidence[name]={...p,help:p.help};return p;}
  catch(e){probeEvidence[name]={error:e.message,...e.probe};throw e;}
 };
 const check=(name,fn)=>{try{checks.push({name,ok:true,detail:fn()});}catch(e){checks.push({name,ok:false,detail:e.message,error:errorRecord(e)});}};

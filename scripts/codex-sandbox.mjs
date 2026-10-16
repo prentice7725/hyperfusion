@@ -4,6 +4,8 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {git} from './artifact.mjs';
 import {stateHome} from './control-dir.mjs';
+import {spawnSync} from 'node:child_process';
+import {workerEnv} from './worker-env.mjs';
 
 // Resolve existing ancestors too: protected directories need not exist yet.
 export function canonicalPath(input) {
@@ -28,8 +30,8 @@ export function protectedRoots(repoRoot,env=process.env) {
 }
 // Operator environment only: repository config/worker output cannot widen it.
 export function sandboxArgs({consult=false,repoRoot}={},env=process.env) {
- if(consult)return [];
- const args=[];
+ if(consult)return windowsSandboxArgs(env);
+ const args=[...windowsSandboxArgs(env)];
  if(env.HF_CODEX_WRITABLE_ROOTS!==undefined){
   let roots;try{roots=JSON.parse(env.HF_CODEX_WRITABLE_ROOTS);}catch{throw Error('CODEX_SANDBOX: writable roots must be a JSON array');}
   if(!Array.isArray(roots)||roots.length>20||roots.some(r=>typeof r!=='string'||!path.isAbsolute(r)||!fs.existsSync(r)||!fs.statSync(r).isDirectory()))throw Error('CODEX_SANDBOX: writable roots must be existing absolute directories');
@@ -44,4 +46,53 @@ export function sandboxArgs({consult=false,repoRoot}={},env=process.env) {
   args.push('-c','sandbox_workspace_write.network_access='+(env.HF_CODEX_NETWORK_ACCESS==='1'));
  }
  return args;
+}
+
+// ── Windows 샌드박스 ─────────────────────────────────────────────────────────
+// Codex는 Windows에서 셸 명령과 파일 수정을 전용 샌드박스 사용자로 실행한다. 그 사용자로 프로세스를 띄우지 못하면
+// (CreateProcessAsUserW failed: 5 등) 라운드 전체가 아무것도 못 하고 끝난다. Store판 pwsh(WindowsApps)나
+// elevated 샌드박스 준비 단계(setup refresh) 실패가 흔한 원인이다(openai/codex #28730, #35871, #9062, #10601, #50772).
+// 문구는 Codex 이슈에 나온 오류에서 가져왔다. 실제 Windows 출력으로 확인한 것이 아니다.
+export const SANDBOX_FAILURE=/CreateProcess(?:AsUser|WithLogon)W failed|windows sandbox(?: failed)?:|setup refresh (?:failed|had errors)|helper_unknown_error/i;
+export const WINDOWS_SANDBOX_ENV='HF_CODEX_WINDOWS_SANDBOX';
+export const SANDBOX_HINT=`If the shell is the Microsoft Store PowerShell (a path under WindowsApps), install PowerShell from the MSI or winget instead. `
+ +`Or the operator may set ${WINDOWS_SANDBOX_ENV}=unelevated (weaker isolation; the controller still checks scope) and retry. Retrying unchanged fails the same way; use another worker meanwhile`;
+
+// 운영자 환경변수로만 고른다(저장소 설정·일꾼 출력으로는 바꾸지 못한다). 읽기 전용 상담·리뷰도 같은 샌드박스로 셸을 띄우므로 모두에 적용한다.
+export function windowsSandboxArgs(env=process.env) {
+ const v=env[WINDOWS_SANDBOX_ENV];
+ if(v===undefined||v==='')return [];
+ if(!['elevated','unelevated'].includes(v))throw Error(`CODEX_SANDBOX: ${WINDOWS_SANDBOX_ENV} must be elevated or unelevated`);
+ return ['-c',`windows.sandbox="${v}"`];
+}
+
+const MARK='HF_SANDBOX_OK';
+// PATH에서 pwsh.exe를 찾는다. Codex가 이 셸을 쓰면 cmd.exe가 되는 것만으로는 부족하다.
+function findPwsh(env) {
+ for(const dir of String(env.PATH??env.Path??'').split(path.delimiter).filter(Boolean)){
+  const f=path.join(dir,'pwsh.exe');
+  try{if(fs.statSync(f).isFile())return f;}catch{}
+ }
+ return null;
+}
+// 모델을 부르지 않고 `codex sandbox windows <셸> ...`로 샌드박스 안에서 프로세스가 뜨는지 본다.
+// 실패 문구가 보일 때만 막는다. 하위 명령이 없거나 시간이 초과되는 등 판단할 수 없으면 unverified로 두고 막지 않는다.
+export function windowsSandboxSelfTest(cli,{root,platform=process.platform,env=process.env,shells}={}) {
+ if(platform!=='win32')return {status:'skipped',reason:'not Windows'};
+ const pwsh=shells?shells.pwsh:findPwsh(env);
+ const targets=[['cmd.exe','/c','echo',MARK],...(pwsh?[[pwsh,'-NoProfile','-Command','Write-Output '+MARK]]:[])];
+ const checked=[];
+ for(const target of targets){
+  const r=spawnSync(cli.executable,[...(cli.prefix_args??[]),...windowsSandboxArgs(env),'sandbox','windows',...target],
+   {cwd:root,encoding:'utf8',timeout:30000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:workerEnv('luna',env)});
+  const out=`${r.stdout??''}\n${r.stderr??''}`;
+  const failure=out.split(/\r?\n/).find(l=>SANDBOX_FAILURE.test(l));
+  if(failure){
+   const store=/[\\/]WindowsApps[\\/]/i.test(target[0])?' (this pwsh is the Microsoft Store build)':'';
+   throw Error(`ADAPTER_UNAVAILABLE: CODEX_WINDOWS_SANDBOX: Codex could not start ${target[0]}${store} inside its Windows sandbox (access denied: "${failure.trim().slice(0,200)}"). ${SANDBOX_HINT}`);
+  }
+  if(!out.split(/\r?\n/).some(l=>l.trim()===MARK))return {status:'unverified',reason:`codex sandbox windows ${target[0]} gave no result (${r.error?.code??'exit '+r.status})`,checked};
+  checked.push(target[0]);
+ }
+ return {status:'ok',checked};
 }
