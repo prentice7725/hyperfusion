@@ -24,8 +24,8 @@ import {compactView} from './lead-view.mjs';
 import {isPreserve,checkPreserve,protectedChanges} from './preserve.mjs';
 import {modifiedAcceptanceTests} from './acceptance-integrity.mjs';
 import {hookObservation} from './hook-observation.mjs';
-import {takeDelegation,sameDelegation,contractChanged,DELEGABLE_OWNERS,AUTO_RECOVERY_CAP,NON_RETRYABLE} from './delegation.mjs';
-import {acTable,failureCriteria,prDraft,draftInputs,taskChangeEvidence} from './ac-trace.mjs';
+import {takeDelegation,sameDelegation,takeRedoDelegation,sameRedoDelegation,contractChanged,DELEGABLE_OWNERS,AUTO_RECOVERY_CAP,NON_RETRYABLE} from './delegation.mjs';
+import {acTable,failureCriteria,prDraft,draftInputs,taskChangeEvidence,criterionIds} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
 import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
@@ -246,6 +246,7 @@ function init(c,input) {
   if(c.s&&!TERMINAL_PHASES.includes(c.s.phase))throw Error('Existing unfinished task; inspect/recover');
   const assignment=takeAssignment(configuration,input);
   const delegation=takeDelegation(configuration,assignment,input);
+  const redoDelegation=takeRedoDelegation(configuration,assignment,input);
   const grant=initialGrant(assignment);
   if(grant?.executor==='sol'&&requested!=='sol'&&requested!=='auto')throw Error('ROLE_GATE: sol_apex starts with Sol');
   if(grant?.executor==='sonnet'&&requested!=='sonnet'&&requested!=='auto')throw Error('ROLE_GATE: sonnet_implementation starts with Sonnet');
@@ -292,6 +293,7 @@ function init(c,input) {
   }
   const executor=routing.executor;
   if(delegation&&!DELEGABLE_OWNERS.includes(executor))throw Error(`DELEGATION: ${executor} is not an automatic implementer; delegate only grok, antigravity, haiku or luna rounds`);
+  if(redoDelegation&&!DELEGABLE_OWNERS.includes(executor))throw Error(`REDO_DELEGATION: ${executor} is not an automatic implementer; delegate rejections only for grok, antigravity, haiku or luna rounds`);
   const base=snapshot(c.root);
   c.s={
     schema_version:SCHEMA_VERSION,architecture:ARCHITECTURE,package_version:VERSION,configuration,routing,limits,
@@ -302,6 +304,7 @@ function init(c,input) {
     hooks_observed:observedHooks.hooks_observed,warnings:observedHooks.warning?[observedHooks.warning]:[],
     ...(assignment?{assignment}:{}),
     ...(delegation?{delegation}:{}),
+    ...(redoDelegation?{redo_delegation:redoDelegation}:{}),
     ...(grant?{implement_grant:grant}:{}),
     lead:configuration.lead,lead_target_model:configuration.lead_model,lead_model:null,
     iteration:0,base_commit:base.head,baseline_dirty:!!base.status,
@@ -318,6 +321,7 @@ function init(c,input) {
   c.art('baseline.json',base);
   if(assignment)c.art('assignment.json',assignment);
   if(delegation)c.art('delegation.json',delegation);
+  if(redoDelegation)c.art('redo-delegation.json',redoDelegation);
   if(grant)c.art(`implement-grant-${grant.revision}.json`,grant);
   c.save();
   try{recordHostWindow(c.root,c.s);}catch(e){c.s.host_usage_error='host usage binding unavailable';c.save();}
@@ -627,7 +631,78 @@ function applyAdaptiveReview(c,open,results) {
     if(records.filter(r=>r.ok&&r.verdict!=='pass').every(r=>r.evidence===false))recommendation=null;
     note+=`; rejection without file:line blocker/major evidence from ${unsupported.join(', ')} is advisory: read it, then REDO or overrule after your own diff review`;
   }
+  // 반려 위임: 전원 redo이고 근거·한도 조건이 모두 맞으면 리드 대신 같은 일꾼에게 돌려보낸다. 하나라도 부족하면 이유를 남기고 게이트로 간다.
+  if(decision.status==='unanimous'&&decision.verdict==='redo'&&s.redo_delegation){
+    const check=autoRedoEvaluation(c,records);
+    if(check.eligible)return autoRedo(c,records,check,open.id);
+    note+=`; delegated rejection not applied (${check.unmet.join('; ')})`;
+  }
   return openLeadGate(c,{recommendation,pass_forbidden,reviewers:listed,panel_status:decision.status,verdict:decision.status==='unanimous'?decision.verdict:null,consult_id:open.id,note});
+}
+
+// 반려 위임 조건을 컨트롤러 기록만으로 확인한다. 상태를 바꾸지 않는다.
+// 리뷰어의 판정은 이미 전원 redo로 모였다. 여기서는 그 판정이 리드 없이 적용해도 될 만큼 근거가 있고, 권한·한도 안인지만 본다.
+function autoRedoEvaluation(c,records) {
+  const s=c.s,n=s.iteration,d=s.redo_delegation,unmet=[],passed=[];
+  const need=(ok,name,why)=>{(ok?passed:unmet).push(ok?name:why);return ok;};
+  if(!need(sameRedoDelegation(c.optional('redo-delegation.json'),d),'redo delegation record matches','the redo delegation record does not match the controller record'))return {eligible:false,unmet,passed};
+  need(sameAssignment(c.optional('assignment.json'),s.assignment)&&s.assignment?.criticality==='standard'&&s.assignment?.strategy==='external_primary','standard task','the task is not a STANDARD external_primary task');
+  need(DELEGABLE_OWNERS.includes(s.owner),'automatic implementer',`${s.owner} is not an automatic implementer`);
+  const used=(s.auto_redos??[]).length;
+  need(used<d.max_redos,'within the delegated rejection limit',`${used} delegated rejections already used (limit ${d.max_redos})`);
+  need(!c.writerHeld(),'no writer','a writer is still present');
+  need(snapshot(c.root).digest===s.post_digest,'tree unchanged since the round','the tree changed after the round');
+  const all=s.review_results?.[n]??[];
+  need(!all.some(r=>r.superseded),'no replaced rejection','a rejection was replaced; the lead has to read it');
+  const plan=planReview(s.owner,s.assignment,{risk:roundRisk(c)});
+  need(!plan.reviewers.includes('lead'),'delegated reviewers exist','this round requires the lead\'s own review');
+  // reviewCoverage는 pass만 센다. 여기서는 필수 자리마다 이 digest에서 끝난 판정이 있는지 본다(대체 리뷰어로 채운 자리는 리드에게).
+  const finished=new Set(records.filter(r=>r.ok&&r.digest===s.post_digest&&r.executor!==s.owner).map(r=>r.executor));
+  const missing=plan.reviewers.filter(e=>e!=='lead'&&!finished.has(e));
+  need(!missing.length,'every mandatory review finished',`a mandatory review is missing (${missing.join(', ')})`);
+  need(records.length>0&&records.every(r=>r.ok&&r.verdict==='redo'&&r.digest===s.post_digest),'every reviewer asked for redo on this digest','not every reviewer asked for redo on this round\'s digest');
+  need(records.every(r=>r.evidence===true),'file:line blocker/major evidence','a rejection has no file:line blocker or major finding');
+  const brief=c.optional(`brief-${n}.json`),initial=c.optional('initial-brief.json');
+  const ids=new Set(criterionIds(initial?.success_criteria));
+  const cited=r=>(r.blocking_criteria??[]).length>0&&r.blocking_criteria.every(x=>{const m=String(x).match(/\bAC\d+\b/gi);return !!m&&m.every(id=>ids.has(id.toUpperCase()));});
+  need(records.every(cited),'every blocking criterion names a known AC','a blocking criterion does not name an AC id from the brief');
+  const scope=brief?.scope?.paths??[];
+  const outside=[...new Set(records.flatMap(r=>(r.findings??[]).filter(f=>f&&['blocker','major'].includes(f.severity)).map(f=>String(f.file??''))).filter(f=>!f||!c.inScope(f.replaceAll('\\','/'),scope)))];
+  need(!outside.length,'findings point inside the scope',`a finding points outside scope.paths: ${outside.slice(0,3).join(', ')||'(no file)'}`);
+  const changed=brief&&initial?contractChanged(initial,brief):['(brief missing)'];
+  need(!changed.length,'contract unchanged',`the contract changed since init: ${changed.join(', ')}`);
+  need(!repeatedCriteria(s,panelBlocking(records)).length,'no repeated rejection','the same criterion was rejected twice; the lead decides');
+  const raw=c.optional(`raw-result-${n}.json`);
+  need(raw?.status==='complete'&&raw.needs_lead_decision!==true,'worker reported complete','the worker did not report complete or asked for a lead decision');
+  need(c.budget(s.owner),'worker round budget left',`${s.owner} has no round budget left`);
+  need(!budgetStatus(c.root,s).reason,'within budget','the task budget is exhausted');
+  return {eligible:unmet.length===0,unmet,passed};
+}
+
+// 컨트롤러가 반려 위임에 따라 REDO를 기록한다. 리드의 lead-decision REDO와 같은 단계로 가고, 기록에는 delegated-policy로 남긴다.
+function autoRedo(c,records,check,consult_id) {
+  const s=c.s,n=s.iteration,d=s.redo_delegation;
+  const blocking=panelBlocking(records);
+  const findings=records.flatMap(r=>Array.isArray(r.findings)?r.findings:[]);
+  const rationale=`Sent back by the delegated rejection policy ${d.policy} (granted at init: ${d.reason}): every mandatory reviewer asked for redo on ${blocking.join(', ')} with file:line evidence. The lead did not read this round.`;
+  const record={
+    decision:'REDO',requested_decision:'REDO',rationale,baseline_digest:s.post_digest,contract_change:false,
+    round:n,owner:s.owner,required_reviewer:null,next_executor:null,consumed_usage:roundUsage(c),implementation_usage:roundUsage(c),decision_usage:null,
+    authority:{source:'delegated-policy',policy:d.policy,granted_by:d.granted_by,delegation_revision:d.revision,observed_model:null,model_verified:false},
+    reviewers:records.map(r=>r.executor),consult_id,policy_checks:check.passed
+  };
+  const file=`lead-decision-${n}.json`;
+  c.art(file,record);
+  s.lead_decision={...record,file};
+  s.reviews.push({verdict:'redo',rationale,blocking_criteria:blocking,commands_run:['delegated-rejection'],independent_diff_review:true,
+    reviewed_by:'delegated-policy',lead_decision:'REDO',owner:s.owner,round:n,findings});
+  s.auto_redos=[...(s.auto_redos??[]),{round:n,owner:s.owner,reviewers:records.map(r=>r.executor),blocking_criteria:blocking,
+    findings:findings.filter(f=>f&&['blocker','major'].includes(f.severity)).length,file}];
+  s.pending_review=null;
+  s.phase='REDO';
+  c.save();
+  return {status:'auto_redo',decision:'REDO',authority:'delegated-policy',blocking_criteria:blocking,used:s.auto_redos.length,limit:d.max_redos,
+    phase:s.phase,next_action:'begin with lead_feedback "@review" (the findings go to the same worker)'};
 }
 
 // classic의 자동 교체 규칙과 같은 판정: 같은 일꾼이 직전 반려와 같은 수용 기준(AC ID)으로 또 반려되면 교체 대상이다.
@@ -647,6 +722,12 @@ const exhaustedOptions=(c,s)=>{
   return [...(targets.length?[`REASSIGN_OTHER (${targets.join(', ')})`]:[]),
     ...(s.owner!=='sonnet'&&s.assignment?.strategy!=='sol_apex'&&c.budget('sonnet')?['REASSIGN_TO_SONNET']:[]),'ESCALATE','BLOCK'];
 };
+
+// 반려 위임으로 돌려보낸 라운드의 이력. 같은 AC가 이번 라운드에도 반려됐는지(still_rejected)를 함께 보여 준다.
+function delegatedRedos(s) {
+  const now=new Set(panelBlocking(s.review_results?.[s.iteration]??[]).flatMap(contract.criterionKeys));
+  return s.auto_redos.map(r=>({...r,still_rejected:[...new Set(r.blocking_criteria.flatMap(contract.criterionKeys))].filter(k=>now.has(k))}));
+}
 
 // 증거 파일의 위치만 넘긴다. diff 본문이나 모델 호출은 넣지 않는다.
 function leadEvidence(c,consult_id) {
@@ -686,6 +767,7 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
     acceptance:acceptance?{status:acceptance.status,quiescent:acceptance.quiescent===true,file:`acceptance-${n}-finish.json`}:{status:'not_recorded'},
     criteria:(brief?.success_criteria??[]).slice(0,36).map(text=>String(text).slice(0,180)),panel_status,
     ...(environmentFailures.length?{environment_failures:environmentFailures}:{}),
+    ...(s.auto_redos?.length?{delegated_redos:delegatedRedos(s)}:{}),
     review_gaps:coverage.gaps,repeated_criteria:repeated,risk_paths:plan.risk,unsupported_rejections:(s.review_results?.[n]??[]).filter(r=>r.ok&&r.evidence===false).map(r=>r.executor),planned_reviewers:plan.reviewers,substitutes:coverage.substitutes,same_family_reviewers:coverage.same_family,
     quota:quotaReport(c.root),usage:runs.map(r=>({executor:r.executor,role:r.role,tokens:r.tokens,cost_usd:r.cost_usd,file:r.file})),
     decision_authority:{source:'host-controller',observed_model:s.lead_model??null,model_verified:false},
@@ -759,6 +841,7 @@ function applyDelegatedReview(c,open,member,result) {
 function begin(c,input) {
   const s=c.s;
   if(input?.delegation!==undefined)throw Error('DELEGATION: the lead grants discretion only at init; it cannot be added or changed in a later brief');
+  if(input?.redo_delegation!==undefined)throw Error('REDO_DELEGATION: the lead delegates rejections only at init; it cannot be added or changed in a later brief');
   const initialBrief=c.optional('initial-brief.json'),initialVerification=initialBrief?.verification;
   if(input&&!Object.hasOwn(input,'verification')&&initialVerification){
     const inherited=Object.fromEntries(['verification','acceptance_commands','acceptance_map','acceptance_timeout_ms','acceptance_artifacts','acceptance_baseline_green']

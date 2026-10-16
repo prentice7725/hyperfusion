@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- 반려 위임(`redo_delegation`): 승인 권한(`delegation`)과 별개로, 리드가 init에서 STANDARD 작업에 한해 "근거가 분명한 반려는 리드를 거치지 않고 같은 일꾼에게 돌려보내도 된다"고 허락할 수 있다(`max_redos` 1~2, 기본 2). 필수 리뷰어 전원이 같은 라운드 digest에서 redo로 일치하고, 막는 기준이 brief의 AC ID를 가리키며, `scope.paths` 안 파일·줄의 blocker/major 지적이 있고, 같은 AC 재반려가 아니며, 계약·트리·예산·일꾼 라운드 상한이 맞을 때만 컨트롤러가 REDO를 `delegated-policy`로 기록하고 REDO로 보낸다. 하나라도 부족하면 이유를 패킷 `note`에 붙여 리드 게이트로 간다. 이 권한으로는 승인·교체·범위 변경을 하지 못한다. 리드 패킷에 `delegated_redos`(반려 이력과 같은 AC가 아직 반려 중인지), `report`에 `redos_by_policy`를 더했다. 실제 일꾼·리뷰어 모델로 돌려 본 것은 아니다(대역 CLI로 수동 흐름과 오토파일럿 흐름을 확인).
 - 개인정보 마스킹이 이미지 파일 이름을 이메일로 오인하던 문제: `icon@16.png`, `logo@2x.png`, `hero@1.5x.webp` 같은 해상도 표기 파일명이 `[REDACTED:email]`로 바뀌었다. 로컬 부분이 `/`를 허용해서 `assets/icon@16.png`가 경로째 지워졌고, `scope.paths`·`files_changed` 같은 경로 필드에서는 `REDACTION_UNSAFE: rename it before dispatch`로 디스패치 자체가 막혔다. 이제 `@` 뒤가 "해상도 표기(`16`, `2x`, `1.5x`) + 이미지 확장자(png, webp, svg 등)"이면 이메일로 보지 않는다(그런 주소는 존재할 수 없다). 좁게 잡았으므로 `alice@example.com.txt`나 `bob@2x.com`은 그대로 마스킹된다.
 - Antigravity가 셸 권한이 없는데 테스트를 돌리라는 지시에서 멈추던 문제: 헤드리스 agy는 허용 목록 밖의 명령이 한 번이라도 거부되면 결과 없이 끝난다. 그런데 공통 구현 지시문의 "Write the code, run the tests, fix what fails"가 agy에게도 그대로 가서, 같은 프롬프트의 "셸을 쓰지 말라"와 정면으로 부딪혔다(허용 목록이 없는 경우와 수용 명령이 없는 경우 모두). agy에게는 이 문장을 "바꾼 파일을 읽어서 확인하라, 테스트는 컨트롤러가 돌린다"로 바꿔 보내고, 목적·성공 기준·lead_feedback에 "npm test를 돌려라"가 있어도 셸 규칙이 우선한다고 적는다. 허용 목록이 있을 때 수용 명령을 허용하면서 금지하던 모순도 "수용 명령은 제외"로 정리했다. 다른 일꾼의 지시문은 그대로다. 실제 agy로 돌려 본 것은 아니다(프롬프트 내용과 모순 제거까지 확인).
 - agy 목줄 보강(AionUi 백엔드 AionCore의 agy 실측을 읽고 HyperFusion에 해당하는 것만 가져왔다):

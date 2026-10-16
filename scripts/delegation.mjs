@@ -56,3 +56,28 @@ export function contractChanged(initial,current) {
  const same=(a,b)=>JSON.stringify(a??null)===JSON.stringify(b??null);
  return CONTRACT_FIELDS.filter(k=>!same(initial?.[k],current?.[k])).concat(same(initial?.scope?.paths,current?.scope?.paths)?[]:['scope.paths']);
 }
+
+// 반려 위임. 리드가 init에서 한 번만 주는 별도의 권한으로, 승인 권한(delegation)과 독립이다.
+// 필수 리뷰어 전원이 같은 라운드 digest에서 근거(수용 기준 ID + 파일·줄 blocker/major 지적)를 들어 redo라고 하면
+// 컨트롤러가 리드 대신 같은 일꾼에게 돌려보낸다. 승인·교체·범위 변경은 하지 못하고, 조건이 하나라도 부족하면 리드 게이트에서 멈춘다.
+export const MAX_AUTO_REDOS=2;
+export function takeRedoDelegation(configuration,assignment,input) {
+ if(input?.redo_delegation===undefined)return null;
+ const d=input.redo_delegation;
+ const fail=why=>Error('REDO_DELEGATION: '+why);
+ if(configuration?.review?.strategy!=='lead-gated-adaptive')throw fail('requires review.strategy "lead-gated-adaptive" (the lead gate is what the policy stands in for)');
+ if(!d||typeof d!=='object'||Array.isArray(d))throw fail('redo_delegation must be an object {reason, max_redos?}');
+ const unknown=Object.keys(d).filter(k=>!['reason','max_redos'].includes(k));
+ if(unknown.length)throw fail('unknown field '+unknown.join(', '));
+ if(typeof d.reason!=='string'||!d.reason.trim()||d.reason.length>300)throw fail('reason must be a short text saying why reviewers may send this task back without the lead');
+ const redos=d.max_redos??MAX_AUTO_REDOS;
+ if(!Number.isSafeInteger(redos)||redos<1||redos>MAX_AUTO_REDOS)throw fail(`max_redos must be an integer from 1 to ${MAX_AUTO_REDOS}`);
+ if(assignment?.criticality!=='standard'||assignment?.strategy!=='external_primary')throw fail('only a STANDARD task with the external_primary strategy can delegate rejections; important and apex tasks stay with the lead');
+ if(!criterionIds(input.success_criteria).length)throw fail('success_criteria must carry AC ids (AC1, AC2...): a delegated rejection must name the criterion it fails');
+ delete input.redo_delegation;
+ return {policy:'evidence-redo',reason:d.reason.trim(),max_redos:redos,revision:1,granted_by:'lead-at-init',set_by:'controller'};
+}
+export function sameRedoDelegation(recorded,current) {
+ if(!recorded||!current)return false;
+ return ['policy','reason','max_redos','revision','granted_by','set_by'].every(k=>recorded[k]===current[k]);
+}
