@@ -104,7 +104,7 @@ Copy `hyperfusion.v03.config.example.json` to the target repository as `hyperfus
 - **Final lead gate.** Results stop at `LEAD_DECISION_REQUIRED`; `auto_apply`, review adoption, and autopilot cannot skip it. Only an explicit task-level discretion grant can authorize policy approval, and unattributed changes block that approval.
 - **Local universal monitoring.** Implementation, review, and consultation share supervision (`status --monitor`, `monitor --once|--watch`). Silence is a QUIET warning, not progress or success. Monitoring makes no model calls.
 - **Usage and quota.** Include failed calls, reviews, consultations, and APEX implementation; unknown values remain `null`. `quota-policy.mjs record` accepts operator records; `collect-codex` reads local Codex `rate_limits` without a network/model call. Expired records become unknown.
-- **Default reasoning effort.** Sonnet high, Haiku max, Antigravity high, Grok xhigh, Luna xhigh, Sol medium. Override `reasoning_effort`; `null` omits the flag.
+- **Default reasoning effort.** Sonnet high, Haiku max, Antigravity high, Grok medium, Luna xhigh, Sol medium. Grok stays at medium across task difficulties and roles unless explicitly overridden. Override `reasoning_effort`; `null` omits the flag.
 - Host model identity is not authenticated: `authority.model_verified:false` records this limitation.
 
 ## Security

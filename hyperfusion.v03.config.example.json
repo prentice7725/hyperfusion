@@ -4,6 +4,7 @@
   "lead_takeover": false,
   "external": {"default": "auto", "available": ["grok", "antigravity", "luna", "haiku", "sonnet"]},
   "executors": {
+    "grok": {"reasoning_effort": "medium"},
     "antigravity": {"sandbox": true},
     "sol": {"model": "gpt-6.1-sol", "reasoning_effort": "medium"},
     "sonnet": {"model": "claude-sonnet-5-5", "reasoning_effort": "high"}

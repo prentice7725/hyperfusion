@@ -95,7 +95,9 @@ Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model 
 | Grok | `--reasoning-effort` | `low`, `medium`, `high`, `xhigh`, `max` (도움말에 값 목록이 없어 Claude와 같게 둠) |
 | Luna, Sol (Codex) | `-c model_reasoning_effort=…` | `minimal`, `low`, `medium`, `high`, `xhigh` |
 
-기본값은 Sonnet `high`, Haiku `max`, Antigravity `high`, Grok `xhigh`, Luna `xhigh`, Sol `medium`이다. 설정에 값을 적으면 덮어쓰고, `null`을 적으면 플래그를 넘기지 않고 CLI 기본값을 쓴다(예전 CLI에 effort 플래그가 없을 때). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
+기본값은 Sonnet `high`, Haiku `max`, Antigravity `high`, Grok `medium`, Luna `xhigh`, Sol `medium`이다. Grok은 classic·External-First 모두 모든 난이도(누락 포함)의 구현과 리뷰·상담에 기본 `medium`을 사용하며 난이도로 `xhigh`까지 자동 상승하지 않는다. 설정에 값을 적으면 덮어쓰고, `null`을 적으면 플래그를 넘기지 않고 CLI 기본값을 쓴다(예전 CLI에 effort 플래그가 없을 때). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
+
+기존 설정에 `executors.grok.reasoning_effort:"xhigh"`를 적었다면 그 명시값은 유지된다. 새 기본값을 사용하려면 해당 키를 지우거나 `"medium"`으로 바꾸고 새 작업을 init한다. 진행 중 작업의 고정된 설정은 변경하지 않는다. CLI 기본값으로 위임하는 `null`은 `medium` 지정과 다르다.
 
 ## AGY 모델 계열과 effort 분리 (Argon)
 

@@ -3,7 +3,7 @@ const general=['code','tests','refactor','ui','docs'];
 const high=['low','medium','high','xhigh','max'];
 const codex=['minimal','low','medium','high','xhigh'];
 export const MEMBERS={
- grok:{vendor:'xai',binary:'grok',env:'HF_GROK_BIN',auth:['XAI_','GROK_'],model:null,implement:true,caps:[...general,'image-gen'],effort:'xhigh',efforts:high,rounds:3,role:'이미지 애셋 생성, 빠른 일반 구현',owns:['image-asset']},
+ grok:{vendor:'xai',binary:'grok',env:'HF_GROK_BIN',auth:['XAI_','GROK_'],model:null,implement:true,caps:[...general,'image-gen'],effort:'medium',efforts:high,rounds:3,role:'이미지 애셋 생성, 빠른 일반 구현',owns:['image-asset']},
  antigravity:{vendor:'google',binary:'agy',env:'HF_AGY_BIN',auth:['GOOGLE_','GEMINI_','AGY_','ANTIGRAVITY_'],model:null,implement:true,caps:general,effort:'high',efforts:['low','medium','high'],rounds:3,role:'UI·프론트엔드, 문서',owns:['ui','docs']},
  sonnet:{vendor:'anthropic',binary:'claude',env:'HF_CLAUDE_BIN',auth:['ANTHROPIC_','CLAUDE_'],model:'claude-sonnet-5-5',implement:true,caps:general,effort:'high',efforts:high,rounds:3,role:'핵심 구현: 중·고난도 코드, 테스트 설계, 리팩터',owns:['code:medium|high','tests','refactor']},
  haiku:{vendor:'anthropic',binary:'claude',env:'HF_CLAUDE_BIN',auth:['ANTHROPIC_','CLAUDE_'],model:'claude-haiku-5-5',implement:true,caps:general,effort:'max',efforts:high,rounds:3,role:'빠른 구현 보조: 쉬운 코드, 문서, 테스트 보강',owns:[]},
