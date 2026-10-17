@@ -5,6 +5,7 @@
 
 import {EXECUTORS,externalFirst,taskExecutorOptions,automaticImplementer} from './executor-config.mjs';
 import {vendorOf} from './member-registry.mjs';
+import {vendorAllowed} from './vendor-policy.mjs';
 
 export const CRITICALITIES=['standard','important','apex'];
 export const ASSIGNMENT_STRATEGIES=['external_primary','dual_review','sonnet_implementation','sol_apex'];
@@ -14,19 +15,25 @@ const OWNERS=['grok','antigravity','haiku','luna','sonnet','sol','lead'];
 const LATER=['explicit_repair'];
 // 기본 리뷰어의 강도. 바꿔 낀 리뷰어도 같은 값을 쓰고, 표에 없으면 설정값을 쓴다.
 export const REVIEW_EFFORT={sol:'medium',sonnet:'high'};
+export const PAIRED_REVIEW_POLICY='cross-vendor-pairs-v1';
+export const LEGACY_REVIEW_POLICY='legacy-v1';
 // 같은 회사 모델끼리의 리뷰는 허용하되 교차 검증이 약하다는 표시를 남긴다.
 export const sameFamily=(a,b)=>!!vendorOf(a)&&vendorOf(a)===vendorOf(b);
 
-export function planReview(owner,{criticality='standard',strategy='external_primary'}={},{risk=[]}={}) {
+export function planReview(owner,assignment={review_policy:PAIRED_REVIEW_POLICY},{risk=[]}={}) {
+ const {criticality='standard',strategy='external_primary',review_policy=LEGACY_REVIEW_POLICY}=assignment??{};
+ if(![PAIRED_REVIEW_POLICY,LEGACY_REVIEW_POLICY].includes(review_policy))throw Error('ADAPTIVE_REVIEW: unknown review policy');
  if(!OWNERS.includes(owner))throw Error('ADAPTIVE_REVIEW: unknown round owner '+owner);
  if(!CRITICALITIES.includes(criticality))throw Error('ADAPTIVE_REVIEW: task_criticality must be standard, important, or apex');
  if(!ASSIGNMENT_STRATEGIES.includes(strategy))throw Error('ADAPTIVE_REVIEW: assignment_strategy is not enabled');
  // 이중 리뷰는 Grok/AGY에 대해서만 Sol+Sonnet이다. Luna/Haiku의 독립성 규칙을 숫자 맞추기로 깨지 않는다.
  // 위험 경로(risk_paths)를 건드린 라운드는 기록된 등급과 상관없이 중요 작업처럼 리뷰한다. 등급 기록은 바꾸지 않는다.
  const raised=criticality==='important'||criticality==='apex'||strategy==='dual_review'||risk.length>0;
- const dual=raised&&(owner==='grok'||owner==='antigravity');
+ const paired=review_policy===PAIRED_REVIEW_POLICY;
+ const dual=raised&&(paired?!['sol','lead'].includes(owner):(owner==='grok'||owner==='antigravity'));
  let reviewers;
- if(dual)reviewers=['sol','sonnet'];
+ if(dual&&paired)reviewers=owner==='grok'?['sol','sonnet']:owner==='luna'?['sonnet','grok']:['sol','grok'];
+ else if(dual)reviewers=['sol','sonnet'];
  else if(owner==='luna')reviewers=['sonnet'];
  else if(owner==='sol')reviewers=['lead'];
  else reviewers=['sol'];
@@ -34,11 +41,12 @@ export function planReview(owner,{criticality='standard',strategy='external_prim
  if(owner==='luna'&&reviewers.includes('sol'))throw Error('ADAPTIVE_REVIEW: Sol cannot independently review Luna');
  if(owner==='haiku'&&reviewers.includes('sonnet'))throw Error('ADAPTIVE_REVIEW: Sonnet cannot replace Sol for a Haiku round');
  if(owner==='sonnet'&&reviewers.includes('sonnet'))throw Error('ADAPTIVE_REVIEW: Sonnet cannot review its own round');
- return {owner,criticality,strategy,reviewers,effort:reviewEffort(reviewers),risk:[...risk]};
+ return {owner,criticality,strategy,review_policy,reviewers,effort:reviewEffort(reviewers,{deepGrok:paired&&dual}),risk:[...risk]};
 }
 
-export function reviewEffort(reviewers) {
- return Object.fromEntries(reviewers.filter(e=>REVIEW_EFFORT[e]).map(e=>[e,REVIEW_EFFORT[e]]));
+export function reviewEffort(reviewers,{deepGrok=false}={}) {
+ return {...Object.fromEntries(reviewers.filter(e=>REVIEW_EFFORT[e]).map(e=>[e,REVIEW_EFFORT[e]])),
+  ...(deepGrok&&reviewers.includes('grok')?{grok:'xhigh'}:{})};
 }
 
 // 이번 위임에서 채울 자리와 리뷰어. 이미 끝난 리뷰(kept)는 다시 돌리지 않는다. 실패한 리뷰어는 기본값에서 빠지고, 다시 쓰려면 이름을 적는다.
@@ -63,7 +71,12 @@ export function panelSeats(plan,{asked,kept=[],reviewed=[],failed=[],reason}={})
  const substitutes=picks.filter(e=>!plan.reviewers.includes(e));
  const why=typeof reason==='string'?reason.trim():'';
  if(substitutes.length&&!why)throw Error('ADAPTIVE_REVIEW: substitution_reason is required to replace the planned reviewer ('+plan.reviewers.join(', ')+')');
- return {reviewers:picks,effort:reviewEffort(picks),substitutes,substitution_reason:substitutes.length?why:null,kept:[...kept]};
+ if(plan.review_policy===PAIRED_REVIEW_POLICY){
+  const all=[...kept,...picks];
+  if(all.some(e=>sameFamily(e,owner)))throw Error('ADAPTIVE_REVIEW: same-vendor review cannot fill an independent seat');
+  if(new Set(all.map(vendorOf)).size!==all.length)throw Error('ADAPTIVE_REVIEW: paired reviewers must use distinct vendors');
+ }
+ return {reviewers:picks,effort:reviewEffort(picks,{deepGrok:plan.review_policy===PAIRED_REVIEW_POLICY&&plan.reviewers.length>1}),substitutes,substitution_reason:substitutes.length?why:null,kept:[...kept]};
 }
 
 // 계획한 자리 수만큼 작성자와 다른 모델이 같은 digest에서 pass했는지. 이름이 아니라 자리로 센다.
@@ -77,6 +90,7 @@ export function reviewCoverage(plan,records,digest) {
 
 // 컨트롤러가 init에서만 남기는 배정. 브리프나 저장소 설정으로 다시 읽지 않는다.
 export function takeAssignment(configuration,input) {
+ if(input?.review_policy!==undefined)throw Error('ADAPTIVE_REVIEW: review_policy is a controller record, not a brief field');
  const adaptive=configuration?.review?.strategy==='lead-gated-adaptive';
  const present=['task_criticality','assignment_strategy','assignment_reason'].filter(k=>input?.[k]!==undefined);
  if(!adaptive){
@@ -94,7 +108,10 @@ export function takeAssignment(configuration,input) {
  if(typeof reason!=='string'||!reason.trim())throw Error('ADAPTIVE_REVIEW: assignment_reason must be text');
  delete input.task_criticality;delete input.assignment_strategy;delete input.assignment_reason;
  const authorized_implementer=strategy==='sonnet_implementation'?'sonnet':strategy==='sol_apex'?'sol':null;
- return {criticality,strategy,reason:reason.trim(),revision:1,final_decider:'lead',set_by:'controller',authorized_implementer};
+ // Preserve approved installations without Grok (e.g. the Claude+Codex preset).
+ // A missing binary in a Grok-enabled team is still an error, never a downgrade.
+ const grokEnabled=vendorAllowed(configuration,'grok')&&(configuration?.external?.available?.includes('grok')||configuration?.review?.reviewers?.includes('grok'));
+ return {criticality,strategy,review_policy:grokEnabled?PAIRED_REVIEW_POLICY:LEGACY_REVIEW_POLICY,reason:reason.trim(),revision:1,final_decider:'lead',set_by:'controller',authorized_implementer};
 }
 
 export function sameAssignment(recorded,current) {
@@ -102,6 +119,7 @@ export function sameAssignment(recorded,current) {
  return recorded.criticality===current.criticality&&recorded.strategy===current.strategy
   &&recorded.revision===current.revision&&recorded.reason===current.reason
   &&recorded.final_decider===current.final_decider&&recorded.set_by===current.set_by
+  &&(recorded.review_policy??LEGACY_REVIEW_POLICY)===(current.review_policy??LEGACY_REVIEW_POLICY)
   &&(recorded.authorized_implementer??null)===(current.authorized_implementer??null);
 }
 
@@ -185,6 +203,7 @@ export function samePlan(recorded,current) {
  if(JSON.stringify(recorded.risk??[])!==JSON.stringify(current.risk??[]))return false;
  const reviewers=recorded.reviewers??[];
  return recorded.owner===current.owner&&recorded.criticality===current.criticality&&recorded.strategy===current.strategy
+  &&(recorded.review_policy??LEGACY_REVIEW_POLICY)===(current.review_policy??LEGACY_REVIEW_POLICY)
   &&recorded.revision===current.revision&&JSON.stringify(recorded.effort)===JSON.stringify(current.effort)
   &&reviewers.length===current.reviewers.length&&reviewers.every((e,i)=>e===current.reviewers[i]);
 }

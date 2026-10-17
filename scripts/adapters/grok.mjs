@@ -24,7 +24,7 @@ export function dispatch(brief,lease,{session,resume,probe:cli,promptFile,option
  const allow=[...(edit?brief.scope.paths.flatMap(p=>[`Edit(${p})`,`Edit(${p}/**)`]):[]),...bashRules(brief)];
  const args=['--prompt-file',promptFile,'--output-format','json','--cwd',brief.repo_root,'--max-turns',String(options.max_turns??40),...(options.model?['--model',options.model]:[]),...(options.reasoning_effort?['--reasoning-effort',options.reasoning_effort]:[]),
   resume?'--resume':'--session-id',session,...allow.flatMap(r=>['--allow',r]),...[...editDeny(brief),...secretReadDeny(),...DENY,...(brief.consult?CONSULT_DENY:[])].flatMap(r=>['--deny',r])];
- return {cli:{...cli,args,session_id:session,resume,prompt_file:promptFile},prompt:prompt(brief,lease)};
+ return {cli:{...cli,args,session_id:session,resume,prompt_file:promptFile,model:options.model??null,model_family:options.model??null,reasoning_effort:options.reasoning_effort??null},prompt:prompt(brief,lease)};
 }
 
 export function parse(stdout,request) {

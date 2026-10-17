@@ -4,7 +4,13 @@
 
 ## Unreleased
 
-- Grok 기본 effort를 medium으로 낮추고 classic·External-First의 모든 난이도·미분류 작업과 리뷰·상담에 동일하게 적용한다. 일반/adaptive 예제와 세 언어 README도 갱신했다. 명시적 effort·null과 진행 중 작업의 고정된 설정은 보존하며, 실제 지연 개선은 미측정이다.
+## 0.26.0 — 2026-10-17
+
+- 새 Grok 사용 adaptive 작업의 리뷰 정책을 init에 고정한다. 중요한 작업·명시적 이중 리뷰·위험 경로에서 Grok 구현은 Sol+Sonnet, Luna 구현은 Sonnet+Grok, AGY·Haiku·Sonnet 구현은 Sol+Grok 페어를 사용한다. 일반 작업은 기존 독립 리뷰어 1명, Sol APEX는 리드 직접 리뷰를 유지한다.
+- Grok 구현·일반 상담의 medium과 페어 리뷰 자리의 xhigh를 분리하고 dispatch·사용량에 선택 강도를 남긴다. 리뷰어는 같은 digest를 독립적으로 병렬 검토하며 충돌·누락은 리드 게이트에 남는다. 근거 있는 전원 반려에만 기존 redo_delegation을 적용한다. 새 정책의 대체 리뷰어도 구현자 및 다른 리뷰어와 같은 벤더로 자리를 채우지 못한다.
+- init/begin에 잠정 review_preview를 제공하고 리드 지시서·한/영/일 README·검토 문서를 갱신한다. 이전 배정과 Grok 미포함/금지 팀은 기존 정책을 유지한다. 실제 모델의 지연·판정 품질은 미측정이다.
+
+- Grok 일반 기본 effort를 medium으로 낮추고 classic·External-First의 모든 난이도·미분류 구현과 일반 리뷰·상담에 적용한다(위의 지정 페어 리뷰 자리는 역할별 xhigh). 일반/adaptive 예제와 세 언어 README도 갱신했다. 일반 명시적 effort·null과 진행 중 작업의 고정된 설정은 보존하며, 실제 지연 개선은 미측정이다.
 
 - Codex(Luna·Sol)의 Windows 샌드박스가 셸을 띄우지 못하는 문제(`CreateProcessAsUserW failed: 5`): 라운드가 아무것도 못 하고 "못 했다"로 끝나 리드가 직접 일꾼을 바꿔야 했다. 이제 Codex 일꾼을 고르기 전(설치 확인, 상담·리뷰 선발, doctor)에 모델 호출 없이 `codex sandbox cmd.exe /c echo HF_SANDBOX_OK`와 `codex sandbox pwsh ...`(pwsh는 이름으로 점검하고, 설치돼 있지 않으면 건너뛴다. `windows` 하위 명령은 `codex sandbox --help`에 있을 때만 붙인다)로 확인하고, 권한 거부(코드 5·1312)나 샌드박스 준비 실패 문구가 보이면 `ADAPTER_UNAVAILABLE: CODEX_WINDOWS_SANDBOX`로 그 일꾼을 사용 불가로 둬 라운드를 쓰지 않고 다른 일꾼으로 넘어간다. 판단할 수 없으면(하위 명령 없음, 시간 초과) 막지 않는다. 라운드 중 명령 실행 결과에 거부가 나오면 `CODEX_WINDOWS_SANDBOX`로 라운드를 실패시키고 자동 복구는 다시 시도하지 않는다. 운영자는 `HF_CODEX_WINDOWS_SANDBOX=elevated|unelevated`로 샌드박스 방식을 고를 수 있다(저장소 설정으로는 불가). 실제 Windows(codex-cli 0.162.0)에서 원인을 확인했다: cmd.exe·Windows PowerShell은 뜨고 패키지판(Store/MSIX) pwsh만 `CreateProcessAsUserW failed: 5`로 막혔다. `winget install --id Microsoft.PowerShell --source winget`도 이 패키지판을 설치하므로, 안내 문구는 패키지 제거와 GitHub의 MSI 설치를 권한다. 그 PC의 Codex에는 `windows` 하위 명령이 없었고, 그때 나는 코드 2(파일 없음)는 막지 않는다. 코드 1312와 준비 실패 문구는 openai/codex 이슈에서 가져왔다. vitest EPERM처럼 셸은 뜨고 그 안의 자식 프로세스가 막히는 경우는 기존 `environment_error` 보고로 남는다.
 - 반려 위임(`redo_delegation`): 승인 권한(`delegation`)과 별개로, 리드가 init에서 STANDARD 작업에 한해 "근거가 분명한 반려는 리드를 거치지 않고 같은 일꾼에게 돌려보내도 된다"고 허락할 수 있다(`max_redos` 1~2, 기본 2). 필수 리뷰어 전원이 같은 라운드 digest에서 redo로 일치하고, 막는 기준이 brief의 AC ID를 가리키며, `scope.paths` 안 파일·줄의 blocker/major 지적이 있고, 같은 AC 재반려가 아니며, 계약·트리·예산·일꾼 라운드 상한이 맞을 때만 컨트롤러가 REDO를 `delegated-policy`로 기록하고 REDO로 보낸다. 하나라도 부족하면 이유를 패킷 `note`에 붙여 리드 게이트로 간다. 이 권한으로는 승인·교체·범위 변경을 하지 못한다. 리드 패킷에 `delegated_redos`(반려 이력과 같은 AC가 아직 반려 중인지), `report`에 `redos_by_policy`를 더했다. 실제 일꾼·리뷰어 모델로 돌려 본 것은 아니다(대역 CLI로 수동 흐름과 오토파일럿 흐름을 확인).

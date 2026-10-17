@@ -70,7 +70,7 @@ test('IMPORTANT-IMPLEMENT gives Sonnet one round, then the grant is gone',async 
  const reviewed=run(f.root,'delegate-review',{});
  await consult(f.root,reviewed.consult_id);
  const out=run(f.root,'consult-finish',{quiescent:true});
- assert.deepEqual(reviewed.members.map(m=>m.executor),['sol']);
+ assert.deepEqual(reviewed.members.map(m=>m.executor),['sol','grok']);
  assert.equal(out.review.status,'lead_gate');
  assert.equal(out.review.recommendation,'APPROVE');
  const codex=read(path.join(f.temp,'fake-codex-args.json'));

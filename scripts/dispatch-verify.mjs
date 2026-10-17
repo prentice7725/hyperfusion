@@ -13,7 +13,13 @@ const canon=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)
 const shape=r=>{const {model_check,...cli}=r.cli??{};return {cli,prompt:r.prompt,stdin:r.stdin};};
 
 function compare(label,expected,request) {
- const a=canon(shape(expected)),b=canon(shape(request));
+ const expectedShape=shape(expected),requestShape=shape(request);
+ // Older Grok requests lack additive reporting metadata. Arguments and prompt
+ // remain authoritative and are still compared; execution uses derived fields.
+ if(request.executor==='grok')for(const key of ['model','model_family','reasoning_effort']){
+  if(!Object.hasOwn(request.cli??{},key))delete expectedShape.cli[key];
+ }
+ const a=canon(expectedShape),b=canon(requestShape);
  if(a===b)return;
  const parts=['executable','args','prompt_file','extra_files'].filter(k=>canon(expected.cli?.[k])!==canon(request.cli?.[k]));
  if(canon(expected.prompt)!==canon(request.prompt))parts.push('prompt');

@@ -1,12 +1,12 @@
 # HyperFusion
 
-v0.25.0은 red-first 테스트 보호 계약을 고정하고, 기존 수용 테스트 변경을 표시하여 자동 승인을 막습니다. Claude·Grok의 일반 비밀 경로 Read deny, 호스트 훅 관측 기록, 진행 중 작업의 위험 Bash 차단을 추가했습니다. 에이전트 간 지시·보고는 영어로 통일하며 각 보호 장치의 한계도 명시합니다. [수용 테스트와 에이전트 보호](references/agent-guards.md)를 참고하세요.
+v0.26.0은 중요한 adaptive 작업에 교차 벤더 페어 리뷰를 추가합니다. Grok 구현·일반 상담은 medium, 지정된 심층 리뷰 자리만 xhigh를 사용합니다. 작업 시작 때 정책을 고정하고 독립·병렬로 검토하며, 의견 충돌은 리드가 판단합니다. [페어 리뷰](references/review-pairs.md), [수용 테스트와 에이전트 보호](references/agent-guards.md), [CHANGELOG](CHANGELOG.md)를 참고하세요.
 
 [English](README.md) | 한국어 | [日本語](README.ja.md)
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.25.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.26.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 왜 만들었나
 
@@ -100,10 +100,19 @@ CLOSE까지 가야 성공이다. 어느 단계에서든 지금 칠 명령은 `no
 `hyperfusion.v03.config.example.json`을 대상 저장소의 `hyperfusion.config.json`으로 복사해 명시적으로 켠다. 기존 classic 설정·진행 중 작업은 자동으로 바뀌지 않는다. 자세한 내용은 [universal-supervisor](references/universal-supervisor.md).
 
 - **External-First 배치.** 자동 구현은 Grok·Antigravity·Luna가 맡는다. Sonnet(중요/재배정 라운드)과 Sol(APEX 라운드)은 라운드별 grant가 있을 때만 구현하며, 자동 폴백·신입 우대는 이 둘을 고르지 않는다.
-- **작성자별 리뷰.** 원칙은 하나, 구현한 모델은 자기 라운드를 리뷰하지 않는다. 기본은 Grok/AGY 일반 → Sol, Luna → Sonnet, 중요 작업 → Sol + Sonnet 이중 PASS. 리뷰어가 한도·장애로 막히면 리드가 사유를 적고 다른 모델로 바꿔 끼우고, 남은 리뷰어가 없으면 리드가 직접 diff를 읽고 채운다. 반려에 동의하지 않으면 리드가 사유를 적고 다른 모델에게 재검토를 맡기고, 대체 리뷰어가 pass하면 직접 검토한 뒤 뒤집을 수 있다. 결과는 `LEAD_DECISION_REQUIRED`에서 멈추고, `auto_apply`·`review {adopt}`·autopilot도 호스트 리드의 최종 판정 게이트를 건너뛰지 못한다(리드가 init에서 재량권을 준 작업만 예외다).
+- **작성자별 리뷰.** 일반 작업은 독립 리뷰어 1명, 중요·명시적 이중 리뷰·위험 경로는 아래 페어가 독립·병렬 검토한다. 구현자는 자기 라운드를 리뷰하지 못한다. 대체에는 사유가 필요하며 기존 반려는 다른 PASS로 지워지지 않는다. 충돌·누락은 리드 게이트에 남는다. 이전 배정과 승인된 Grok 미포함 팀은 기존 규칙을 유지한다.
 - **범용 로컬 감시.** 모든 implement/review/consult 호출을 같은 supervisor가 관측한다(`status --monitor`, `monitor --once|--watch`). 무신호는 QUIET 경고일 뿐이며 진행률·성공을 만들어 내지 않는다. 호출 모델은 따로 부르지 않는다.
 - **사용량 계측과 쿼터.** 구현·검수·상담·실패 호출과 APEX Sol을 포함해 기록하고, 미측정은 `null`로 둔다. 쿼터는 `scripts/quota-policy.mjs`로 기록한다. 운영자가 직접 적거나(`record`), Codex가 자기 세션 기록에 남긴 `rate_limits`를 읽어 openai 잔량을 기록한다(`collect-codex`, 네트워크·모델 없음). 기록은 출처와 유효 시간이 지나면 '모름'으로 취급한다.
-- **기본 추론 강도.** Sonnet high, Haiku max, Antigravity high, Grok medium, Luna xhigh, Sol medium. Grok은 명시적 설정이 없으면 난이도·역할과 관계없이 medium을 유지한다. 설정 `reasoning_effort`로 덮어쓰고 `null`이면 플래그를 넘기지 않는다.
+- **기본 추론 강도.** Sonnet high, Haiku max, Antigravity high, Grok medium, Luna xhigh, Sol medium. Grok 구현·일반 상담은 명시적 설정이 없으면 medium이며, 지정된 adaptive 페어 리뷰 자리만 xhigh다. `reasoning_effort:null`은 일반 플래그 생략이며 필수 리뷰 역할의 강도를 해제하지 않는다.
+
+| 구현자 | 중요·이중·위험 경로 리뷰 페어 |
+|---|---|
+| Grok medium | Sol medium + Sonnet high |
+| Luna | Sonnet high + Grok xhigh |
+| AGY / Haiku / 승인된 Sonnet | Sol medium + Grok xhigh |
+| 승인된 APEX Sol | 페어 위임 대신 리드 직접 리뷰 |
+
+리드는 init의 승인된 작업지시서에 중요도·전략을 정하고 `review_preview`를 확인한다. 근거 있는 전원 NG만 init에 부여한 `redo_delegation`으로 재작업시킬 수 있고, 의견 충돌은 리드가 판단한다. 전원 PASS도 별도의 적격 승인 위임이 없으면 리드에게 보고한다. [상세 규칙](references/review-pairs.md).
 - 호스트가 실제 Opus인지는 인증할 수 없으므로 `authority.model_verified:false`로 기록한다.
 
 ## 보안

@@ -7,6 +7,8 @@ Read this short map first; load detailed references only at the current step.
 3. Adaptive/v0.3: read [universal-supervisor](universal-supervisor.md) before init. Grants, mandatory review seats and the final lead gate are controller records, never worker/config authority. The implementer never reviews itself.
 4. Failures: retain the lease until process shutdown is proven. Read [recovery](recovery-protocol.md); do not create replacement sessions or restart to evade attempt caps.
 
+For a new Grok-enabled adaptive task, set criticality/strategy in the lead-approved brief at init and inspect `review_preview`. Standard work uses one independent reviewer; important/dual/risk-raised work uses the [cross-vendor pairs](review-pairs.md). Keep Grok implementation at medium and use xhigh only for its designated deep-review seat. Run the emitted review bridge once for independent parallel reviews; never turn a split or missing panel into PASS.
+
 ## Codex
 
 Sol/Luna use `codex exec --json` and collect client-reported `turn.completed` usage. Cached input is already part of input; do not add it twice. Missing usage stays null. Implementation threads are task-scoped. Resume is enabled only if `exec resume --help` advertises the required JSON/schema/model flags, using the exact saved ID, never `--last`. Unsupported versions stay stateless while still collecting usage. Reviews remain read-only and ephemeral when supported. See [Codex runtime](codex-runtime.md).

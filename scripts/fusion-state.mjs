@@ -34,7 +34,7 @@ import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex,ope
 import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
 import {readStatusLine} from './status-line.mjs';
 import {sameFamily} from './review-plan.mjs';
-import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation} from './review-plan.mjs';
+import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation,PAIRED_REVIEW_POLICY} from './review-plan.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 // 상담 위원에게 직접 넣어 주는 diff의 최대 길이. 12,000자로는 리뷰어가 변경 대부분을 보지 못했다.
@@ -304,7 +304,7 @@ function init(c,input) {
     sessions:Object.fromEntries(EXECUTORS.map(e=>[e,null])),
     task_id:input.task_id,phase:'PLAN',communication_language:'en',hook_observation:observedHooks,
     hooks_observed:observedHooks.hooks_observed,warnings:observedHooks.warning?[observedHooks.warning]:[],
-    ...(assignment?{assignment}:{}),
+    ...(assignment?{assignment,review_preview:{...planReview(executor,assignment),provisional:true}}:{}),
     ...(delegation?{delegation}:{}),
     ...(redoDelegation?{redo_delegation:redoDelegation}:{}),
     ...(grant?{implement_grant:grant}:{}),
@@ -520,7 +520,7 @@ function consult(c,input) {
   const base=snapshot(c.root);
   let storedPlan=null;
   if(adaptive){
-    storedPlan={version:1,task_id:s.task_id,round:n,owner:s.owner,criticality:adaptivePlan.criticality,strategy:adaptivePlan.strategy,reviewers:[...adaptivePlan.reviewers],effort:adaptivePlan.effort,risk:adaptivePlan.risk,revision:s.assignment.revision,baseline_digest:base.digest};
+    storedPlan={version:1,task_id:s.task_id,round:n,owner:s.owner,criticality:adaptivePlan.criticality,strategy:adaptivePlan.strategy,review_policy:adaptivePlan.review_policy,reviewers:[...adaptivePlan.reviewers],effort:adaptivePlan.effort,risk:adaptivePlan.risk,revision:s.assignment.revision,baseline_digest:base.digest};
     const prior=c.optional(`review-plan-${n}.json`);
     if(prior){
       if(!samePlan(prior,storedPlan)||prior.baseline_digest!==base.digest)throw Error('ADAPTIVE_REVIEW: frozen review plan does not match this round snapshot');
@@ -915,7 +915,7 @@ function begin(c,input) {
     input={...input,lead_feedback:items};
   }
   if(s.phase!=='PLAN'&&owner!=='lead')contract.feedback(input.lead_feedback);
-  for(const key of ['task_criticality','assignment_strategy','assignment_reason','authorized_implementer','implement_grant','role_for_round']){
+  for(const key of ['task_criticality','assignment_strategy','assignment_reason','authorized_implementer','implement_grant','role_for_round','review_policy']){
     if(input[key]!==undefined)throw Error('ROLE_GATE: implement grants are controller records, not brief fields');
   }
   const pending=assertImplementRound(s,owner);
@@ -965,6 +965,7 @@ function begin(c,input) {
     s.active_executor=owner;
     if(session)s.sessions[owner]=session;
   }
+  if(s.assignment)s.review_preview={...planReview(owner,s.assignment,{risk:roundRisk(c)}),provisional:true};
   c.save();
   c.art(`brief-${round}.json`,input);
   c.art(`base-${round}.json`,base);
@@ -975,7 +976,7 @@ function begin(c,input) {
     ?{
       transport:'executor-cli',executor:owner,command:process.execPath,args:[BRIDGE,c.root],
       ...a.dispatch(brief,lease,{session,resume,probe:cli,promptFile,...implementDispatch(s,owner)}),
-      task_id:s.task_id,round,token:lease.token
+      task_id:s.task_id,round,token:lease.token,...(s.assignment?{review_preview:s.review_preview}:{})
     }
     :{transport:'lead-takeover',brief,token:lease.token};
   c.art(`dispatch-${round}.json`,request);
@@ -1716,6 +1717,7 @@ function autoSubstituteInput(c) {
   for(const e of s.configuration.review.reviewers){
     if(picks.length===seats)break;
     if(used.has(e)||e==='lead'||sameFamily(e,s.owner))continue;
+    if(plan.review_policy===PAIRED_REVIEW_POLICY&&[...kept,...picks].some(other=>sameFamily(e,other)))continue;
     try{adapter(e).probe(s.configuration.executors[e]??{});}catch{continue;}
     picks.push(e);
   }

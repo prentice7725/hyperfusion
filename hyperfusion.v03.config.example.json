@@ -10,5 +10,5 @@
     "sonnet": {"model": "claude-sonnet-5-5", "reasoning_effort": "high"}
   },
   "routing": {"policy": "external-first", "claude_reserve": true},
-  "review": {"by": "delegate", "strategy": "lead-gated-adaptive", "reviewers": ["sol", "sonnet"], "auto_apply": false}
+  "review": {"by": "delegate", "strategy": "lead-gated-adaptive", "reviewers": ["sol", "sonnet", "grok"], "auto_apply": false}
 }
