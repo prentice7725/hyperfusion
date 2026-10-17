@@ -14,8 +14,12 @@
 |---|---|
 | Grok/Antigravity 일반, Haiku, 승인된 Sonnet | Sol medium |
 | Luna | Sonnet high |
-| Grok/Antigravity 중요 또는 dual_review | Sol medium + Sonnet high, 동일 digest에서 각각 PASS |
+| Grok 중요 또는 dual_review·위험 경로 | Sol medium + Sonnet high, 동일 digest에서 각각 PASS |
+| Antigravity/Haiku/승인된 Sonnet 중요 또는 dual_review·위험 경로 | Sol medium + Grok xhigh |
+| Luna 중요 또는 dual_review·위험 경로 | Sonnet high + Grok xhigh |
 | 승인된 APEX Sol | 호스트 리드의 실제 diff·테스트·변경 범위 직접 리뷰 |
+
+위 페어는 새 Grok 사용 팀의 `cross-vendor-pairs-v1` 정책이다. 이전 배정과 승인된 Grok 미포함/금지 팀은 `legacy-v1` 계획을 보존한다. 새 정책은 대체 리뷰어도 구현자·다른 리뷰어와 벤더가 달라야 한다. 아래 Haiku 대체 예시는 이전 정책의 예이며, Sol+Sonnet 중 Sol 자리를 새 정책에서 바꾼다면 이미 앉은 Sonnet과 벤더가 다른 AGY 같은 모델을 골라야 한다. [리드 작업지시와 전체 페어 표](review-pairs.md).
 
 `delegate-review → bridge --consult → consult-finish` 이후 필수 결과는 별도로 보존되고 `LEAD_DECISION_REQUIRED`에서 멈춘다. `auto_apply:true`, `review {adopt:true}`, autopilot은 이 게이트를 건너뛰지 못한다. 승인 입력은 `decision`, `rationale`, `baseline_digest`, `contract_change`다. `APPROVE`는 VERIFY만 열며 CLOSE에는 계속 수용 검사와 quiescence가 필요하다. Sol 직접 리뷰 승인에는 `diff_reviewed:true`, 이름을 명시한 `tests_checked`, `changed_scope`도 필요하다.
 
@@ -88,7 +92,7 @@ node scripts/fusion-state.mjs monitor C:\path\repo --watch
 
 `node scripts/quota-policy.mjs REPO record QUOTA.json`으로 운영자 관측을 기록하고 `REPO status`로 조회한다. `REPO collect-codex`는 Codex가 자기 세션 기록(`~/.codex/sessions/**/*.jsonl`, 위치는 `HF_CODEX_HOME`/`CODEX_HOME`로 바꾼다)에 남기는 마지막 `rate_limits`를 읽어 openai 잔량을 `supported_tool`로 기록한다. 네트워크도 모델도 쓰지 않고 숫자 필드만 꺼낸다. 5시간·7일 창 중 사용률이 높은 쪽을 기준으로 남은 %를 기록하며, `collected_at`은 그 기록의 시각이라 Codex를 대화형으로 마지막으로 쓴 뒤 30분이 지나면 stale이다(`codex exec`는 `rate_limits`를 null로 남기므로 읽을 값이 없으면 아무것도 쓰지 않고 이유를 돌려준다). Antigravity의 실행 중인 서버에 묻는 방식은 프로세스 인자의 토큰을 꺼내야 해서 쓰지 않는다. provider는 anthropic/openai/xai/google, source는 user_manual/supported_tool/unknown이다. collected_at, ttl_ms, reset_at, window, unit을 보존하며 잔량 누락·TTL 만료·reset 경과는 unknown/stale로 남긴다. xai는 검증된 자동 조회 도구가 없어 user_manual만 받는다. `supported_tool`이라는 저장 필드 자체는 실제 도구 연결을 증명하지 않는다. quota 조회 모델 호출은 없다. 신입·탐색 우대가 fresh exhaustion의 뒤쪽 배치를 되돌리지 않도록 최종 정렬한다.
 
-Grok은 모든 난이도·미분류 작업과 리뷰·상담에 기본 medium을 사용한다. AGY는 난이도별 effort를 기본 설정에 적용하며 운영자가 직접 지정한 값은 보존한다. Sonnet 중요 구현/리뷰는 high, Sol APEX/리뷰는 medium이다. CLI flag 미지원은 preflight 오류이며 의미를 추측해 성공으로 처리하지 않는다. `setup-doctor`의 help/version 검사와 실제 인증·모델 smoke는 구분한다.
+Grok 구현·일반 리뷰·상담은 기본 medium이며, 지정된 adaptive 페어 리뷰 자리에만 xhigh를 적용한다. AGY는 난이도별 effort를 기본 설정에 적용하며 운영자가 직접 지정한 값은 보존한다. Sonnet 중요 구현/리뷰는 high, Sol APEX/리뷰는 medium이다. CLI flag 미지원은 preflight 오류이며 의미를 추측해 성공으로 처리하지 않는다. `setup-doctor`의 help/version 검사와 실제 인증·모델 smoke는 구분한다. [페어 정책·기존 작업 호환성](review-pairs.md)을 확인한다.
 
 `lead-packet-N.json`은 task/round/owner/model/effort/criticality/commit/digest, 기준 목록, acceptance 및 검수 격차, quota, 사용량, 근거 파일 위치와 추천 액션을 담는다. diff·stdout/stderr 본문을 리드 패킷에 넣지 않는다. 근거가 많은 경우 2KB를 넘을 수 있으며 의미를 없애기 위해 필수 검수 증거를 잘라내지 않는다. `consumed_usage`는 기존 호환 필드이며 구현 호출 사용량이다. `implementation_usage`와 별도의 source/total_tokens를 받는 `decision_usage`로 구분한다. 호스트 전체 사용량과 라운드별 결정 사용량을 이중 합산하지 않는다.
 

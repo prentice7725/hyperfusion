@@ -64,16 +64,20 @@ LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. �
 | 라운드 작성자 | 리뷰어 |
 |---|---|
 | grok, antigravity, haiku, sonnet, lead | sol. 추론 강도 medium |
-| grok, antigravity가 important, apex, 또는 `dual_review` | sol medium과 sonnet high. 둘 다 같은 baseline digest에서 pass해야 한다 |
+| grok이 important, apex, `dual_review`, 또는 위험 경로 | sol medium + sonnet high |
+| antigravity, haiku, 승인된 sonnet이 important, apex, `dual_review`, 또는 위험 경로 | sol medium + grok xhigh |
+| luna가 important, apex, `dual_review`, 또는 위험 경로 | sonnet high + grok xhigh |
 | luna | sonnet high |
 | sol | 위임 리뷰어 없음. 라운드가 끝나면 `LEAD_DECISION_REQUIRED`에서 리드가 diff, 관련 테스트, 변경 범위를 확인하고 `lead-decision`을 남긴다 |
 
 합의되지 않은 판정은 pass로 합치지 않는다. 리드의 `review` 명령으로 빠진 리뷰를 대신하지 않는다.
 
+위 표는 새 Grok 사용 팀의 `cross-vendor-pairs-v1` 배정에 적용된다. init/begin의 `review_preview`는 잠정 계획이며 실제 위험 경로를 검사한 뒤 최종 라운드 계획을 고정한다. 두 리뷰어는 같은 digest를 서로의 판정 없이 병렬 검토한다. 이전 배정 및 Grok 미포함/금지 팀은 `legacy-v1` 규칙을 유지한다. [전체 규칙](review-pairs.md).
+
 **리뷰어 교체.** 기본 리뷰어가 한도·장애로 끝내지 못하면 패널은 `reviewer_failed`로 게이트에 오른다. 리드는 그 게이트에서 `delegate-review`를 다시 부른다.
 
 - 끝난 리뷰는 남고 빈 자리만 채운다. 실패한 리뷰어는 기본값에서 빠지며, 한도가 풀렸으면 이름을 적어 다시 쓸 수 있다.
-- 기본 리뷰어가 아닌 모델은 `executors`와 `substitution_reason`으로 넣는다. 작성자 자신과 `lead`는 거절한다. 같은 회사 모델(예: Haiku 라운드를 Sonnet이)도 허용하지만 패킷의 `same_family_reviewers`에 남는다.
+- 기본 리뷰어가 아닌 모델은 `executors`와 `substitution_reason`으로 넣는다. 작성자 자신과 `lead`는 거절한다. 새 페어 정책은 구현자와 같은 벤더, 다른 리뷰어와 같은 벤더도 거절한다. 이전 정책은 같은 회사 모델을 허용하되 패킷의 `same_family_reviewers`에 남긴다.
 - 라운드당 위임 리뷰 상한(2회)은 그대로다. 판정이 난 패널(누구도 실패하지 않은 라운드)은 다시 위임하지 않는다.
 - 같은 일꾼이 직전 반려와 같은 수용 기준(AC ID)으로 또 반려되면 패킷의 `repeated_criteria`에 남고 추천이 `REASSIGN_OTHER`로 바뀐다. 그래도 같은 일꾼에게 `REDO`하려면 `keep_owner_reason`을 적는다. APEX(Sol) 라운드와 넘길 일꾼이 없을 때는 적용하지 않는다.
 - 남은 리뷰어가 없으면 리드가 `lead-decision`에서 `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적고 빈 자리를 직접 채워 APPROVE한다(`lead_filled_seats`). 끝낸 리뷰어 중 pass가 아닌 판정이 있으면 승인되지 않는다.
@@ -87,7 +91,7 @@ LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. �
 - `assignment_strategy: "sol_apex"`는 `task_criticality: "apex"`일 때만 init에서 Sol 구현 한 라운드를 연다. sandbox는 `workspace-write`, 강도는 medium이다. 리뷰와 상담의 Sol은 `read-only`다.
 - 그 라운드가 시작되면 승인은 소모된다. 다음 Sonnet 라운드는 `lead-decision`의 `REASSIGN_TO_SONNET` 또는 `REDO`가 만들거나, 게이트 밖에서 `grant-implement`에 `strategy: "reassign_to_sonnet"`이 있어야 한다. 다음 Sol 라운드는 같은 APEX 작업에서 `REDO` 또는 `grant-implement`의 `strategy: "sol_apex"`로 다시 승인해야 한다. APEX 작업을 Sonnet으로 바꾸지 않는다.
 - 승인 기록은 `implement-grant-<revision>.json`이다. 상태와 기록이 다르면 라운드를 시작하지 않는다. 브리프나 워커 JSON의 같은 필드는 거절한다. 리드 결정이 승인을 만들어도 워커는 바로 시작하지 않는다.
-- Sonnet이 구현한 라운드의 리뷰어는 Sol이다. Sol이 구현한 라운드는 위임 리뷰어가 없고 리드 게이트로 간다.
+- Sonnet이 구현한 중요한 라운드는 새 페어 정책에서 Sol+Grok, 이전 정책에서는 Sol이 리뷰한다. Sol이 구현한 라운드는 위임 리뷰어가 없고 리드 게이트로 간다.
 
 ## 옵트인 리드 최종 판정
 

@@ -2,13 +2,13 @@
 name: hyperfusion
 description: Claude Opus-led orchestration with serialized workers, audited tests and independent review. Use for HyperFusion, Grok, Antigravity/agy, Sonnet/Haiku or Codex Luna/Sol implementation, review and image-asset requests.
 ---
-# HyperFusion v0.25.0
+# HyperFusion v0.26.0
 
 Start with the classic procedure below. For a short English reference map, read [executor-quickstart.md](references/executor-quickstart.md). Load other references only when their step applies.
 
 **The lead is Claude Opus 5.5 (`claude-opus-5-5`).** The lead decomposes, plans, fixes scope, rejects and verifies. **Workers write the code:** Sonnet and Haiku (`claude --model claude-sonnet-5-5` / `claude-haiku-5-5` subprocesses), Grok (`grok`), Antigravity (`agy`), Luna (`codex exec`, implementation). Sol (`codex exec`) only reviews and advises. If the host is not Opus 5.5, say so, continue, and leave `lead_model` null.
 
-Talk to the user in their language. Briefs, `lead_feedback` and review text can be in any language.
+Talk to the user in their language. Use English for briefs, `lead_feedback`, findings and inter-agent reports; preserve identifiers and project user-facing content in their required language.
 
 ## Principles
 
@@ -47,6 +47,8 @@ No automatic commit, staging, push, deploy, PR or scope expansion; do those only
 ## Optional v0.3 / adaptive profile
 
 Before init with adaptive review, read [universal-supervisor.md](references/universal-supervisor.md) and use [the example](hyperfusion.v03.config.example.json). Mandatory review seats and the final lead gate override classic policy. Sonnet/Sol implement only controller-granted important/APEX rounds, never automatic fallback; the implementer never reviews itself. Substitution requires an explicit reason, and overriding a rejection requires a substitute pass plus independent lead diff review. Monitoring calls no model; never infer success from output. Existing classic tasks are not migrated and host model identity remains unverified unless observed.
+
+For new Grok-enabled adaptive tasks, set the approved criticality/strategy at init and inspect `review_preview` before beginning. Keep standard tasks on one independent reviewer. Important/APEX non-Sol tasks, explicit `dual_review`, and risk paths use cross-vendor pairs: Grok implementation → Sol medium + Sonnet high; Luna → Sonnet high + Grok xhigh; AGY/Haiku/Sonnet → Sol medium + Grok xhigh. Keep Grok implementation and ordinary consultation at medium; never set global Grok effort to xhigh to obtain a deep reviewer. Sol APEX still requires direct lead review. Run the emitted review bridge once: it launches reviewers independently in parallel. Keep conflicts/missing reviewers at the lead gate; unanimous evidence-backed rejection may use the existing init-granted `redo_delegation`. Preserve old assignments and approved teams without Grok. Read [review-pairs.md](references/review-pairs.md) for the complete handoff and compatibility rules.
 
 ## CLI and vendor policy
 

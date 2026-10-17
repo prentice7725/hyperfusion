@@ -1,12 +1,12 @@
 # HyperFusion
 
-v0.25.0ではred-firstテスト保護契約を固定し、既存の受け入れテスト変更を記録して自動承認を止めます。Claude/Grokの秘密ファイルRead deny、ホストフック観測記録、作業中の危険なBashコマンド制限を追加しました。エージェント間の指示・報告は英語に統一し、各保護の限界も明示します。[受け入れテストとエージェント保護](references/agent-guards.md)を参照してください。
+v0.26.0では重要なadaptive作業に異なるベンダーのペアレビューを追加します。Grokの実装・通常の相談はmedium、指定された深いレビュー席だけxhighです。開始時に方針を固定し、独立・並列に検証して、意見の不一致はリードが判断します。[ペアレビュー](references/review-pairs.md)、[受け入れテストとエージェント保護](references/agent-guards.md)、[CHANGELOG](CHANGELOG.md)を参照してください。
 
 [English](README.md) | [한국어](README.ko.md) | 日本語
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.25.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.26.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 作った理由
 
@@ -100,10 +100,19 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 `hyperfusion.v03.config.example.json`を対象リポジトリの`hyperfusion.config.json`にコピーして明示的に有効化します。既存のclassic設定と実行中のタスクは自動変更されません。詳細は[universal-supervisor](references/universal-supervisor.md)（韓国語）を参照してください。
 
 - **External-First配置。** 自動実装はGrok・Antigravity・Lunaが担当します。Sonnet（重要/再割り当てラウンド）とSol（APEXラウンド）はラウンドごとのgrantがある場合のみ実装し、自動フォールバックや新人優遇はこの2つを選びません。
-- **作者別のレビュー。** 原則は一つ、実装したモデルは自分のラウンドをレビューしません。既定はGrok/AGYの通常作業→Sol、Luna→Sonnet、重要作業→Sol＋Sonnetの二重PASS。レビュアーが上限や障害で止まったらリードが理由を書いて別のモデルに差し替え、残るレビュアーがいなければリードが自分でdiffを読んで埋めます。差し戻しに納得できなければ、リードが理由を書いて別のモデルに再レビューを頼み、代わりのレビュアーがpassすれば自分で確認したうえで覆せます。結果は`LEAD_DECISION_REQUIRED`で止まり、`auto_apply`・`review {adopt}`・オートパイロットでもホストリードの最終判断ゲートは飛ばせません（リードがinitで裁量権を与えた作業だけが例外です）。
+- **作者別のレビュー。** 通常作業は独立レビュアー1名、重要・明示的な二重レビュー・リスクパスは下表のペアが独立・並列に検証します。実装者の自己レビューは禁止です。差し替えには理由が必要で、既存のNGは別のPASSで消えません。不一致・欠落はリード判断に残します。以前の割り当てと承認済みのGrokなしチームは従来の規則を維持します。
 - **共通ローカル監視。** すべてのimplement/review/consult呼び出しを同じsupervisorが観測します（`status --monitor`、`monitor --once|--watch`）。無信号はQUIET警告にとどまり、進捗や成功を生成しません。監視でモデルは呼びません。
 - **使用量の計測とクォータ。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で記録します。運用者が直接書き込む（`record`）か、Codexが自分のセッション記録に残した`rate_limits`を読んでopenaiの残量を記録します（`collect-codex`、ネットワークもモデルも使いません）。記録は出所と有効期限が過ぎると「不明」として扱います。
-- **既定の推論強度。** Sonnet high、Haiku max、Antigravity high、Grok medium、Luna xhigh、Sol medium。明示的な設定がなければ、Grokは難易度・役割にかかわらずmediumを維持します。設定`reasoning_effort`で上書きでき、`null`ならフラグを渡しません。
+- **既定の推論強度。** Sonnet high、Haiku max、Antigravity high、Grok medium、Luna xhigh、Sol medium。Grokの実装・通常の相談は明示設定がなければmedium、指定されたadaptiveペアレビュー席だけxhighです。`reasoning_effort:null`は通常フラグの省略で、必須レビュー役割の強度は解除しません。
+
+| 実装者 | 重要・二重・リスクパスのレビューペア |
+|---|---|
+| Grok medium | Sol medium + Sonnet high |
+| Luna | Sonnet high + Grok xhigh |
+| AGY / Haiku / 承認済みSonnet | Sol medium + Grok xhigh |
+| 承認済みAPEX Sol | ペア委任ではなくリードの直接レビュー |
+
+リードはinitの承認済み指示書で重要度・戦略を決め、`review_preview`を確認します。根拠のある全員NGだけがinitで付与された`redo_delegation`で再作業に戻り、意見の不一致はリードが判断します。全員PASSも別途適格な承認委任がなければリードに報告します。[詳細](references/review-pairs.md)。
 - ホストが本当にOpusかは認証できないため、`authority.model_verified:false`として記録します。
 
 ## セキュリティ

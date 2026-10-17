@@ -52,12 +52,13 @@ test('Grok, Antigravity and Haiku standard rounds use Sol only',async t=>{
  }
 });
 
-test('an important Grok or Antigravity round needs Sol and Sonnet on one digest',async t=>{
+test('an important round needs its cross-vendor pair on one digest',async t=>{
  for(const executor of ['grok','antigravity']){
   const f=adaptive(t,{executor,criticality:'important',reason:'touches payment state'});
   f.begin();f.finish();
   const {c,out}=await delegate(f);
-  assert.deepEqual(c.members.map(m=>m.executor),['sol','sonnet']);
+  const expected=executor==='grok'?['sol','sonnet']:['sol','grok'];
+  assert.deepEqual(c.members.map(m=>m.executor),expected);
   assert.equal(out.review.status,'lead_gate');
   assert.equal(f.state().phase,'LEAD_DECISION_REQUIRED');
   assert.equal(f.state().reviews.length,0);
@@ -68,20 +69,21 @@ test('an important Grok or Antigravity round needs Sol and Sonnet on one digest'
   const base=read(task(f,'consult-c1-base.json'));
   const panel=f.state().review_results[1];
   assert.equal(panel.length,2);
-  assert.deepEqual(panel.map(r=>r.executor),['sol','sonnet']);
+  assert.deepEqual(panel.map(r=>r.executor),expected);
   assert.equal(panel.every(r=>r.verdict==='pass'&&r.digest===base.digest&&r.digest===f.state().post_digest),true);
   const prompts=['m1','m2'].map(m=>JSON.parse(read(task(f,`consult-c1-${m}.json`)).prompt));
   assert.equal(prompts[0].brief.consult.context.diff,prompts[1].brief.consult.context.diff);
   assert.equal(prompts[0].brief.consult.context.sibling_verdict,undefined);
   assert.deepEqual(prompts[1].brief.consult.context.recent_reviews,[]);
   assert.notEqual(prompts[0].brief.consult.member,prompts[1].brief.consult.member);
-  const claude=args(f,'claude');
-  assert.equal(claude[claude.indexOf('--effort')+1],'high');
-  const tools=claude[claude.indexOf('--tools')+1];
-  assert.equal(tools.includes('Edit'),false);
-  assert.equal(tools.includes('Write'),false);
+  if(executor==='grok'){
+   const claude=args(f,'claude');assert.equal(claude[claude.indexOf('--effort')+1],'high');
+   const tools=claude[claude.indexOf('--tools')+1];assert.equal(tools.includes('Edit'),false);assert.equal(tools.includes('Write'),false);
+  }else{
+   const grok=args(f,'grok');assert.equal(grok[grok.indexOf('--reasoning-effort')+1],'xhigh');assert.ok(grok.includes('Bash(*)'));
+  }
   const monitors=fs.readdirSync(task(f)).filter(name=>/^monitor-consult-c1-.+\.json$/.test(name)).map(name=>read(task(f,name)));
-  assert.deepEqual(monitors.map(m=>m.executor).sort(),['sol','sonnet']);
+  assert.deepEqual(monitors.map(m=>m.executor).sort(),[...expected].sort());
   assert.equal(monitors.every(m=>m.role==='review'&&m.declares_success===false&&m.task_phase===null),true);
  }
 });
@@ -93,19 +95,19 @@ test('dual_review on a standard Grok round is still both reviewers',async t=>{
  assert.deepEqual(c.members.map(m=>m.executor),['sol','sonnet']);
 });
 
-test('Luna stays with Sonnet and Haiku stays with Sol when the grade is raised',async t=>{
+test('raised Luna and Haiku rounds keep the independent primary and add Grok xhigh',async t=>{
  const luna=adaptive(t,{executor:'luna',criticality:'important',strategy:'dual_review',executors:{sonnet:{reasoning_effort:'low'}}});
  luna.begin();luna.finish();
  assert.throws(()=>run(luna.root,'delegate-review',{executors:['sol']}),/substitution_reason/);
  const lunad=await delegate(luna);
- assert.deepEqual(lunad.c.members.map(m=>m.executor),['sonnet']);
+ assert.deepEqual(lunad.c.members.map(m=>m.executor),['sonnet','grok']);
  const claude=args(luna,'claude');
  assert.equal(claude[claude.indexOf('--effort')+1],'high');
  const haiku=adaptive(t,{executor:'haiku',criticality:'apex',strategy:'dual_review'});
  haiku.begin();haiku.finish();
  assert.throws(()=>run(haiku.root,'delegate-review',{executors:['sonnet']}),/substitution_reason/);
  const haikud=await delegate(haiku);
- assert.deepEqual(haikud.c.members.map(m=>m.executor),['sol']);
+ assert.deepEqual(haikud.c.members.map(m=>m.executor),['sol','grok']);
 });
 
 test('a missing Sol is not replaced silently',async t=>{
@@ -221,18 +223,19 @@ test('a failed Sol seat is filled by another model with a reason, and the lead s
  assert.equal(f.state().phase,'LEAD_DECISION_REQUIRED');
  f.mode('ok');
  assert.throws(()=>run(f.root,'delegate-review',{executors:['haiku']}),/substitution_reason/);
- const second=await delegate(f,{executors:['haiku'],substitution_reason:'Codex quota exhausted until 01:56'});
- assert.deepEqual(second.c.members.map(m=>m.executor),['haiku']);
+ assert.throws(()=>run(f.root,'delegate-review',{executors:['haiku'],substitution_reason:'Codex unavailable'}),/distinct vendors/);
+ const second=await delegate(f,{executors:['antigravity'],substitution_reason:'Codex quota exhausted until 01:56'});
+ assert.deepEqual(second.c.members.map(m=>m.executor),['antigravity']);
  assert.equal(second.out.review.panel_status,'unanimous');
  assert.equal(second.out.review.recommendation,'APPROVE');
  assert.equal(f.state().phase,'LEAD_DECISION_REQUIRED');
  const records=f.state().review_results[1];
- assert.deepEqual(records.map(r=>r.executor),['sonnet','haiku']);
+ assert.deepEqual(records.map(r=>r.executor),['sonnet','antigravity']);
  assert.equal(records[1].substitute,true);
  assert.equal(f.state().lead_packet.file,'lead-packet-1-c2.json');
  const packet=read(task(f,f.state().lead_packet.file));
  assert.deepEqual(packet.planned_reviewers,['sol','sonnet']);
- assert.deepEqual(packet.substitutes,['haiku']);
+ assert.deepEqual(packet.substitutes,['antigravity']);
  assert.deepEqual(packet.review_gaps,[]);
  assert.equal(read(task(f,'consult-c2.json')).substitution_reason,'Codex quota exhausted until 01:56');
  assert.throws(()=>run(f.root,'delegate-review',{}),/cap reached/);
