@@ -103,7 +103,7 @@ CLOSE까지 가야 성공이다. 어느 단계에서든 지금 칠 명령은 `no
 - **작성자별 리뷰.** 원칙은 하나, 구현한 모델은 자기 라운드를 리뷰하지 않는다. 기본은 Grok/AGY 일반 → Sol, Luna → Sonnet, 중요 작업 → Sol + Sonnet 이중 PASS. 리뷰어가 한도·장애로 막히면 리드가 사유를 적고 다른 모델로 바꿔 끼우고, 남은 리뷰어가 없으면 리드가 직접 diff를 읽고 채운다. 반려에 동의하지 않으면 리드가 사유를 적고 다른 모델에게 재검토를 맡기고, 대체 리뷰어가 pass하면 직접 검토한 뒤 뒤집을 수 있다. 결과는 `LEAD_DECISION_REQUIRED`에서 멈추고, `auto_apply`·`review {adopt}`·autopilot도 호스트 리드의 최종 판정 게이트를 건너뛰지 못한다(리드가 init에서 재량권을 준 작업만 예외다).
 - **범용 로컬 감시.** 모든 implement/review/consult 호출을 같은 supervisor가 관측한다(`status --monitor`, `monitor --once|--watch`). 무신호는 QUIET 경고일 뿐이며 진행률·성공을 만들어 내지 않는다. 호출 모델은 따로 부르지 않는다.
 - **사용량 계측과 쿼터.** 구현·검수·상담·실패 호출과 APEX Sol을 포함해 기록하고, 미측정은 `null`로 둔다. 쿼터는 `scripts/quota-policy.mjs`로 기록한다. 운영자가 직접 적거나(`record`), Codex가 자기 세션 기록에 남긴 `rate_limits`를 읽어 openai 잔량을 기록한다(`collect-codex`, 네트워크·모델 없음). 기록은 출처와 유효 시간이 지나면 '모름'으로 취급한다.
-- **기본 추론 강도.** Sonnet high, Haiku max, Antigravity high, Grok xhigh, Luna xhigh, Sol medium. 설정 `reasoning_effort`로 덮어쓰고 `null`이면 플래그를 넘기지 않는다.
+- **기본 추론 강도.** Sonnet high, Haiku max, Antigravity high, Grok medium, Luna xhigh, Sol medium. Grok은 명시적 설정이 없으면 난이도·역할과 관계없이 medium을 유지한다. 설정 `reasoning_effort`로 덮어쓰고 `null`이면 플래그를 넘기지 않는다.
 - 호스트가 실제 Opus인지는 인증할 수 없으므로 `authority.model_verified:false`로 기록한다.
 
 ## 보안

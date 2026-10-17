@@ -103,7 +103,7 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 - **作者別のレビュー。** 原則は一つ、実装したモデルは自分のラウンドをレビューしません。既定はGrok/AGYの通常作業→Sol、Luna→Sonnet、重要作業→Sol＋Sonnetの二重PASS。レビュアーが上限や障害で止まったらリードが理由を書いて別のモデルに差し替え、残るレビュアーがいなければリードが自分でdiffを読んで埋めます。差し戻しに納得できなければ、リードが理由を書いて別のモデルに再レビューを頼み、代わりのレビュアーがpassすれば自分で確認したうえで覆せます。結果は`LEAD_DECISION_REQUIRED`で止まり、`auto_apply`・`review {adopt}`・オートパイロットでもホストリードの最終判断ゲートは飛ばせません（リードがinitで裁量権を与えた作業だけが例外です）。
 - **共通ローカル監視。** すべてのimplement/review/consult呼び出しを同じsupervisorが観測します（`status --monitor`、`monitor --once|--watch`）。無信号はQUIET警告にとどまり、進捗や成功を生成しません。監視でモデルは呼びません。
 - **使用量の計測とクォータ。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で記録します。運用者が直接書き込む（`record`）か、Codexが自分のセッション記録に残した`rate_limits`を読んでopenaiの残量を記録します（`collect-codex`、ネットワークもモデルも使いません）。記録は出所と有効期限が過ぎると「不明」として扱います。
-- **既定の推論強度。** Sonnet high、Haiku max、Antigravity high、Grok xhigh、Luna xhigh、Sol medium。設定`reasoning_effort`で上書きでき、`null`ならフラグを渡しません。
+- **既定の推論強度。** Sonnet high、Haiku max、Antigravity high、Grok medium、Luna xhigh、Sol medium。明示的な設定がなければ、Grokは難易度・役割にかかわらずmediumを維持します。設定`reasoning_effort`で上書きでき、`null`ならフラグを渡しません。
 - ホストが本当にOpusかは認証できないため、`authority.model_verified:false`として記録します。
 
 ## セキュリティ

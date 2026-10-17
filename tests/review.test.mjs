@@ -146,7 +146,7 @@ test('a worker CLI without an effort flag is refused instead of silently ignorin
 test('default reasoning effort per worker, overridable and switchable off with null',t=>{
  const f=fixture(t,{initialize:false});
  const effort=c=>Object.fromEntries(['sonnet','haiku','antigravity','grok','luna','sol'].map(k=>[k,c.executors[k]?.reasoning_effort]));
- assert.deepEqual(effort(config(f.root)),{sonnet:'high',haiku:'max',antigravity:'high',grok:'xhigh',luna:'xhigh',sol:'medium'});
+ assert.deepEqual(effort(config(f.root)),{sonnet:'high',haiku:'max',antigravity:'high',grok:'medium',luna:'xhigh',sol:'medium'});
  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{sonnet:{reasoning_effort:'low'},grok:{reasoning_effort:null}}}));
  const c=config(f.root);assert.equal(c.executors.sonnet.reasoning_effort,'low');assert.equal(c.executors.grok.reasoning_effort,undefined,'null means: pass no flag');
  assert.equal(c.executors.haiku.reasoning_effort,'max','untouched workers keep the default');

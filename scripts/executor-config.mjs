@@ -62,7 +62,8 @@ export const ROUTING_POLICIES=['classic','external-first'];
 // 승인 없이는 자동 구현자가 될 수 없는 일꾼. 승인은 lead-gated-adaptive의 컨트롤러 grant뿐이다.
 export const GRANT_ONLY=['sonnet','sol'];
 // 난이도별 시작 강도(작업지시서 v0.3 §5). 운영자가 reasoning_effort를 직접 적은 일꾼에는 적용하지 않는다.
-export const DIFFICULTY_EFFORT={grok:{low:'low',medium:'high',high:'xhigh'},antigravity:{low:'low',medium:'medium',high:'high'}};
+// Grok stays at medium across difficulties; stronger reasoning is operator opt-in.
+export const DIFFICULTY_EFFORT={grok:{low:'medium',medium:'medium',high:'medium'},antigravity:{low:'low',medium:'medium',high:'high'}};
 // Routing preflight and controller dispatch must inspect the same task profile.
 export function taskExecutorOptions(configuration,owner,difficulty) {
  const options={...(configuration?.executors?.[owner]??{})};
