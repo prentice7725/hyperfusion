@@ -10,6 +10,7 @@ import {matchRule} from './router.mjs';
 import {controlPath,ensureControl,acquireLock} from './control-dir.mjs';
 import {installationRoster,recommendPreset} from './installation.mjs';
 import {MEMBERS as REGISTRY,PROJECT_MEMBERS} from './member-registry.mjs';
+import {validateWorkflow,freezeWorkflow,assertWorkflow,workflowReadiness,recordWorkflowClose,recordIntegration,workflowIntegrated} from './workflow-plan.mjs';
 
 // 프로젝트 층: 리드가 기획 문서를 읽고 팀을 꾸려 보고하고, 사용자가 승인한 팀으로 마일스톤을 진행한다.
 // 승인 전에는 작업을 시작할 수 없고, 마일스톤이 끝나면 체크포인트 보고와 사용자 확인 전에는 다음으로 못 넘어간다.
@@ -39,6 +40,7 @@ const withLock=(root,fn)=>{
  const release=acquireLock(lockOf(root));
  try{return fn();}finally{release();}
 };
+export const withProjectLock=withLock;
 
 // 구성안 검사. 문제는 오류로, 애매한 점은 경고로 돌려준다(경고는 보고서에 그대로 실린다).
 export function validatePlan(root,plan) {
@@ -105,6 +107,7 @@ export function validatePlan(root,plan) {
   for(const t of m.tasks)checkTask(t,taskIds,rules,warnings);
  }
  for(const k of ['risks','questions'])if(plan[k]!==undefined&&!strs(plan[k]))throw Error(`${k} must be a list of strings`);
+ validateWorkflow(plan);
  return warnings;
 }
 function checkTask(t,taskIds,rules,warnings) {
@@ -148,10 +151,15 @@ const SETTLED=['closed','blocked','archived','dropped'];
 const now=()=>new Date().toISOString();
 
 // 컨트롤러가 작업 종료를 알려 줄 때. 마일스톤의 작업이 모두 끝나면 체크포인트 보고 대기로 바꾼다.
-export function settleTask(root,taskId,status) {
+export function settleTask(root,taskId,status,workspace=root) {
  const p=loadProject(root);if(!p)return null;
  const m=p.milestones.find(x=>x.tasks.some(t=>t.id===taskId));if(!m)return null;
  const t=m.tasks.find(x=>x.id===taskId);
+ if(p.workflow){
+  assertWorkflow(root,p);
+  if(status==='closed')recordWorkflowClose(root,p,taskId,workspace);
+  if(status==='closed'&&t.workspace==='isolated'&&!workflowIntegrated(root,p,taskId))status='awaiting_integration';
+ }
  // 완료·막힘으로 이미 정산된 작업을 나중의 보관(archive)이 덮어쓰면 체크포인트에서 결과가 사라진다.
  if(status==='archived'&&['closed','blocked'].includes(t.status))return m.status;
  t.status=status;t.settled_at=now();
@@ -203,6 +211,12 @@ export function teamReport(root,p=loadProject(root)) {
   }
   L.push('','체크포인트 기준:',...m.checkpoint.map(x=>`- [ ] ${x}`),'');
  }
+ const workflow=validateWorkflow(p);
+ if(workflow){
+  L.push('## Static workflow','','One implementation at a time. Approval freezes dependencies, scope, acceptance commands and limits. Checkpoint acknowledgement remains required.','',`Dry-run order: ${workflow.order.join(' → ')}`,'');
+  for(const m of p.milestones)for(const t of m.tasks)L.push(`- ${t.id}: dependencies ${t.depends_on?.join(', ')||'none'}; workspace ${t.workspace??'shared'}${t.integrates?`; integrates ${t.integrates}`:''}; scope ${t.scope.paths.join(', ')}; limits ${JSON.stringify(t.limits)}; acceptance ${JSON.stringify({criteria:t.success_criteria,commands:t.acceptance_commands,map:t.acceptance_map})}`);
+  L.push('');
+ }
  if(p.warnings?.length)L.push('## 확인할 점','',...p.warnings.map(w=>`- ${w}`),'');
  if(p.risks?.length)L.push('## 위험','',...p.risks.map(r=>`- ${r}`),'');
  if(p.questions?.length)L.push('## 결정이 필요한 질문','',...p.questions.map(q=>`- ${q}`),'');
@@ -235,6 +249,7 @@ export function approve(root,{user_message}={}) {
   if(!str(user_message))throw Error('Record the user\'s own approval words in user_message');
   const unavailable=roster(root).filter(m=>!m.installed&&p.team.some(t=>t.member===m.member));
   if(unavailable.length)throw Error('TEAM_UNAVAILABLE: installation changed since proposal: '+unavailable.map(m=>m.member).join(', '));
+  freezeWorkflow(root,p);
   p.status='ACTIVE';p.history.push({at:now(),event:'approved',by:'user',message:user_message,revision:p.revision});
   if(!p.milestones.some(m=>['active','checkpoint_due','reported'].includes(m.status))){const next=p.milestones.find(m=>m.status==='pending');if(next)next.status='active';}
   saveProject(root,p);
@@ -247,6 +262,7 @@ export function amend(root,changes={}) {
  root=repo(root);
  return withLock(root,()=>{
   const p=loadProject(root);if(!p)throw Error('No project plan');
+  if(p.workflow)throw Error('WORKFLOW: static approved plans cannot be amended; finish or stop the current project first');
   const plan={name:p.name,preset:changes.preset===null?undefined:changes.preset??p.preset,summary:changes.summary??p.summary,sources:changes.sources??p.sources.map(s=>s.path),team:changes.team??p.team,excluded:changes.excluded??p.excluded,
    review:changes.review??(changes.team?undefined:p.review),milestones:[...p.milestones,...(changes.add_milestones??[]).map(m=>({...m}))],risks:changes.risks??p.risks,questions:changes.questions??p.questions};
   const structural=['team','excluded','review','add_milestones','sources','preset'].some(k=>changes[k]!==undefined);
@@ -327,8 +343,37 @@ export function status(root) {
  root=repo(root);const p=loadProject(root);
  if(!p)return {project:null};
  const a=activeMilestone(p);
- return {name:p.name,status:p.status,revision:p.revision,active_milestone:a?.id??null,open_tasks:a?a.tasks.filter(t=>t.status==='planned').map(t=>t.id):[],
+ return {...(p.workflow?{workflow:workflowReadiness(root,p)}:{}),name:p.name,status:p.status,revision:p.revision,active_milestone:a?.id??null,open_tasks:a?a.tasks.filter(t=>t.status==='planned').map(t=>t.id):[],
   checkpoint_due:p.milestones.filter(m=>m.status==='checkpoint_due').map(m=>m.id),milestones:p.milestones.map(m=>({id:m.id,status:m.status,tasks:m.tasks.map(t=>`${t.id}:${t.status}`)}))};
+}
+
+export function schedule(root) {
+ root=repo(root);const p=loadProject(root);if(!p)throw Error('No project plan');
+ const validated=validateWorkflow(p);
+ if(validated&&p.status!=='PROPOSED')assertWorkflow(root,p);
+ return p.workflow?workflowReadiness(root,p):validated?{...validated,dry_run:true,serial:true,requires_approval:true}:{legacy:true,order:p.milestones.flatMap(m=>m.tasks.map(t=>t.id))};
+}
+export function integrate(root,input) {
+ root=repo(root);return withLock(root,()=>{
+  const p=loadProject(root);if(!p?.workflow)throw Error('No workflow');
+  const receipt=recordIntegration(root,p,input);
+  const m=p.milestones.find(m=>m.tasks.some(t=>t.id===input.task_id));
+  m.tasks.find(t=>t.id===input.task_id).status='closed';
+  if(m.status==='active'&&m.tasks.every(t=>SETTLED.includes(t.status)))m.status='checkpoint_due';
+  saveProject(root,p);return receipt;
+ });
+}
+
+export function sync(root,{task_id}={}) {
+ root=repo(root);return withLock(root,()=>{
+  const p=loadProject(root);assertWorkflow(root,p);
+  const task=p.milestones.flatMap(m=>m.tasks).find(t=>t.id===task_id);if(!task)throw Error('WORKFLOW: unknown task');
+  const workspace=task.workspace==='isolated'?task.workspace_root:root;
+  if(!workspace)throw Error('WORKFLOW: no reserved workspace');
+  const state=read(controlPath(workspace,'state.json'));
+  if(state.task_id!==task_id||!['CLOSE','BLOCKED'].includes(state.phase)||!state.ended_at||state.writer||state.open_consult||fs.existsSync(controlPath(workspace,'locks/acceptance.json'))||fs.existsSync(controlPath(workspace,'locks/writer.json')))throw Error('WORKFLOW: terminal settlement is unproven');
+  return {task_id,status:settleTask(root,task_id,state.phase==='CLOSE'?'closed':'blocked',workspace)};
+ });
 }
 
 if(isMain(import.meta.url)) {
@@ -336,8 +381,8 @@ if(isMain(import.meta.url)) {
   const [cmd,root,arg]=process.argv.slice(2);
   const input=()=>readInput(arg);
  const out={roster:()=>arg==='--draft'?draftTeam(root):roster(root),draft:()=>draftTeam(root),propose:()=>propose(root,input()),report:()=>({report:teamReport(repo(root))}),approve:()=>approve(root,input()),
-   amend:()=>amend(root,input()),checkpoint:()=>checkpoint(root),ack:()=>ack(root,input()),status:()=>status(root)}[cmd];
-  if(!out)throw Error('Usage: project.mjs draft|roster [--draft]|propose PLAN.json|report|approve INPUT.json|amend CHANGES.json|checkpoint|ack INPUT.json|status  (each takes REPO first)');
+   amend:()=>amend(root,input()),checkpoint:()=>checkpoint(root),ack:()=>ack(root,input()),status:()=>status(root),schedule:()=>schedule(root),integrate:()=>integrate(root,input()),sync:()=>sync(root,input())}[cmd];
+  if(!out)throw Error('Usage: project.mjs draft|roster [--draft]|propose PLAN.json|report|approve INPUT.json|amend CHANGES.json|checkpoint|ack INPUT.json|status|schedule|integrate INPUT.json|sync INPUT.json (each takes REPO first)');
   const r=out();
   // 보고서는 사람이 읽을 수 있게 그대로 출력하고, 나머지는 JSON으로.
   if(r?.report&&Object.keys(r).length<=6){const {report,...rest}=r;console.log(JSON.stringify(rest,null,2));console.log('\n'+report);}

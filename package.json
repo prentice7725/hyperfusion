@@ -10,6 +10,7 @@
   },
   "scripts": {
     "test": "node scripts/run-tests.mjs",
+    "test:recovery": "node --test --test-concurrency=1 tests/reconciliation.test.mjs tests/reconciliation-crash.test.mjs",
     "test:acceptance-security": "node --test tests/acceptance-security.integration.mjs",
     "smoke": "bash tests/smoke.sh",
     "docs:states": "node scripts/generate-state-docs.mjs",

@@ -10,6 +10,7 @@ import {atomic,immutable,read,repo,snapshot,changes,git,SAFE_DIFF,riskyGitConfig
 import {acquire,assertLease,release} from './writer-lease.mjs';
 import {notify} from './notify.mjs';
 import {loadProject,saveProject,teamConfig,activeMilestone,settleTask} from './project.mjs';
+import {assertWorkflow,assertWorkflowTask,workflowInput} from './workflow-plan.mjs';
 import {measure} from './metrics.mjs';
 import {recordHostWindow} from './lead-usage.mjs';
 import {presetTaskInput} from './installation.mjs';
@@ -33,6 +34,10 @@ import {ensureControl,isLegacy,migrate,controlRoot,controlPath,acquireLock} from
 import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex,operatorIgnoredAllow} from './acceptance.mjs';
 import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
 import {readStatusLine} from './status-line.mjs';
+import {takeReconciliation,reconciliationPlan,publicPlan,operationName,revalidateProcesses,assertReconciliationGrant} from './reconciliation.mjs';
+import {captureFindings,recordFindingMap,findingLedger,findingSummary,safeFindingSummary,revisionPacket,resolveFinding} from './finding-ledger.mjs';
+import {gateCollector} from './gate-diagnostics.mjs';
+import {resumePacket,inspectionControl} from './resume-packet.mjs';
 import {sameFamily} from './review-plan.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation,PAIRED_REVIEW_POLICY} from './review-plan.mjs';
 
@@ -172,7 +177,7 @@ function finalizeTask(c,outcome) {
   }
   if(s.project){
     try{
-      if(settleTask(c.root,s.task_id,outcome)==='checkpoint_due'){
+      if(settleTask(s.project.source_root??c.root,s.task_id,outcome,c.root)==='checkpoint_due'){
         notify(`HyperFusion ${s.project.name}`,`milestone ${s.project.milestone} finished; checkpoint report due`,{priority:'high'});
       }
     } catch(e){
@@ -211,12 +216,17 @@ function init(c,input) {
   let configuration=config(c.root);
 
   // 프로젝트가 있으면 사용자가 승인한 팀으로, 현재 마일스톤에 계획된 작업만 시작한다.
-  const project=loadProject(c.root);
+  const bindingFile=controlPath(c.root,'workflow-parent.json');
+  const binding=fs.existsSync(bindingFile)?read(bindingFile):null;
+  const projectRoot=binding?.source_root??c.root;
+  const project=loadProject(projectRoot);
+  if(binding&&(binding.task_id!==input.task_id||project?.status!=='ACTIVE'))throw Error('WORKFLOW: worktree binding is not active');
   let projectTask=null;
   if(project&&project.status!=='COMPLETE'){
     if(project.status!=='ACTIVE'){
       throw Error('PROJECT_NOT_APPROVED: show the team report to the user and record their approval (project.mjs approve)');
     }
+    assertWorkflow(projectRoot,project);
     const milestone=activeMilestone(project);
     if(!milestone){
       const due=project.milestones.find(m=>['checkpoint_due','reported'].includes(m.status));
@@ -229,7 +239,11 @@ function init(c,input) {
       const open=milestone.tasks.filter(t=>t.status==='planned').map(t=>t.id).join(', ')||'none';
       throw Error(`Task ${input.task_id} is not in milestone ${milestone.id}; planned: ${open} (add tasks with project.mjs amend)`);
     }
-    if(planned.status!=='planned')throw Error(`Project task ${planned.id} is ${planned.status}`);
+    if(project.workflow){
+      assertWorkflowTask(projectRoot,project,planned.id,c.root,{reserved:!!binding});
+      if(binding&&(binding.task_id!==planned.id||binding.digest!==project.workflow.digest))throw Error('WORKFLOW: invalid worktree binding');
+      input=workflowInput(projectRoot,project,planned,input);
+    }else if(planned.status!=='planned')throw Error(`Project task ${planned.id} is ${planned.status}`);
     configuration=teamConfig(project,configuration);
     input={task_kind:planned.kind,...(planned.difficulty?{difficulty:planned.difficulty}:{}),...input};
     input=presetTaskInput(project.preset,input);
@@ -249,6 +263,7 @@ function init(c,input) {
   const assignment=takeAssignment(configuration,input);
   const delegation=takeDelegation(configuration,assignment,input);
   const redoDelegation=takeRedoDelegation(configuration,assignment,input);
+  const reconciliation=takeReconciliation(input);
   const grant=initialGrant(assignment);
   if(grant?.executor==='sol'&&requested!=='sol'&&requested!=='auto')throw Error('ROLE_GATE: sol_apex starts with Sol');
   if(grant?.executor==='sonnet'&&requested!=='sonnet'&&requested!=='auto')throw Error('ROLE_GATE: sonnet_implementation starts with Sonnet');
@@ -307,11 +322,12 @@ function init(c,input) {
     ...(assignment?{assignment,review_preview:{...planReview(executor,assignment),provisional:true}}:{}),
     ...(delegation?{delegation}:{}),
     ...(redoDelegation?{redo_delegation:redoDelegation}:{}),
+    ...(reconciliation?{reconciliation}:{}),
     ...(grant?{implement_grant:grant}:{}),
     lead:configuration.lead,lead_target_model:configuration.lead_model,lead_model:null,
     iteration:0,base_commit:base.head,baseline_dirty:!!base.status,
     writer:null,reviews:[],escalations:[],result_failures:0,started_at:new Date().toISOString(),
-    ...(projectTask?{project:{name:projectTask.project,milestone:projectTask.milestone,task:projectTask.id}}:{})
+    ...(projectTask?{project:{name:projectTask.project,milestone:projectTask.milestone,task:projectTask.id,...(project.workflow?{workflow_digest:project.workflow.digest,source_root:projectRoot}:{})}}:{})
   };
   if(acceptanceBaseline(c,input)===false)return c.s;
   // 보존 작업은 수정 전에도 통과하는 명령이어야 한다. 실패하는 명령이면 보존이 아니라 red-first 작업이다.
@@ -324,16 +340,17 @@ function init(c,input) {
   if(assignment)c.art('assignment.json',assignment);
   if(delegation)c.art('delegation.json',delegation);
   if(redoDelegation)c.art('redo-delegation.json',redoDelegation);
+  if(reconciliation)c.art('reconciliation-grant.json',reconciliation);
   if(grant)c.art(`implement-grant-${grant.revision}.json`,grant);
   c.save();
   try{recordHostWindow(c.root,c.s);}catch(e){c.s.host_usage_error='host usage binding unavailable';c.save();}
 
   if(projectTask){
-    const p=loadProject(c.root);
+    const p=loadProject(projectRoot);
     const task=p.milestones.flatMap(m=>m.tasks).find(t=>t.id===projectTask.id);
     task.status='active';
     task.started_at=c.s.started_at;
-    saveProject(c.root,p);
+    saveProject(projectRoot,p);
   }
   return c.s;
 }
@@ -354,7 +371,7 @@ function archive(c,input) {
   fs.rmSync(acceptanceMarker(c),{force:true});
   s.phase='ARCHIVED';
   c.save();
-  if(s.project)settleTask(c.root,s.task_id,outcome);
+  if(s.project)settleTask(s.project.source_root??c.root,s.task_id,outcome,c.root);
   return s;
 }
 
@@ -561,7 +578,10 @@ function consultFinish(c,input) {
     const file=path.join(c.taskdir(),`consult-result-${open.id}-${m.member}.json`);
     if(!fs.existsSync(file))return {...m,ok:false};
     const r=read(file);
-    if(!violated)results.push({...r,executor:m.executor});
+    if(!violated){
+      results.push({...r,executor:m.executor});
+      if(open.mode==='review')captureFindings(c.root,s,c.taskdir(),{file:path.basename(file),round:s.iteration,digest:open.digest,reviewer:m.executor,verdict:r.recommended_verdict,blocking:r.blocking_criteria,findings:r.findings},base);
+    }
     return {
       ...m,ok:!violated,recommended_verdict:r.recommended_verdict,confidence:r.confidence,
       findings:r.findings.length,blockers:r.findings.filter(x=>x.severity==='blocker').length
@@ -579,7 +599,7 @@ function consultFinish(c,input) {
   let applied=null;
   if(open.mode==='review'&&!violated)applied=open.adaptive?applyAdaptiveReview(c,open,results):applyDelegatedReview(c,open,members[0],results[0]);
   c.save();
-  return {...record,results,phase:s.phase,...(applied?{review:applied}:{})};
+  return {...record,results,phase:s.phase,...(applied?{review:applied}:{}),finding_summary:safeFindingSummary(s,c.taskdir())};
 }
 
 // 옵트인 리뷰. 합의·불일치·누락 모두 리드 게이트에서 멈춘다. auto_apply와 adopt는 이 판정을 적용하지 않는다.
@@ -762,7 +782,7 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
   const acceptance=c.optional(`acceptance-${n}-finish.json`);
   if(acceptance)evidence.push(`acceptance-${n}-finish.json`);
   for(const run of runs)if(run.file)evidence.push(run.file);
-  const packet={version:1,task_id:s.task_id,round:n,owner:s.owner,model:dispatch?.cli?.model??null,
+  const packet={version:1,finding_summary:safeFindingSummary(s,c.taskdir()),task_id:s.task_id,round:n,owner:s.owner,model:dispatch?.cli?.model??null,
     effort:implementDispatch(s,s.owner).options.reasoning_effort??null,criticality:s.assignment?.criticality??'standard',
     base_commit:s.base_commit,baseline_digest:s.post_digest,changed_files:taskChangeEvidence(c.taskdir(),s).changed,
     round_changed_files:validation?.changed??[],unattributed_changes:taskChangeEvidence(c.taskdir(),s).unattributed_changes,
@@ -842,6 +862,14 @@ function applyDelegatedReview(c,open,member,result) {
 
 function begin(c,input) {
   const s=c.s;
+  if(s.project?.workflow_digest){
+    const root=s.project.source_root??c.root,p=loadProject(root);assertWorkflow(root,p);
+    if(p.workflow.digest!==s.project.workflow_digest)throw Error('WORKFLOW: task plan changed');
+    const planned=p.milestones.flatMap(m=>m.tasks).find(t=>t.id===s.task_id);
+    if(planned?.status!=='active')throw Error('WORKFLOW: task is not active');
+    input=workflowInput(root,p,planned,input);
+  }
+  if(input?.reconciliation!==undefined)throw Error('RECONCILIATION_GRANT: reconciliation can only be granted at init');
   if(input?.delegation!==undefined)throw Error('DELEGATION: the lead grants discretion only at init; it cannot be added or changed in a later brief');
   if(input?.redo_delegation!==undefined)throw Error('REDO_DELEGATION: the lead delegates rejections only at init; it cannot be added or changed in a later brief');
   const initialBrief=c.optional('initial-brief.json'),initialVerification=initialBrief?.verification;
@@ -901,6 +929,10 @@ function begin(c,input) {
     if(input.executor!==undefined&&input.executor!==owner)throw Error('Executor switch requires an alternative verdict');
   }
 
+  let revision=null;
+  if(input.lead_feedback==='@findings'){
+    revision=revisionPacket(s,c.taskdir());input={...input,lead_feedback:revision.feedback};
+  }
   // "@review": 직전 리뷰의 반려 사유와 파일·줄 지적을 그대로 명령서로 쓴다. 리드가 diff를 다시 읽지 않아도 된다.
   if(input.lead_feedback==='@review'){
     const last=s.reviews.at(-1);
@@ -979,6 +1011,7 @@ function begin(c,input) {
       task_id:s.task_id,round,token:lease.token,...(s.assignment?{review_preview:s.review_preview}:{})
     }
     :{transport:'lead-takeover',brief,token:lease.token};
+  if(revision)c.art(`revision-packet-${round}.json`,revision);
   c.art(`dispatch-${round}.json`,request);
   return request;
 }
@@ -1043,6 +1076,7 @@ function finish(c,input) {
     c.save();
     return s;
   }
+  recordFindingMap(c.root,s,c.taskdir(),post);
   // 일꾼이 제안한 교훈은 장부에만 올린다. 리드가 승인해야 기억에 저장된다.
   // 기억 장부는 선택 기능이다. 실패해도 이미 검증을 통과한 라운드를 버리지 않고 사실만 남긴다.
   if(memoryOn(c)&&input.result.memory_candidates?.length){
@@ -1236,7 +1270,9 @@ function applyReview(c,input) {
   const record={...input,verdict,owner:s.owner,round:s.iteration,
     reviewed_changed_files:cumulative.changed,unattributed_changes:cumulative.unattributed_changes,reviewed_digest:s.post_digest};
   // VERIFY에서 수용 테스트가 되돌린 경우 같은 라운드에 리드의 pass 기록이 이미 있다.
-  c.art(fs.existsSync(path.join(c.taskdir(),`review-${s.iteration}.json`))?`review-${s.iteration}-verify.json`:`review-${s.iteration}.json`,record);
+  const reviewFile=fs.existsSync(path.join(c.taskdir(),`review-${s.iteration}.json`))?`review-${s.iteration}-verify.json`:`review-${s.iteration}.json`;
+  c.art(reviewFile,record);
+  if(!record.consult_id)captureFindings(c.root,s,c.taskdir(),{file:reviewFile,round:s.iteration,digest:s.post_digest,reviewer:record.reviewed_by,verdict,blocking:record.blocking_criteria,findings:record.findings},c.optional(`post-${s.iteration}.json`));
   s.reviews.push(record);
   s.pending_review=null;
   const assessment=contract.escalation(s.reviews.filter(r=>r.owner===s.owner),s.result_failures,input.complexity??{});
@@ -1591,52 +1627,52 @@ function protectedViolations(c,now=snapshot(c.root)) {
 // 위임 승인 조건을 컨트롤러 기록만으로 확인한다. 상태를 바꾸지 않는다. 하나라도 부족하면 eligible:false와 이유를 돌려준다.
 // 일꾼·리뷰어의 말이 아니라 스냅샷, 수용 테스트 실행 기록, 리뷰 기록의 digest로만 판단한다.
 function policyEvaluation(c) {
-  const s=c.s,n=s.iteration,unmet=[],passed=[];
-  const need=(ok,name,why)=>{(ok?passed:unmet).push(ok?name:why);return ok;};
+  const s=c.s,n=s.iteration;
+  const {need,result}=gateCollector(s);
   const d=s.delegation;
-  if(!d)return {eligible:false,unmet:['no discretion was granted at init'],passed};
-  if(!need(sameDelegation(c.optional('delegation.json'),d),'delegation record matches','the delegation record does not match the controller record'))return {eligible:false,unmet,passed};
-  need(sameAssignment(c.optional('assignment.json'),s.assignment),'assignment record matches','the assignment record does not match the controller record');
-  need(s.assignment?.criticality==='standard'&&s.assignment?.strategy==='external_primary','standard task','the task is not a STANDARD external_primary task');
-  need(DELEGABLE_OWNERS.includes(s.owner),'automatic implementer',`${s.owner} is not an automatic implementer`);
-  need(n<=d.max_rounds,'within the delegated round limit',`round ${n} is past the delegated limit of ${d.max_rounds}`);
-  need(!c.writerHeld(),'no writer','a writer is still present');
-  need(snapshot(c.root).digest===s.post_digest,'tree unchanged since the round','the tree changed after the round');
+  if(!d){need(false,'DELEGATION_MISSING','init delegation','no discretion was granted at init');return result();}
+  if(!need(sameDelegation(c.optional('delegation.json'),d),'DELEGATION_RECORD_MISMATCH','delegation record matches','the delegation record does not match the controller record'))return result();
+  need(sameAssignment(c.optional('assignment.json'),s.assignment),'ASSIGNMENT_RECORD_MISMATCH','assignment record matches','the assignment record does not match the controller record');
+  need(s.assignment?.criticality==='standard'&&s.assignment?.strategy==='external_primary','TASK_REQUIRES_LEAD','standard task','the task is not a STANDARD external_primary task');
+  need(DELEGABLE_OWNERS.includes(s.owner),'OWNER_NOT_DELEGABLE','automatic implementer',`${s.owner} is not an automatic implementer`);
+  need(n<=d.max_rounds,'ROUND_LIMIT_EXHAUSTED','within the delegated round limit',`round ${n} is past the delegated limit of ${d.max_rounds}`);
+  need(!c.writerHeld(),'WRITER_PRESENT','no writer','a writer is still present');
+  need(snapshot(c.root).digest===s.post_digest,'TREE_DIGEST_STALE','tree unchanged since the round','the tree changed after the round');
   const cumulative=taskChangeEvidence(c.taskdir(),s);
-  need(!cumulative.unattributed_changes.length,'all net changes belong to validated worker rounds',`changes outside worker rounds need lead review: ${cumulative.unattributed_changes.join(', ')}`);
+  need(!cumulative.unattributed_changes.length,'UNATTRIBUTED_CHANGES','all net changes belong to validated worker rounds',`changes outside worker rounds need lead review: ${cumulative.unattributed_changes.join(', ')}`);
   const testChanges=modifiedAcceptanceTests(read(path.join(c.taskdir(),'baseline.json')),snapshot(c.root),c.optional('initial-brief.json'));
-  need(!testChanges.length,'acceptance tests unchanged',`ACCEPTANCE_TEST_MODIFIED: ${testChanges.join(', ')}; automatic approval is forbidden`);
-  need(!budgetStatus(c.root,s).reason,'within budget','the task budget is exhausted');
+  need(!testChanges.length,'ACCEPTANCE_TEST_MODIFIED','acceptance tests unchanged',`ACCEPTANCE_TEST_MODIFIED: ${testChanges.join(', ')}; automatic approval is forbidden`);
+  need(!budgetStatus(c.root,s).reason,'BUDGET_EXHAUSTED','within budget','the task budget is exhausted');
   const brief=c.optional(`brief-${n}.json`),initial=c.optional('initial-brief.json');
   const changed=brief&&initial?contractChanged(initial,brief):['(brief missing)'];
-  need(!changed.length,'contract unchanged',`the contract changed since init: ${changed.join(', ')}`);
+  need(!changed.length,'CONTRACT_DRIFT','contract unchanged',`the contract changed since init: ${changed.join(', ')}`);
   const plan=planReview(s.owner,s.assignment,{risk:roundRisk(c)});
-  need(plan.risk.length===0,'no risk paths',`the round touches risk paths: ${plan.risk.slice(0,3).join(', ')}`);
-  need(!plan.reviewers.includes('lead'),'delegated reviewers exist','this round requires the lead\'s own review');
+  need(plan.risk.length===0,'RISK_PATHS','no risk paths',`the round touches risk paths: ${plan.risk.slice(0,3).join(', ')}`);
+  need(!plan.reviewers.includes('lead'),'LEAD_REVIEW_REQUIRED','delegated reviewers exist','this round requires the lead\'s own review');
   const all=s.review_results?.[n]??[];
-  need(!all.some(r=>r.superseded),'no replaced rejection','a rejection was replaced; the lead has to read it');
+  need(!all.some(r=>r.superseded),'REPLACED_REJECTION','no replaced rejection','a rejection was replaced; the lead has to read it');
   const records=all.filter(r=>r.ok&&!r.superseded);
   const coverage=reviewCoverage(plan,records,s.post_digest);
-  need(coverage.covered,'every mandatory review finished',`a mandatory review is missing (${coverage.gaps.join(', ')})`);
-  need(records.length>0&&records.every(r=>r.verdict==='pass'&&r.digest===s.post_digest&&r.evidence!==false),'every reviewer passed on this digest','not every reviewer passed on this round\'s digest');
-  need(coverage.same_family.length===0,'cross-company review','a reviewer from the implementer\'s own company passed (weak cross-check)');
-  need(!repeatedCriteria(s,panelBlocking(all)).length,'no repeated rejection','the same criterion was rejected twice');
+  need(coverage.covered,'MANDATORY_REVIEW_MISSING','every mandatory review finished',`a mandatory review is missing (${coverage.gaps.join(', ')})`);
+  need(records.length>0&&records.every(r=>r.verdict==='pass'&&r.digest===s.post_digest&&r.evidence!==false),'REVIEW_NOT_PASSING_CURRENT_DIGEST','every reviewer passed on this digest','not every reviewer passed on this round\'s digest');
+  need(coverage.same_family.length===0,'REVIEW_SAME_VENDOR','cross-company review','a reviewer from the implementer\'s own company passed (weak cross-check)');
+  need(!repeatedCriteria(s,panelBlocking(all)).length,'REPEATED_CRITERION','no repeated rejection','the same criterion was rejected twice');
   const raw=c.optional(`raw-result-${n}.json`);
-  need(raw?.status==='complete'&&raw.needs_lead_decision!==true&&!(raw.unresolved?.length)&&(raw.tests??[]).every(t=>t.status!=='fail'),'worker reported complete with nothing unresolved','the worker result is incomplete, has unresolved items or a failed test');
+  need(raw?.status==='complete'&&raw.needs_lead_decision!==true&&!(raw.unresolved?.length)&&(raw.tests??[]).every(t=>t.status!=='fail'),'WORKER_RESULT_INCOMPLETE','worker reported complete with nothing unresolved','the worker result is incomplete, has unresolved items or a failed test');
   const guarded=protectedViolations(c);
-  need(!guarded.length,'protected files unchanged',`protected files changed: ${guarded.slice(0,3).join(', ')}`);
+  need(!guarded.length,'PROTECTED_FILES_CHANGED','protected files unchanged',`protected files changed: ${guarded.slice(0,3).join(', ')}`);
   if(isPreserve(initial)){
-    need(d.allow_preserve===true,'the lead allowed a preserve task','the lead did not allow a preserve (refactor) task for delegated approval at init');
-    need(s.acceptance_baseline?.status==='green-acknowledged','green baseline acknowledged','the preserve baseline was not recorded as already passing');
-  } else need(s.acceptance_baseline?.status==='red','red-first proven','the acceptance commands were not proven to fail on the untouched tree');
+    need(d.allow_preserve===true,'PRESERVE_GRANT_MISSING','the lead allowed a preserve task','the lead did not allow a preserve (refactor) task for delegated approval at init');
+    need(s.acceptance_baseline?.status==='green-acknowledged','PRESERVE_BASELINE_UNVERIFIED','green baseline acknowledged','the preserve baseline was not recorded as already passing');
+  } else need(s.acceptance_baseline?.status==='red','BASELINE_NOT_RED','red-first proven','the acceptance commands were not proven to fail on the untouched tree');
   const a=s.acceptance,evidence=a?.round===n&&a.file?c.optional(a.file):null;
   const ignored=a?.ignored_after?c.optional(a.ignored_after):null;
   const proven=!!evidence&&a.status==='pass'&&a.quiescent===true&&evidence.results?.length>0&&evidence.results.every(r=>r.quiescence?.quiescent===true);
-  need(proven,'controller acceptance run passed with process shutdown proof','there is no passing controller acceptance run with shutdown proof for this round');
-  need(proven&&a.tree_digest===s.post_digest&&!!ignored&&!ignoredChanges(ignored,ignoredManifest(c.root,brief?.acceptance_artifacts)).length,'acceptance evidence is current','the tree or ignored inputs changed after the acceptance run');
+  need(proven,'ACCEPTANCE_SHUTDOWN_UNPROVEN','controller acceptance run passed with process shutdown proof','there is no passing controller acceptance run with shutdown proof for this round');
+  need(proven&&a.tree_digest===s.post_digest&&!!ignored&&!ignoredChanges(ignored,ignoredManifest(c.root,brief?.acceptance_artifacts)).length,'ACCEPTANCE_EVIDENCE_STALE','acceptance evidence is current','the tree or ignored inputs changed after the acceptance run');
   const table=brief&&proven?acTable(brief,evidence.results,{reviewed:false}):[];
-  need(table.length>0&&table.every(r=>r.status==='PASS'),'every AC proven by a passing command',`not every AC is proven by a passing command (${table.filter(r=>r.status!=='PASS').map(r=>r.id).join(', ')||'no AC table'})`);
-  return {eligible:unmet.length===0,unmet,passed};
+  need(table.length>0&&table.every(r=>r.status==='PASS'),'AC_MAPPING_INCOMPLETE','every AC proven by a passing command',`not every AC is proven by a passing command (${table.filter(r=>r.status!=='PASS').map(r=>r.id).join(', ')||'no AC table'})`);
+  return result();
 }
 
 // 컨트롤러가 위임 정책에 따라 STANDARD 라운드를 승인한다. 리드의 lead-decision APPROVE와 같은 VERIFY로 가며 CLOSE는 verify가 한다.
@@ -1645,7 +1681,7 @@ function policyApprove(c) {
   if(c.writerHeld())throw Error('Writer still present; recover');
   if(s.configuration.review?.strategy!=='lead-gated-adaptive')throw Error('POLICY_NOT_ELIGIBLE: the lead gate is only for lead-gated-adaptive');
   const check=policyEvaluation(c);
-  if(!check.eligible)throw Object.assign(Error('POLICY_NOT_ELIGIBLE: '+check.unmet.join('; ')),{code:'POLICY_NOT_ELIGIBLE',unmet:check.unmet});
+  if(!check.eligible)throw Object.assign(Error('POLICY_NOT_ELIGIBLE: '+check.unmet.join('; ')),{code:'POLICY_NOT_ELIGIBLE',unmet:check.unmet,diagnostic:check});
   const d=s.delegation;
   const record={
     decision:'APPROVE',requested_decision:'APPROVE',
@@ -1810,10 +1846,86 @@ function nextStep(c) {
   }
 }
 
-const ACTIONS={'auto-recover':autoRecover,'policy-approve':policyApprove,consult,'consult-finish':consultFinish,begin,finish,review,decide,verify,recover,'grant-implement':grantImplement,'lead-decision':leadDecision};
+const ACTIONS={'resolve-finding':resolveFinding,'auto-recover':autoRecover,'policy-approve':policyApprove,consult,'consult-finish':consultFinish,begin,finish,review,decide,verify,recover,'grant-implement':grantImplement,'lead-decision':leadDecision};
+
+export const reconcile=(root,input={})=>run(root,'reconcile',input);
+
+async function reconcileUnlocked(root,input={}) {
+ root=repo(root);
+ if(input.apply!==undefined&&typeof input.apply!=='boolean')throw Error('RECONCILE_INPUT: apply must be boolean');
+ if(input.apply!==true)return publicPlan(reconciliationPlan(inspectionControl(root)));
+ const expected=input.expected,name=operationName(expected);
+ const initial=inspectionControl(root);
+ if(expected.task_id!==initial.s.task_id)throw Error('RECONCILE_TASK_MISMATCH');
+ const unlock=acquireLock(path.join(initial.dir,'locks/autopilot.lock'));
+ let c;
+ try{
+  c=openControl(root);c.load();c.action='reconcile';
+  if(expected.task_id!==c.s.task_id)throw Error('RECONCILE_TASK_MISMATCH');
+  assertReconciliationGrant(c);
+  const prior=c.optional(name);
+  if(prior){
+   if(prior.revision!==1||prior.task_id!==expected.task_id||prior.round!==expected.round||prior.intended_action!==expected.action||prior.identity!==expected.identity)throw Error('RECONCILE_IDENTITY_MISMATCH');
+   if(prior.status==='settled'&&prior.outcome?.status==='SETTLED')return prior.outcome;
+   return {status:'STOPPED',reason_codes:['OPERATION_OUTCOME_UNCERTAIN'],task_id:c.s.task_id,receipt:name};
+  }
+  const plan=reconciliationPlan(c);
+  if(plan.status!=='READY_FOR_REVALIDATION')return publicPlan(plan);
+  if(plan.identity!==expected.identity||plan.round!==expected.round||plan.action!==expected.action||plan.consult_id!==expected.consult_id)throw Error('RECONCILE_IDENTITY_MISMATCH');
+  try{await revalidateProcesses(plan);}catch(e){return {status:'STOPPED',reason_codes:[e.code??'PROCESS_SHUTDOWN_UNPROVEN'],task_id:c.s.task_id};}
+  // Re-read bound files and tree after the asynchronous inventory check.
+  c.load();
+  const checked=reconciliationPlan(c);
+  if(checked.status!=='READY_FOR_REVALIDATION'||checked.identity!==plan.identity)return {status:'STOPPED',reason_codes:['EVIDENCE_CHANGED_DURING_REVALIDATION'],task_id:c.s.task_id};
+  assertAction(c.s.phase,plan.action,{});
+  const receipt={revision:1,...publicPlan(plan),status:'intended',identity:plan.identity,
+   intended_action:plan.action,evidence:plan.proofs.map(p=>`completion-${p.tag}.json`)};
+  c.art(name,receipt);
+  const before=c.s.phase;
+  try{
+   if(plan.action==='finish')finish(c,{token:c.s.writer.token,quiescent:true});
+   else consultFinish(c,{quiescent:true});
+   afterTransition(c,before);
+   const outcome={status:'SETTLED',task_id:c.s.task_id,round:plan.round,action:plan.action,phase:c.s.phase,receipt:name};
+   atomic(path.join(c.taskdir(),name),{...receipt,status:'settled',outcome});
+   return outcome;
+  }catch(e){
+   // Retain intent: interruption here may already have run acceptance or saved
+   // state. Retrying must stop rather than duplicate either side effect.
+   c.load();afterTransition(c,before);throw e;
+  }
+ }finally{c?.unlock();unlock();}
+}
 
 export function run(root,action,input={}) {
+ root=repo(root);
+ const file=controlPath(root,'workflow-parent.json');
+ if(!fs.existsSync(file)||['status','report','next','findings','revision-packet','diagnose','resume'].includes(action)||action==='reconcile'&&input.apply!==true)return runUnlocked(root,action,input);
+ const binding=read(file),parent=repo(binding.source_root);
+ if(parent===root)throw Error('WORKFLOW: invalid parent binding');
+ const unlock=acquireLock(controlPath(parent,'locks/control.lock'));
+ try{
+  const result=runUnlocked(root,action,input);
+  if(result?.then)return result.finally(unlock);
+  unlock();return result;
+ }catch(error){unlock();throw error;}
+}
+
+function runUnlocked(root,action,input={}) {
   root=repo(root);
+  if(action==='reconcile')return reconcileUnlocked(root,input);
+  if(action==='findings'||action==='revision-packet'){
+    const c=inspectionControl(root);
+    if(action==='revision-packet')return revisionPacket(c.s,c.taskdir());
+    const ledger=findingLedger(c.s,c.taskdir());return input.full===true?ledger:findingSummary(ledger);
+  }
+  // Inspection bypasses mutation hooks, acceptance recovery and lock creation.
+  if(action==='resume')return resumePacket(root);
+  if(action==='diagnose'){
+    const c=inspectionControl(root);
+    if(c.s.schema_version!==SCHEMA_VERSION)return {eligible:false,reason_codes:['LEGACY_STATE'],lead_required:true};
+    try{return policyEvaluation(c);}catch(error){return {eligible:false,reason_codes:['DIAGNOSTIC_ERROR'],lead_required:true,error:{code:error.code??'OPERATION_FAILED',message:error.message}};}
+  }
   const c=openControl(root);
   try {
     c.action=action;
@@ -1938,7 +2050,7 @@ async function cli() {
       if(action!=='init'||flags.length!==2||flags[0]!=='--executor')throw Error('Only init accepts --executor NAME');
       input.executor=flags[1];
     }
-    const out=action==='autopilot'?await (await import('./autopilot.mjs')).autopilot(root,input):run(root,action,input);
+    const out=action==='autopilot'?await (await import('./autopilot.mjs')).autopilot(root,input):await run(root,action,input);
     console.log(JSON.stringify(full?out:compactView(action,out),null,2));
     }
   } catch(e){

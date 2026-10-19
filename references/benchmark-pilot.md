@@ -101,3 +101,26 @@ no reduction is claimed. Cache durations, discounts and actual billing can diffe
 from this estimate. External provider costs, success rates, regressions, wall time
 and human assistance remain separate guardrails. A ten-case pilot is not statistical
 proof. No live pilot or actual savings has been measured by this change.
+
+
+## Automation observation coverage (HF-I01)
+
+Task metrics and `compare` summaries include `automation`. `observed_tasks` and
+`eligibility_checked_tasks` define the coverage of `eligible_tasks` and
+`actually_automated_tasks`; a grant alone is not proof of eligibility or approval.
+`stopped_tasks_by_reason` counts each task once per reason, while individual task
+metrics retain stop event counts across separate autopilot invocations.
+
+`transport_by_role_model_effort` counts create-once launch markers, including
+failed attempts; it is not a provider invocation or host-model call count.
+`host_model_invocations` remains null. Review seat milliseconds sum transports;
+`review_wait_ms` takes the union of observed review intervals, so parallel seats
+are not counted twice. Grok xhigh review seat time is separate. Missing duration
+or start evidence suppresses the corresponding complete timing total.
+
+`autopilot_phase_ms` covers complete, nonoverlapping journal windows only. It does
+not measure manual lead wait or time outside autopilot. Old or interrupted
+journals suppress a complete phase total. Re-run `metrics.mjs REPO` after manual
+settlement to refresh evidence. Baseline host-only windows have no controller
+observations. Existing measurement window, fixture and failed-trial cost rules
+are unchanged; no new task-init grants are added by observation or comparison.

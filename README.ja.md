@@ -1,5 +1,22 @@
 # HyperFusion
 
+静的タスク依存関係（HF-I04、未リリース）: マイルストーンの `depends_on` と `node scripts/project.mjs schedule REPO` で実行順と準備状態を確認できる。承認時に範囲・受入基準・予算を固定し、実装は一度に一件だけ実行する。共有作業は controller CLOSE、隔離作業は親での統合検証と明示的な統合記録も必要となる。既存のチェックポイント確認は維持する。[形式と使い方](references/workflow-plan.md)。
+
+レビュー指摘台帳（HF-I03、未リリース）: `node scripts/fusion-state.mjs findings REPO` と `revision-packet REPO` で原本の根拠を保持した未解決指摘を確認できる。再作業の `lead_feedback:"@findings"` は件数を制限した修正指示を渡す。完全一致する重複だけを表示上まとめ、行移動は一意の文脈一致で記録する。`resolve-finding` は新しい digest の受入テストとレビュー証拠を必要とする観察記録であり、承認や必須レビュー席数を変更しない。[使い方と制限](references/finding-ledger.md)。
+
+## 自動化の停止・中断タスクの確認（未リリース）
+
+`node scripts/fusion-state.mjs diagnose REPO` は既存の委任承認条件を評価し、固定 `reason_codes`、必要な証拠、ポリシーの版、ラウンド・digest と既存の `unmet`/`passed` を返す。不正な証拠は `DIAGNOSTIC_ERROR` として表示し、承認拒否の診断は CLI エラーと autopilot 停止にも保持する。
+
+`node scripts/fusion-state.mjs resume REPO` は固定ポリシーの要約、試行回数・上限、成果物の有無、プロセスの不確実性を返す読み取り専用パケット。プロンプトや lease トークンは出力せず、ロック・状態ディレクトリの作成や acceptance 復旧の保存を行わない。既存の起動・相談や不確実なディスパッチは、証拠の確認とコントローラーの再検証が必要。成果物の存在は終了・承認の証明ではない。旧形式も確認できる。自動再開は無効のまま。新しいタスクのみ init で証拠に基づく明示的精算を許可できる（[再開精算](references/reconciliation.md)）。
+
+タスク指標とベンチマーク比較の `automation` に、観測された承認資格、ポリシー承認、停止理由、役割・モデル・effort 別の起動転送試行数、レビュー座席時間、重複区間を一度だけ数えるレビュー待ち時間、Grok xhigh のレビュー時間を追加した。失敗した実行も時間・費用に含める。ホストモデル呼び出し回数は不明のまま。段階時間は完全で重複しない autopilot ジャーナルの区間のみを対象とし、旧形式・不完全な記録は不明として扱う。`node scripts/metrics.mjs REPO` で更新し、`node scripts/metrics.mjs --aggregate REPO` で集計できる。実行権限・承認動作は変更しない。
+
+`npm run test:recovery` で偽 CLI による精算・中断境界の回帰を直列実行できる。検証記録だけが残った場合や終了精算の印がない場合、`reconcile`・`resume` は明示的に停止し、検証の再実行を案内しない。完全な Ubuntu・Windows 検証は未完了。
+
+HF-I01/HF-I02 の観測段階を拡張した。明示的な再開精算は init で固定した権限、完了証拠のハッシュ、新しいプロセス検査と操作レシートを使い、既存の finish・レビュー精算だけを呼び出す。完全な中断・再起動検証、委任承認以外への停止コードの全面適用、実モデル比較評価は今後の作業。
+
+
 v0.26.0では重要なadaptive作業に異なるベンダーのペアレビューを追加します。Grokの実装・通常の相談はmedium、指定された深いレビュー席だけxhighです。開始時に方針を固定し、独立・並列に検証して、意見の不一致はリードが判断します。[ペアレビュー](references/review-pairs.md)、[受け入れテストとエージェント保護](references/agent-guards.md)、[CHANGELOG](CHANGELOG.md)を参照してください。
 
 [English](README.md) | [한국어](README.ko.md) | 日本語

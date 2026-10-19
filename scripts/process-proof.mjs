@@ -115,7 +115,7 @@ export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETT
      await sleep(settle.delayMs);
     }
     return {quiescent:remaining.length===0,reason:remaining.length?'Supervised processes remain':'Supervised process tree stopped',
-     tracked:tracked.size,checks,...(reaped.length?{reaped}:{}),// 실패 원인을 남긴 쪽이 우리 명령의 자손인지, 출처를 알 수 없는 새 프로세스인지 보이게 한다.
+     tracked:tracked.size,identities:[...tracked].map(([pid,created])=>({pid,created})),checks,...(reaped.length?{reaped}:{}),// 실패 원인을 남긴 쪽이 우리 명령의 자손인지, 출처를 알 수 없는 새 프로세스인지 보이게 한다.
      remaining:remaining.map(p=>({pid:p.pid,parent:p.parent,created:p.created,...(p.name?{name:p.name}:{}),orphan_check:!owned.some(x=>x.pid===p.pid)})),checked_at:new Date().toISOString(),platform:process.platform};
    }catch(e){return {quiescent:false,reason:e.code??'PROCESS_TABLE_UNAVAILABLE'};}
   }

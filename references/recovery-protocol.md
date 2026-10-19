@@ -1,5 +1,7 @@
 # 복구
 
+새 작업에서 init의 `reconciliation` 권한을 고정한 경우 [명시적 재개 정산](reconciliation.md)의 읽기 전용 `reconcile` 조회와 명시적 적용을 사용할 수 있다. 기존 작업에 권한을 추가하지 않으며, 불확실한 의도 영수증은 재실행하지 않는다. 아래 수동 복구 경로와 기존 종료 증명 조건은 유지된다.
+
 후속 `begin`은 직전 라운드의 `post_digest`와 현재 트리를 비교한다. 범위 안 파일을 Bash로 썼더라도 일치하지 않으면 새 lease·시도 예산을 쓰기 전에 `RECOVERY_REQUIRED`로 멈춘다. 프리플라이트 도중 생긴 변경도 같은 방식으로 멈춘다. 쓰기 프로세스가 없음을 확인하고 누적 diff를 검토한 뒤 `recover`에 `quiescent:true`와 `reason`을 준다(lease가 없으면 token은 필요 없다). 복구는 확인한 현재 digest를 다음 시작의 기대값으로 기록하며, 변경을 일꾼이 쓴 것으로 인정하거나 승인하지 않는다.
 
 1. 상태, lock, 최신 brief, 결과, 라운드별 스냅샷, 실제 diff/status를 본다. 오래된 타임스탬프는 writer가 멈췄다는 증거가 아니다.

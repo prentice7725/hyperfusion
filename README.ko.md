@@ -1,5 +1,22 @@
 # HyperFusion
 
+정적 작업 의존성(HF-I04, 미출시): 마일스톤 작업의 `depends_on`으로 의존성을 정의하고 `node scripts/project.mjs schedule REPO`로 실행 순서·준비 상태를 조회한다. 승인 시 범위·수용 기준·예산을 고정하며 구현은 한 번에 하나만 실행한다. 공유 작업은 컨트롤러 CLOSE, 격리 작업은 부모 통합 작업의 CLOSE·수용 테스트와 명시적 통합 영수증까지 필요하다. 기존 체크포인트 확인은 유지한다. [계획 형식과 사용법](references/workflow-plan.md).
+
+리뷰 지적 원장(HF-I03, 미출시): `node scripts/fusion-state.mjs findings REPO`와 `revision-packet REPO`로 원본 근거를 보존하는 미해결 지적 요약을 조회한다. 재작업의 `lead_feedback:"@findings"`는 제한된 수정 지시를 전달한다. 정확히 일치하는 중복만 표시상 묶고, 줄 이동은 유일한 문맥 일치만 기록한다. `resolve-finding`은 새 digest의 수용 테스트·리뷰 근거를 요구하는 관찰 기록이며 승인이나 필수 리뷰어 수를 바꾸지 않는다. [사용법과 한계](references/finding-ledger.md).
+
+## 자동화 정지·중단 작업 조회 (미출시)
+
+`node scripts/fusion-state.mjs diagnose REPO`는 기존 위임 승인 조건을 그대로 평가해 고정 `reason_codes`, 조건별 필요 증거, 정책 버전, 라운드·digest와 기존 `unmet`/`passed` 설명을 반환한다. 잘못된 증거는 `DIAGNOSTIC_ERROR`로 드러나고, 승인 거절의 진단은 CLI 오류와 오토파일럿 정지에도 전달된다.
+
+`node scripts/fusion-state.mjs resume REPO`는 고정 정책 요약, 시도 횟수·한도, 산출물 존재 여부와 프로세스 불확실성을 담은 제한된 읽기 전용 패킷이다. 프롬프트·lease 토큰을 출력하지 않고 잠금·상태 폴더를 만들거나 수용 테스트 복구 저장을 수행하지 않는다. 기존 실행·상담 흔적과 불확실한 디스패치는 컨트롤러 재검증이 필요하다. 파일이 있다는 사실만으로 종료·승인을 증명하지 않는다. 구버전 작업도 조회할 수 있다. 자동 재개는 비활성이다. 새 작업은 init에서 명시적 증거 기반 정산 권한을 선택적으로 줄 수 있다([재개 정산](references/reconciliation.md)).
+
+작업 지표와 벤치마크 비교의 `automation` 객체에 관측된 승인 자격, 정책 승인, 정지 사유, 역할·모델·effort별 실행 전송 시도, 리뷰어 사용 시간 합계, 겹치는 구간을 한 번만 세는 리뷰 대기 시간, Grok xhigh 리뷰 사용 시간을 집계한다. 실패한 실행도 시간·비용에 포함한다. 호스트 모델 호출 횟수는 미확인으로 남긴다. 단계 시간은 완전하고 겹치지 않는 오토파일럿 저널 구간만 포함하고, 구버전·불완전한 기록은 미확인으로 표시한다. `node scripts/metrics.mjs REPO`로 작업 지표를 갱신하고 `node scripts/metrics.mjs --aggregate REPO`로 저장소 집계를 본다. 실행 권한·승인 동작은 바뀌지 않는다.
+
+`npm run test:recovery`로 가짜 CLI 기반 정산·중단 경계 회귀를 직렬 실행한다. 검증 산출물만 남거나 종료 정산 표식이 없으면 `reconcile`·`resume`이 별도 정지 사유를 표시하며 검증 재실행을 안내하지 않는다. 전체 Ubuntu·Windows 검증은 아직 남아 있다.
+
+HF-I01/HF-I02의 관찰 단계를 확장한 구현이다. 명시적 재개 정산은 init 고정 권한, 완료 증거 해시, 새 프로세스 검사와 작업 영수증을 통해 기존 finish·리뷰 정산 경로만 호출한다. 전체 중단·재시작 검증, 위임 승인 밖 정지 코드의 전체 적용과 실제 모델 비교 평가는 후속 작업이다.
+
+
 v0.26.0은 중요한 adaptive 작업에 교차 벤더 페어 리뷰를 추가합니다. Grok 구현·일반 상담은 medium, 지정된 심층 리뷰 자리만 xhigh를 사용합니다. 작업 시작 때 정책을 고정하고 독립·병렬로 검토하며, 의견 충돌은 리드가 판단합니다. [페어 리뷰](references/review-pairs.md), [수용 테스트와 에이전트 보호](references/agent-guards.md), [CHANGELOG](CHANGELOG.md)를 참고하세요.
 
 [English](README.md) | 한국어 | [日本語](README.ja.md)

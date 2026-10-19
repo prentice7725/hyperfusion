@@ -6,6 +6,7 @@ import {collectHostUsage} from './lead-usage.mjs';
 import {summarizeUsage,collectRunUsage} from './usage-accounting.mjs';
 import {runCommands} from './acceptance.mjs';
 import {weightedUsage} from './usage-weights.mjs';
+import {collectAutomation} from './automation-metrics.mjs';
 
 const optional=f=>fs.existsSync(f)?read(f):null;
 function assertProtected(root,window) {
@@ -69,7 +70,8 @@ export function stopWindow(caseId,root,{success,sessionId,transcriptPath}={}) {
   const ended_at=new Date().toISOString();atomic(file,{...window,ended_at});
   const runs=window.benchmark.arm==='hyperfusion'?collectRunUsage(root,state):[];
   const metric={task_id:caseId,...window.benchmark,success,started_at:window.started_at,ended_at,run_usage:runs,
-   lead_usage:null,acceptance,lead_takeovers:state?.attempts?.lead??0};
+   lead_usage:null,acceptance,lead_takeovers:state?.attempts?.lead??0,
+   automation:window.benchmark.arm==='hyperfusion'?collectAutomation(root,state,runs):null};
   atomic(controlPath(root,'metrics',caseId+'.json'),metric);
   if(sessionId&&transcriptPath)collectHostUsage(root,{hook_event_name:'Stop',session_id:sessionId,transcript_path:transcriptPath});
   const observation=optional(controlPath(root,'tasks',caseId,'lead-usage.json'));

@@ -16,6 +16,7 @@ import {assertBudget} from './budgets.mjs';
 import {printError} from './cli.mjs';
 import {maskTransport} from './redaction.mjs';
 import {watchProcessTree} from './process-proof.mjs';
+import {recordCompletion,controllerDigest} from './reconciliation.mjs';
 import {openMonitor} from './worker-monitor.mjs';
 
 const timeoutFor=(root,state,executor,override)=>{
@@ -136,6 +137,7 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
  }
  immutable(path.join(dir,`session-${n}.json`),{executor:request.executor,session_id:parsed.session_id});
  immutable(path.join(dir,`result-${n}.json`),result);
+ if(state.reconciliation&&parsed.quiescence?.quiescent===true)recordCompletion(root,dir,String(n),{task_id:state.task_id,round:n,executor:request.executor,controller_digest:controllerDigest(state)},['launch','process','envelope','quiescence','dispatch','brief','base','result','session'].map(k=>`${k}-${n}.json`));
  await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} done (${result.status})`);
  // 여기서 lease를 놓지 않는다. 리드가 정지 여부를 확인하고 finish 해야 한다.
  return {status:'RESULT_READY',executor:request.executor,task_id:state.task_id,round:n,result_file:path.join(dir,`result-${n}.json`),quiescence:parsed.quiescence,next_action:'confirm quiescence, then fusion-state finish with writer token; result is read automatically'};
@@ -156,6 +158,10 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuies
   const result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);
   const file=path.join(dir,`consult-result-${id}-${m.member}.json`);
   immutable(file,result);
+  if(state.reconciliation&&parsed.quiescence?.quiescent===true){
+   const tag=`consult-${id}-${m.member}`;
+   recordCompletion(root,dir,tag,{task_id:state.task_id,round:state.iteration,executor:m.executor,controller_digest:controllerDigest(state)},[`launch-${tag}.json`,`process-${tag}.json`,`envelope-${tag}.json`,`quiescence-${tag}.json`,`${tag}.json`,`consult-${id}.json`,`consult-${id}-base.json`,`consult-result-${id}-${m.member}.json`]);
+  }
   return {member:m.member,executor:m.executor,ok:true,recommended_verdict:result.recommended_verdict,findings:result.findings.length,result_file:file,quiescence:parsed.quiescence};
  }));
  const members=runs.map((r,i)=>r.status==='fulfilled'?r.value:{member:open.members[i].member,executor:open.members[i].executor,ok:false,error:r.reason.message,quiescence:r.reason.quiescence??null});

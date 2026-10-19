@@ -43,7 +43,7 @@ export function collectRunUsage(root,state) {
    tokens:usage?reportedTokens(usage):null,components:usage?reportedComponents(usage):null,cost_usd:knownNumber(usage?.total_cost_usd)?usage.total_cost_usd:null,
    model_usage:usage?.modelUsage&&typeof usage.modelUsage==='object'&&!Array.isArray(usage.modelUsage)?Object.entries(usage.modelUsage).map(([model,u])=>({model,tokens:reportedTokens(u),components:reportedComponents(u),cost_usd:knownNumber(u?.costUSD)?u.costUSD:null})):null,
    wall_ms:usage?.wall_ms??envelope?.wall_ms??null,started_at:usage?.started_at??envelope?.started_at??launch?.at??null,
-   reported:!!usage,exit_code:envelope?.exit?.code??null,cost_basis:'client-side report, not billed cost'};
+   transport_observed:!!launch,reported:!!usage,exit_code:envelope?.exit?.code??null,cost_basis:'client-side report, not billed cost'};
  });
 }
 

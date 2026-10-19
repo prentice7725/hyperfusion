@@ -20,6 +20,9 @@ export function compactView(action,out) {
  // 일꾼 실행 설명서: 리드에게 필요한 것은 실행할 명령, 인자, 토큰이다. cli와 prompt는 dispatch-N.json에 있다.
  const descriptor=typeof out.command==='string'&&Array.isArray(out.args);
  for(const [key,value] of Object.entries(out)){
+  if(action==='consult-finish'&&key==='results'&&Array.isArray(value)){
+   view.results=value.map(r=>({member:r.member,reviewer:r.executor,verdict:r.recommended_verdict,findings:r.findings?.length??0}));dropped.push('results.*');continue;
+  }
   if(descriptor&&(key==='cli'||key==='prompt')){dropped.push(key);continue;}
   if(out.phase&&out.schema_version!==undefined&&STATE_BULK.includes(key)){dropped.push(key);continue;}
   if(key==='lead_decision'&&value&&typeof value==='object'){
@@ -36,7 +39,7 @@ export function compactView(action,out) {
    view.review_results=out.review_results[out.iteration].map(r=>({executor:r.executor,verdict:r.verdict,ok:r.ok,...(r.superseded?{superseded:true}:{})}));
   }
  }
- if(dropped.length)view.omitted=`${dropped.join(', ')} (state.json and dispatch-N.json have them; add --full to print everything)`;
+ if(dropped.length)view.omitted=`${dropped.join(', ')} (original task artifacts retain these fields; add --full to print everything)`;
  return view;
 }
 
