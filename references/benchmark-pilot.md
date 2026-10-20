@@ -1,5 +1,49 @@
 # Reproducible A/B pilot
 
+## Repeated current-versus-candidate evaluation
+
+After a smoke pilot, compare the current controller with the candidate using
+three fresh paired repetitions of each of the ten canonical cases. Both arms use
+the existing fixture and measurement-window commands below; do not change their
+cutoffs. Run arms sequentially and randomize their order for every pair. The
+older host-only comparison remains a separate experiment.
+
+Add `comparison` metadata to each actual metric record:
+
+```json
+{"arm":"current","repetition":1,"order":1,"implementation_ref":"v0.26.0","protocol_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","cli_versions":"record exact CLI versions","cache_conditions":"cold or describe cache state","quota_timeouts":"none or describe events","human_help":"none or describe assistance"}
+```
+
+Use `arm: "candidate"` in the other array and complementary execution order 1/2.
+Pin one implementation ref per arm. `protocol_digest` is an operator-computed
+lowercase SHA-256 of the approved task, team, exact models/efforts, acceptance
+definitions and measurement scope. Keep it stable for each case across arms and
+repetitions; retain its source manifest with the experiment. The comparator
+checks supplied metadata, not whether the operator actually followed it.
+
+```sh
+node scripts/benchmark.mjs compare-repeated CURRENT.json CANDIDATE.json
+```
+
+The default expects 30 pairs; `--repetitions` permits 1–10 for bounded experiments.
+Duplicate cases/repetitions and invalid arms are rejected. Missing pairs,
+incompatible scope/trees/protocols, changing implementation refs, incomplete
+usage or missing condition records suppress reduction claims. Raw trial records
+and conditions are retained in the report. Failed trials stay in cost numerators.
+
+Record total `provider_cost_usd` only when all providers are covered, `wall_ms`,
+and independently checked counts `wrong_closes`, `escaped_regressions` and
+`scope_violations` on each trial. Missing values stay unknown. Cost is supplied
+observed/estimated data, not a billing verification. `--pricing` retains the
+existing component-pricing validation; the lead workload comparison uses reference
+input-equivalent units. Missing cost/quality/wall evidence leaves
+`guardrails_complete: false` even when all paired usage records exist.
+
+The report never authorizes rollout. Review paired success counts, wrong CLOSEs,
+lost evidence, total-provider cost, scope violations and p95 wall time before
+considering the plan's provisional targets. A small sample's p95 is unstable;
+these repetitions are not statistical proof or live-model evidence by themselves.
+
 This tool records actual paired trials; it does not run agents or claim savings.
 The ten canonical fixtures include seven JS/docs cases, two Java cases, and one
 Java/Spring MVC case. Java requires JDK 17+, and Spring additionally requires

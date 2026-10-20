@@ -1,5 +1,7 @@
 # HyperFusion
 
+읽기 전용 병렬 작업(HF-I05, 미출시): 기존 상담·리뷰를 작업공간별 최대 두 슬롯으로 실행한다. init의 `read_only`에 승인된 범위·초점·실행자를 고정하고 `consult`의 `subtasks`로 추가 분석을 선택한다. 필수 리뷰어는 동일 digest의 전체 공통 근거를 유지한다. 성공한 형제 결과는 보존하며 예산 초과·종료 미확인·쓰기 충돌 시 대기열을 정지한다. [사용법과 제한](references/read-only-work.md).
+
 정적 작업 의존성(HF-I04, 미출시): 마일스톤 작업의 `depends_on`으로 의존성을 정의하고 `node scripts/project.mjs schedule REPO`로 실행 순서·준비 상태를 조회한다. 승인 시 범위·수용 기준·예산을 고정하며 구현은 한 번에 하나만 실행한다. 공유 작업은 컨트롤러 CLOSE, 격리 작업은 부모 통합 작업의 CLOSE·수용 테스트와 명시적 통합 영수증까지 필요하다. 기존 체크포인트 확인은 유지한다. [계획 형식과 사용법](references/workflow-plan.md).
 
 리뷰 지적 원장(HF-I03, 미출시): `node scripts/fusion-state.mjs findings REPO`와 `revision-packet REPO`로 원본 근거를 보존하는 미해결 지적 요약을 조회한다. 재작업의 `lead_feedback:"@findings"`는 제한된 수정 지시를 전달한다. 정확히 일치하는 중복만 표시상 묶고, 줄 이동은 유일한 문맥 일치만 기록한다. `resolve-finding`은 새 digest의 수용 테스트·리뷰 근거를 요구하는 관찰 기록이며 승인이나 필수 리뷰어 수를 바꾸지 않는다. [사용법과 한계](references/finding-ledger.md).

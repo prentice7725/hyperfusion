@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
-import {recall,commit,candidates,context,resolve,reflect,bind} from '../scripts/memory.mjs';
+import {recall,commit,candidates,context,resolve,reflect,bind,reviewCandidates,assess} from '../scripts/memory.mjs';
 import * as store from '../scripts/memory-store.mjs';
-import {checkCandidate,looksSecret} from '../scripts/memory-policy.mjs';
+import {checkCandidate,looksSecret,propose} from '../scripts/memory-policy.mjs';
 
 const DAY=86400000;
 // 기억 파일은 테스트마다 임시 폴더에 둔다.
@@ -15,6 +16,70 @@ const memDir=t=>{const d=fs.mkdtempSync(path.join(os.tmpdir(),'hf-mem-'));const 
 const withMemory=(t,workspace='hyperfusion-test')=>{memDir(t);const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({memory:{workspace}}));run(f.root,'init',{...f.brief,executor:'grok'});return f;};
 const put=(w,type,content,extra={})=>store.remember(w,{type,content,assertion:'inferred',source:{role:'lead'},...extra},extra.at?{now:extra.at}:{});
 const ledger=f=>candidates(f.root);
+
+test('artifact validation excludes stale advice from prior experience and observed retrievals',t=>{
+ const f=withMemory(t);
+ bind(f.root);
+ const content=fs.readFileSync(path.join(f.root,'a.txt'));
+ put('hyperfusion-test','procedure','Compiler workaround for source-specific behavior',{provenance:{artifact:{path:'a.txt',sha256:crypto.createHash('sha256').update(content).digest('hex')}}});
+ const current=recall(f.root,'Compiler workaround',{validate_artifacts:true});
+ assert.equal(current.prior_experience.length,1);assert.equal(current.hits[0].artifact_status,'artifact_matches');
+ fs.writeFileSync(path.join(f.root,'a.txt'),'new source context');
+ const stale=recall(f.root,'Compiler workaround',{validate_artifacts:true,byte_budget:1024,observe:true});
+ assert.equal(stale.prior_experience.length,0);assert.equal(stale.invalidated[0].artifact_status,'artifact_changed');
+ const observations=JSON.parse(fs.readFileSync(path.join(f.control,'tasks',f.brief.task_id,'memory-observations.json')));
+ assert.equal(observations.retrievals[0].items.length,0);
+ assert.equal(recall(f.root,'Compiler workaround').hits.length,1,'legacy inspection remains available');
+});
+
+test('source context separates duplicate text and filters associations without granting authority',t=>{
+ memDir(t);
+ const content='Compiler startup requires the cache workaround';
+ const artifact={path:'docs/compiler.md',sha256:'a'.repeat(64)};
+ const old=put('ws','procedure',content,{provenance:{task:'HF-old',version:'1.0',artifact},keywords:['hf:shared']});
+ const current=put('ws','procedure',content,{provenance:{task:'HF-new',version:'2.0',artifact:{...artifact,sha256:'b'.repeat(64)}},keywords:['hf:shared']});
+ assert.notEqual(old.id,current.id);assert.equal(current.status,'stored');
+ const result=store.recall('ws','Compiler',{provenance:{version:'2.0'}});
+ assert.deepEqual(result.hits.map(h=>h.id),[current.id]);
+ assert.match(result.hits[0].source_context,/unvalidated/);
+ assert.deepEqual(store.recall('ws','Compiler',{provenance:{artifact}}).hits.map(h=>h.id),[old.id]);
+ assert.equal(store.recall('ws','Compiler',{provenance:{version:'3.0'}}).hits.length,0);
+ assert.equal(store.recall('ws','cache workaround').hits.length,2);
+});
+
+test('candidate provenance rejects credentials, unsafe paths and authority fields',()=>{
+ for(const provenance of [{version:'token = abcdef1234'},{artifact:{path:'../secret',sha256:'a'.repeat(64)}},{artifact:{path:'doc.md',sha256:'bogus'}},{execution_authorized:true}]){
+  assert.ok(checkCandidate({type:'procedure',content:'Run checks',provenance},'lead').length);
+ }
+});
+
+test('bounded review is read only and stale batch decisions cannot mutate the ledger',t=>{
+ const f=withMemory(t);
+ propose(f.root,'HF-test',[{type:'procedure',content:'First pending procedure'},{type:'error',content:'Second pending lesson'}],{role:'worker'});
+ const original=structuredClone(ledger(f));
+ const review=reviewCandidates(f.root,undefined,{limit:1});
+ assert.equal(review.authority,'advisory');assert.equal(review.candidates.length,1);assert.equal(review.remaining,1);
+ assert.deepEqual(ledger(f),original);
+ const decided=commit(f.root,{expected_digest:review.ledger_digest,accept:['m1'],reject:['m2']});
+ assert.deepEqual(decided.results.map(r=>r.status),['stored','rejected']);
+ commit(f.root,{add:[{type:'procedure',content:'Another approved procedure'}]});
+ const before=structuredClone(ledger(f));
+ assert.throws(()=>commit(f.root,{expected_digest:review.ledger_digest,add:[{type:'procedure',content:'Must never be saved'}]}),/MEMORY_REVIEW_STALE/);
+ assert.deepEqual(ledger(f),before);
+ assert.throws(()=>reviewCandidates(f.root,'../escape'),/task_id/);
+ assert.throws(()=>reviewCandidates(f.root,undefined,{limit:0}),/limit/);
+});
+
+test('association respects filters and the total recall limit',t=>{
+ memDir(t);
+ put('ws','error','Compiler crashed on startup',{keywords:['hf:task','compiler']});
+ put('ws','procedure','Install dependencies',{keywords:['hf:task','setup']});
+ put('ws','error','Check diagnostics',{keywords:['hf:task','compiler']});
+ const filtered=store.recall('ws','Compiler',{type:'error',keywords:['compiler'],limit:2});
+ assert.ok(filtered.hits.every(h=>h.type==='error'&&h.keywords.includes('compiler')));
+ assert.equal(store.recall('ws','Compiler',{limit:1}).hits.length,1);
+ for(const limit of [0,-1,1.5,NaN,101])assert.throws(()=>store.recall('ws','Compiler',{limit}),/limit/);
+});
 
 test('secrets, oversized text and worker decisions never become memory',()=>{
  for(const s of ['api_key = abc12345xyz','ghp_0123456789abcdefghijABCDEFGHIJ','sk-ant-api03-abcdefgh','Bearer abcdefghijklmnopqrstuvwxyz'])assert.ok(looksSecret(s),s);
@@ -69,6 +134,17 @@ test('lead edits are re-checked before saving',t=>{
  const out=commit(f.root,{accept:['m1'],edits:{m1:{content:'Build failed; token = abcd1234efgh'}}});
  assert.equal(out.results[0].status,'invalid');assert.match(out.results[0].problems.join(),/credential/);
  assert.equal(ledger(f).candidates[0].status,'pending');
+});
+
+test('editing a protocol candidate cannot inherit its original verified assertion',t=>{
+ const f=withMemory(t);
+ f.begin();f.finish();f.review('pass');
+ run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'check',status:'pass'}]});
+ const procedure=ledger(f).candidates.find(c=>c.type==='procedure');
+ assert.ok(procedure);
+ const out=commit(f.root,{accept:[procedure.id],edits:{[procedure.id]:{content:'A different procedure that has not been tested'}}});
+ assert.equal(out.results[0].assertion,'inferred');
+ assert.equal(recall(f.root,'different procedure').hits[0].assertion,'inferred');
 });
 test('near-duplicates merge instead of piling up, and verified wins',t=>{
  memDir(t);const w='ws';
@@ -137,13 +213,17 @@ test('lead recall hands back prior_experience that reaches the worker with its l
  const f=withMemory(t);
  bind(f.root);
  put('hyperfusion-test','error','PixelOEPixelize+ raised ModuleNotFoundError; do not retry the same setup');
- const prior=recall(f.root,'PixelOEPixelize').prior_experience;
+ const recalled=recall(f.root,'PixelOEPixelize',{observe:true});
+ const prior=recalled.prior_experience;
+ assert.equal(typeof recalled.retrieval_id,'string');
  assert.equal(prior.length,1);
  assert.throws(()=>f.begin({prior_experience:[{type:'error',content:'x',assertion:'rejected'}]}),/prior_experience/);
  assert.throws(()=>f.begin({prior_experience:[{type:'error',content:'login with password: hunter22'}]}),/prior_experience/);
  assert.equal(f.state().iteration,0);
  const msg=JSON.parse(f.begin({prior_experience:prior}).prompt);
  assert.deepEqual(msg.brief.prior_experience,prior);assert.ok(msg.instructions.some(i=>/ranks below this brief/.test(i)));
+ const report=assess(f.root,{task:f.brief.task_id,retrieval_id:recalled.retrieval_id,id:prior[0].id,round:1,outcome:'unknown',evidence:'Included in the brief; effect has not been measured.'});
+ assert.equal(report.outcome,'unknown');assert.equal(report.source,'lead-report');
 });
 test('the store file is locked while written, so two agents cannot clobber it',t=>{
  const d=memDir(t);fs.mkdirSync(d,{recursive:true});fs.writeFileSync(path.join(d,'ws.json.lock'),'');

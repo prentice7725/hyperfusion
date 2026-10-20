@@ -1,5 +1,7 @@
 # HyperFusion
 
+読み取り専用の並列作業（HF-I05、未リリース）: 既存の相談・レビューを作業領域ごとに最大二枠で実行する。init の `read_only` で範囲・焦点・実行者を固定し、`consult.subtasks` で追加分析を選ぶ。必須レビュアーには同じ digest の全共通証拠を渡す。成功した結果は保持し、予算超過・終了未確認・書き込み競合では待機列を停止する。[使い方と制限](references/read-only-work.md)。
+
 静的タスク依存関係（HF-I04、未リリース）: マイルストーンの `depends_on` と `node scripts/project.mjs schedule REPO` で実行順と準備状態を確認できる。承認時に範囲・受入基準・予算を固定し、実装は一度に一件だけ実行する。共有作業は controller CLOSE、隔離作業は親での統合検証と明示的な統合記録も必要となる。既存のチェックポイント確認は維持する。[形式と使い方](references/workflow-plan.md)。
 
 レビュー指摘台帳（HF-I03、未リリース）: `node scripts/fusion-state.mjs findings REPO` と `revision-packet REPO` で原本の根拠を保持した未解決指摘を確認できる。再作業の `lead_feedback:"@findings"` は件数を制限した修正指示を渡す。完全一致する重複だけを表示上まとめ、行移動は一意の文脈一致で記録する。`resolve-finding` は新しい digest の受入テストとレビュー証拠を必要とする観察記録であり、承認や必須レビュー席数を変更しない。[使い方と制限](references/finding-ledger.md)。

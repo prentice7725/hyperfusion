@@ -6,11 +6,14 @@ import {brief,safePath} from './contracts.mjs';
 import {validateLimits} from './budgets.mjs';
 import {criterionIds} from './ac-trace.mjs';
 import {ignoredManifest,ignoredChanges} from './acceptance.mjs';
+import {readOnlyPlan} from './read-only-plan.mjs';
+import {samePath} from './platform.mjs';
 
 const fail=message=>{throw Error('WORKFLOW: '+message);};
+const sameWorkspace=(a,b)=>typeof a==='string'&&typeof b==='string'&&samePath(a,b);
 const tasks=p=>p.milestones.flatMap((m,index)=>m.tasks.map(t=>({...t,milestone:m.id,milestone_index:index})));
-const fields=['id','kind','difficulty','depends_on','workspace','integrates','scope','success_criteria','acceptance_commands','acceptance_map','acceptance_timeout_ms','acceptance_artifacts','verification','acceptance_baseline_green','limits'];
-export const workflowEnabled=p=>p.milestones.some(m=>m.tasks.some(t=>t.depends_on!==undefined||t.integrates!==undefined||t.workspace!==undefined));
+const fields=['id','kind','difficulty','depends_on','workspace','integrates','scope','success_criteria','acceptance_commands','acceptance_map','acceptance_timeout_ms','acceptance_artifacts','verification','acceptance_baseline_green','limits','read_only'];
+export const workflowEnabled=p=>p.milestones.some(m=>m.tasks.some(t=>t.depends_on!==undefined||t.integrates!==undefined||t.workspace!==undefined||t.read_only!==undefined));
 const spec=t=>Object.fromEntries(fields.filter(k=>t[k]!==undefined).map(k=>[k,t[k]]));
 export const workflowDefinition=p=>p.milestones.map(m=>({id:m.id,tasks:m.tasks.map(spec)}));
 const canonical=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,x[k]])):x);
@@ -29,6 +32,8 @@ export function validateWorkflow(p) {
   brief({task_id:t.id,objective:t.title,scope:t.scope,constraints:[],allowed_actions:['read','edit','test'],...spec(t)});
   if(!t.acceptance_commands?.length||!criterionIds(t.success_criteria).length||criterionIds(t.success_criteria).some(id=>!t.acceptance_map?.[id]?.length))fail(t.id+' needs command evidence for every AC');
   validateLimits(t.limits);
+  const readers=readOnlyPlan(t.read_only,t.scope);
+  if(p.team&&readers?.subtasks.some(r=>!p.team.some(m=>m.member===r.executor)))fail(t.id+' read-only executor is not on the approved team');
   if(!Number.isSafeInteger(t.limits?.max_wall_ms)||t.limits.max_wall_ms>86400000)fail(t.id+' needs max_wall_ms <= 86400000');
  }
  const edges=t=>[...(t.depends_on??[]),...(t.integrates?[t.integrates]:[])];
@@ -75,7 +80,7 @@ function closed(root,p,id) {
 function integrated(root,p,id) {
  const r=maybe(controlPath(root,'workflow',`integration-${id}.json`));
  const task=tasks(p).find(t=>t.id===r?.integration_task_id),parent=r&&closed(root,p,r.integration_task_id);
- return r?.revision===1&&r.digest===p.workflow.digest&&r.task_id===id&&task?.integrates===id&&parent?.workspace===root&&parent.state.post_digest===r.parent_digest&&closed(root,p,id)?r:null;
+ return r?.revision===1&&r.digest===p.workflow.digest&&r.task_id===id&&task?.integrates===id&&sameWorkspace(parent?.workspace,root)&&parent.state.post_digest===r.parent_digest&&closed(root,p,id)?r:null;
 }
 export const workflowIntegrated=(root,p,id)=>!!integrated(root,p,id);
 export function workflowReadiness(root,p) {
@@ -111,15 +116,15 @@ export function workflowInput(root,p,t,input) {
 }
 export function assertWorkflowTask(root,p,id,workspace,{reserved=false}={}) {
  const t=tasks(p).find(t=>t.id===id);if(!t)fail('unknown task');
- if(reserved){assertWorkflow(root,p);if(t.status!=='reserved'||t.workspace_root!==workspace)fail('reservation mismatch');}
+ if(reserved){assertWorkflow(root,p);if(t.status!=='reserved'||!sameWorkspace(t.workspace_root,workspace))fail('reservation mismatch');}
  else {const row=workflowReadiness(root,p).tasks.find(t=>t.id===id);if(!row.ready)fail(row.reasons.join(', '));}
- if((t.workspace==='isolated')===(workspace===root))fail('wrong workspace');
+ if((t.workspace==='isolated')===sameWorkspace(workspace,root))fail('wrong workspace');
  return t;
 }
 export function recordWorkflowClose(root,p,taskId,workspace) {
  assertWorkflow(root,p);
  const existing=closed(root,p,taskId);
- if(existing){if(existing.workspace!==workspace)fail('CLOSE workspace mismatch');return;}
+ if(existing){if(!sameWorkspace(existing.workspace,workspace))fail('CLOSE workspace mismatch');return;}
  const s=read(controlPath(workspace,'state.json'));
  if(s.task_id!==taskId||s.phase!=='CLOSE'||!s.ended_at||s.writer||s.open_consult||s.project?.workflow_digest!==p.workflow.digest)fail('verified CLOSE required');
  const file=closeFile(root,taskId),record={revision:1,digest:p.workflow.digest,workspace,state:s};
@@ -131,7 +136,7 @@ export function recordIntegration(root,p,{task_id,integration_task_id,reason}={}
  const list=tasks(p),t=list.find(t=>t.id===task_id),integration=list.find(t=>t.id===integration_task_id);
  if(t?.workspace!=='isolated'||integration?.integrates!==task_id||typeof reason!=='string'||!reason.trim())fail('explicit integration task and reason required');
  const child=closed(root,p,task_id),parent=closed(root,p,integration_task_id);
- if(!child||!parent||parent.workspace!==root)fail('both tasks need controller CLOSE receipts');
+ if(!child||!parent||!sameWorkspace(parent.workspace,root))fail('both tasks need controller CLOSE receipts');
  const current=read(controlPath(root,'state.json')),tree=snapshot(root);
  if(current.task_id!==integration_task_id||current.phase!=='CLOSE'||current.post_digest!==tree.digest)fail('parent acceptance is stale');
  const a=current.acceptance,proof=a?.file&&maybe(controlPath(root,'tasks',integration_task_id,a.file));

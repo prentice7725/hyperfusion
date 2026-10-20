@@ -1,11 +1,15 @@
 import {readInput,printError} from './cli.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import {isMain} from './platform.mjs';
 import {read,repo} from './artifact.mjs';
 import {controlPath,repoId,acquireLock} from './control-dir.mjs';
 import {config} from './executor-config.mjs';
 import * as store from './memory-store.mjs';
+import {retrievalPacket} from './memory-packet.mjs';
+import {recordRetrieval,assessMemory} from './memory-observations.mjs';
+import {validateRecallArtifacts} from './memory-provenance.mjs';
 import {workspaceOf,readLedger,writeLedger,propose,checkCandidate} from './memory-policy.mjs';
 
 // 리드 전용 기억 도구. 흐름은 context → recall → (작업) → candidates → commit → reflect.
@@ -31,26 +35,41 @@ export function context(root) {
  return {workspace:w,...store.context(w),note:'Hints, not authority. Instruction files and the SOT outrank every memory here.'};
 }
 
-export function recall(root,query,{type,limit}={}) {
+export function recall(root,query,{type,limit,byte_budget,provenance,observe=false,validate_artifacts=false}={}) {
+ if(typeof observe!=='boolean')throw Error('memory observe must be boolean');
+ if(typeof validate_artifacts!=='boolean')throw Error('memory validate_artifacts must be boolean');
  root=repo(root);const w=workspace(root);
  if(typeof query!=='string'||!query.trim())throw Error('recall needs a query');
- const r=store.recall(w,query,{type,limit:limit??config(root).memory?.recall_limit??8});
- return {workspace:w,query,...r,
+ const retrieved=store.recall(w,query,{type,provenance,limit:limit??config(root).memory?.recall_limit??8,touch:byte_budget===undefined&&!validate_artifacts});
+ const found=validate_artifacts?validateRecallArtifacts(root,retrieved):retrieved;
+ const r=byte_budget===undefined?found:retrievalPacket(found,{byte_budget});
+ const retrieval_id=observe?recordRetrieval(root,read(controlPath(root,'state.json')).task_id,w,r.hits):undefined;
+ return {workspace:w,query,...r,...(retrieval_id?{retrieval_id}:{}),
   prior_experience:r.hits.map(h=>({id:h.id,type:h.type,content:h.content,assertion:h.assertion})),
   next_action:'check each hit against the source of truth (design docs) and Git HEAD, then copy only the confirmed ones into brief.prior_experience; settle needs_review items with resolve'};
 }
 
 const lockOf=root=>controlPath(root,'locks/control.lock');
+const ledgerDigest=ledger=>crypto.createHash('sha256').update(JSON.stringify(ledger)).digest('hex');
+
+// Read-only preparation. Approval still requires explicit candidate IDs.
+export function reviewCandidates(root,task,{limit=20}={}) {
+ if(!Number.isInteger(limit)||limit<1||limit>100)throw Error('memory review limit must be 1..100');
+ const ledger=candidates(root,task),pending=ledger.candidates.filter(c=>c.status==='pending');
+ return {task:ledger.task_id,ledger_digest:ledgerDigest(ledger),authority:'advisory',candidates:pending.slice(0,limit),remaining:Math.max(0,pending.length-limit),next_action:'Explicitly accept or reject IDs with commit; pass expected_digest to refuse stale review decisions.'};
+}
 
 // 장부 후보를 승인·수정·기각하고, 승인분만 저장한다. 저장 시 중복은 병합, 충돌은 검토 대기열로 간다.
 export function commit(root,input) {
  root=repo(root);const w=workspace(root);
- const state=read(controlPath(root,'state.json'));
- const task=input.task??state.task_id;
- const closed=task===state.task_id?state.phase==='CLOSE':fs.existsSync(controlPath(root,'tasks',task,'verification.json'));
  // 컨트롤러와 동시에 장부를 건드리지 않도록 같은 잠금을 잡는다.
  const release=acquireLock(lockOf(root));
  try{
+  const state=read(controlPath(root,'state.json'));
+  const task=input.task??state.task_id;
+  const currentLedger=readLedger(root,task);
+  if(input.expected_digest!==undefined&&input.expected_digest!==ledgerDigest(currentLedger))throw Error('MEMORY_REVIEW_STALE: prepare a fresh candidate review before committing');
+  const closed=task===state.task_id?state.phase==='CLOSE':false;
   // 리드가 이번에 직접 추가한 항목은 곧바로 승인 대상이다.
   const before=readLedger(root,task).candidates.length;
   if(Array.isArray(input.add)&&input.add.length)propose(root,task,input.add,{role:'lead'});
@@ -62,12 +81,12 @@ export function commit(root,input) {
    if(!accept.has(c.id))continue;
    if(c.status!=='pending'){results.push({id:c.id,status:c.status,note:'not pending; skipped'});continue;}
    const edit=input.edits?.[c.id]??{};
-   const f={type:edit.type??c.type,content:edit.content??c.content,keywords:c.keywords,importance:edit.importance??c.importance,anchor_key:c.anchor_key,reason:c.reason,ttl_days:edit.ttl_days??c.ttl_days};
+   const f={type:edit.type??c.type,content:edit.content??c.content,keywords:c.keywords,importance:edit.importance??c.importance,anchor_key:c.anchor_key,reason:c.reason,ttl_days:edit.ttl_days??c.ttl_days,provenance:edit.provenance??c.provenance};
    // 리드가 고친 내용도 같은 규칙으로 다시 검사한다.
    const problems=checkCandidate(f,Object.keys(edit).length?'lead':c.source.role);
    if(problems.length){c.problems=problems;results.push({id:c.id,status:'invalid',problems});continue;}
    // 검증을 통과해 닫힌 작업에서 프로토콜이 뽑은 기록만 verified. 나머지는 모두 inferred.
-   const assertion=closed&&c.source.role==='protocol'&&c.source.verified?'verified':'inferred';
+   const assertion=closed&&c.source.role==='protocol'&&c.source.verified&&Object.keys(edit).length===0?'verified':'inferred';
    const keywords=[...new Set([...f.keywords,'hf:'+task,'src:'+c.source.role,...(c.source.executor?['by:'+c.source.executor]:[])])];
    const saved=store.remember(w,{...f,keywords,assertion,source:{...c.source,task,candidate:c.id}});
    if(saved.status==='refused'){c.status='refused';c.problems=[saved.reason];}
@@ -86,6 +105,7 @@ export function candidates(root,task) {
 export const resolve=(root,input)=>store.resolve(workspace(repo(root)),input);
 export const reflect=root=>({...store.reflect(workspace(repo(root))),...store.stats(workspace(repo(root)))});
 export const forget=(root,id)=>store.forget(workspace(repo(root)),id);
+export const assess=(root,input)=>{root=repo(root);return assessMemory(root,input,workspace(root));};
 
 if(isMain(import.meta.url)) {
  try{
@@ -94,15 +114,17 @@ if(isMain(import.meta.url)) {
   const out={
    bind:()=>bind(root),
    context:()=>context(root),
-   recall:()=>recall(root,rest[0],{type:flag('--type'),limit:flag('--limit')?Number(flag('--limit')):undefined}),
+   recall:()=>recall(root,rest[0],{type:flag('--type'),limit:flag('--limit')?Number(flag('--limit')):undefined,byte_budget:flag('--byte-budget')?Number(flag('--byte-budget')):undefined,provenance:flag('--provenance')?readInput(flag('--provenance')):undefined,observe:rest.includes('--observe'),validate_artifacts:rest.includes('--validate-artifacts')}),
    candidates:()=>candidates(root,rest[0]),
+   review:()=>reviewCandidates(root,rest[0],{limit:flag('--limit')?Number(flag('--limit')):undefined}),
    commit:()=>commit(root,readInput(rest[0])),
+   assess:()=>assess(root,readInput(rest[0])),
    resolve:()=>resolve(root,readInput(rest[0])),
    reflect:()=>reflect(root),
    forget:()=>forget(root,rest[0]),
    stats:()=>store.stats(workspace(repo(root)))
   }[cmd];
-  if(!out)throw Error('Usage: memory.mjs bind|context|recall "query" [--type T] [--limit N]|candidates [TASK]|commit INPUT.json|resolve INPUT.json|reflect|forget ID|stats  (each takes REPO first)');
+  if(!out)throw Error('Usage: memory.mjs bind|context|recall "query" [--type T] [--limit N] [--byte-budget N] [--provenance INPUT.json] [--observe] [--validate-artifacts]|candidates [TASK]|review [TASK] [--limit N]|commit INPUT.json|assess INPUT.json|resolve INPUT.json|reflect|forget ID|stats  (each takes REPO first)');
   console.log(JSON.stringify(out(),null,2));
  }catch(e){printError(e);}
 }

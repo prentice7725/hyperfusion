@@ -1,6 +1,6 @@
 # Static project dependencies (unreleased)
 
-HF-I04 extends existing milestone tasks. A task with `depends_on`, `workspace`, or `integrates` opts the project into a static workflow. Plans without these fields retain the existing project behavior. There is no model-generated graph, executable workflow language, automatic merge, or parallel implementation.
+HF-I04 extends existing milestone tasks. A task with `depends_on`, `workspace`, `integrates`, or the HF-I05 `read_only` plan opts the project into a static workflow. Plans without these fields retain the existing project behavior. There is no model-generated graph, executable workflow language, automatic merge, or parallel implementation.
 
 ## Plan and approve
 

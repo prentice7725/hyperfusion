@@ -1,5 +1,6 @@
 import {collectAutomation,aggregateAutomation} from './automation-metrics.mjs';
 import {weightedUsage} from './usage-weights.mjs';
+import {collectMemory} from './memory-observations.mjs';
 import {readInput,printError} from './cli.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,7 +52,7 @@ export function measure(root,observations=null) {
  const countedImplementers=[...EXECUTORS,...(runs.some(r=>r.executor==='sol'&&r.role==='implement')?['sol']:[])];
  const outcomes=s.reviews??[];
  const v={task_id:s.task_id,success:s.phase==='CLOSE',hooks_observed:s.hook_observation?.hooks_observed??false,hook_observation:s.hook_observation??null,
-  automation:collectAutomation(root,s,runs),
+  automation:collectAutomation(root,s,runs),memory:collectMemory(root,s),
   communication_language:s.communication_language??null,rework_rate:outcomes.length?outcomes.filter(r=>['redo','alternative'].includes(r.verdict)).length/outcomes.length:null,
   initial_executor:s.initial_executor??null,attempts:s.attempts??null,
   objective:'minimize total Claude (Opus + Sonnet + Haiku) tokens per successful task',

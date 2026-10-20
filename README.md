@@ -1,5 +1,7 @@
 # HyperFusion
 
+Bounded read-only work (HF-I05, unreleased): existing consultations/reviews use at most two slots per task workspace. Init-time `read_only` definitions fix approved paths, focus and executors; `consult.subtasks` selects additional analysis. Mandatory reviewers retain all shared evidence on one digest. Successful siblings survive invocation failure; budget exhaustion, unknown shutdown and writer conflicts stop queued work. See [usage and limits](references/read-only-work.md).
+
 Static task dependencies (HF-I04, unreleased): milestone tasks can declare `depends_on`; `node scripts/project.mjs schedule REPO` reports deterministic order and readiness. Approval freezes scopes, acceptance and budgets. Implementations remain serial. Shared tasks require controller CLOSE; isolated tasks also require parent integration acceptance and an explicit receipt. Existing checkpoint acknowledgement remains required. See [plan format and usage](references/workflow-plan.md).
 
 Review finding ledger (HF-I03, unreleased): `node scripts/fusion-state.mjs findings REPO` and `revision-packet REPO` expose bounded unresolved findings with raw evidence pointers. Redo input `lead_feedback:"@findings"` explicitly forwards a correction packet. Only exact duplicates share a display entry; moved lines require unique context matches. `resolve-finding` records an observation backed by new-digest acceptance and review evidence without changing approval or required reviewer seats. See [usage and limits](references/finding-ledger.md).

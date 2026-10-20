@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {read,atomic} from './artifact.mjs';
 import {controlPath} from './control-dir.mjs';
+import {checkProvenance,provenanceKey} from './memory-provenance.mjs';
 
 // 기억 계층(AnchorMind 설계를 들여온 것)은 정본(SOT)이 아니라 에이전트들의 장기 작업기억이다.
 // 이 모듈은 무엇을 기억시켜도 되는지 정하는 규칙과, 작업마다 쌓이는 후보 장부를 다룬다.
@@ -56,6 +57,7 @@ export function workspaceOf(configuration) {
 export function checkCandidate(c,role) {
  const problems=[];
  if(!c||typeof c!=='object')return ['not an object'];
+ problems.push(...checkProvenance(c.provenance));
  if(!TYPES.includes(c.type))problems.push('unknown type '+c.type);
  else if(role==='worker'&&!WORKER_TYPES.includes(c.type))problems.push(`workers cannot record ${c.type}; the lead owns decisions, preferences and relations`);
  if(!str(c.content))problems.push('empty content');
@@ -83,7 +85,10 @@ export function checkPrior(v) {
   throw Error(`Invalid prior_experience (up to ${MAX_PRIOR} recalled fragments {type, content, id?, assertion?}; rejected memories never go to workers)`);
 }
 
-const ledgerFile=(root,task)=>controlPath(root,'tasks',task,'memory-candidates.json');
+const ledgerFile=(root,task)=>{
+ if(typeof task!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(task))throw Error('Invalid memory task_id');
+ return controlPath(root,'tasks',task,'memory-candidates.json');
+};
 export const readLedger=(root,task)=>{const f=ledgerFile(root,task);return fs.existsSync(f)?read(f):{task_id:task,candidates:[]};};
 export const writeLedger=(root,task,v)=>atomic(ledgerFile(root,task),v);
 
@@ -93,13 +98,13 @@ export function propose(root,task,items,source) {
  for(const c of items){
   if(!c||typeof c!=='object')continue;
   const problems=checkCandidate(c,source.role);
-  const key=crypto.createHash('sha256').update(String(c.type)+'\0'+String(c.content)).digest('hex').slice(0,12);
+  const key=crypto.createHash('sha256').update(String(c.type)+'\0'+String(c.content)+(c.provenance===undefined?'':'\0'+provenanceKey(c.provenance))).digest('hex').slice(0,12);
   if(ledger.candidates.some(x=>x.key===key))continue;
   // 비밀값으로 보이는 후보는 사유만 남기고 내용과 키워드는 장부에 쓰지 않는다. 거절한 내용을 디스크에 남기면 거절의 의미가 없다.
   const withheld=problems.some(p=>/credential/.test(p));
   const text=typeof c.content==='string'?c.content:'';
   ledger.candidates.push({id:'m'+(ledger.candidates.length+1),key,type:c.type,content:withheld?'[withheld: looked like a credential]':text.slice(0,MAX_CONTENT*2),keywords:withheld?[]:(Array.isArray(c.keywords)?c.keywords.filter(k=>typeof k==='string'&&!looksSecret(k)).slice(0,10):[]),importance:c.importance??'medium',
-   anchor_key:c.anchor_key,reason:c.reason,ttl_days:c.ttl_days,source,status:problems.length?'invalid':'pending',problems,proposed_at:new Date().toISOString()});
+   anchor_key:c.anchor_key,reason:withheld?undefined:c.reason,ttl_days:c.ttl_days,provenance:checkProvenance(c.provenance).length?undefined:c.provenance,source,status:problems.length?'invalid':'pending',problems,proposed_at:new Date().toISOString()});
  }
  writeLedger(root,task,ledger);
  return ledger;

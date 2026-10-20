@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
 import * as project from '../scripts/project.mjs';
-import {validateWorkflow,workflowDefinition} from '../scripts/workflow-plan.mjs';
+import {validateWorkflow,workflowDefinition,assertWorkflowTask} from '../scripts/workflow-plan.mjs';
 import {createWorktree} from '../scripts/worktree.mjs';
 import {controlPath,acquireLock,ensureControl} from '../scripts/control-dir.mjs';
 import {read} from '../scripts/artifact.mjs';
@@ -107,6 +107,9 @@ test('isolated CLOSE needs an explicit integration task and parent acceptance be
  // The worktree copies committed source, so retain the same red baseline.
  assert.throws(()=>init(f,'A'),/wrong workspace/);
  const wt=createWorktree(f.root,'A');assert.deepEqual(project.schedule(f.root).ready,[]);
+ const alternate=process.platform==='win32'?wt.workspace.toUpperCase().replaceAll('\\','/'):path.join(wt.workspace,'.');
+ assert.equal(assertWorkflowTask(f.root,project.loadProject(f.root),'A',alternate,{reserved:true}).id,'A');
+ assert.throws(()=>assertWorkflowTask(f.root,project.loadProject(f.root),'A',path.join(wt.workspace,'other'),{reserved:true}),/reservation mismatch/);
  const root=f.root,originalBrief=f.brief;
  run(wt.workspace,'init',{...f.brief,task_id:'A'});
  const brief=read(controlPath(wt.workspace,'tasks','A','initial-brief.json'));

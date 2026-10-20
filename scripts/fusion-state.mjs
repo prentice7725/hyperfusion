@@ -6,11 +6,12 @@ import {isMain,resolveExecutable} from './platform.mjs';
 import {config,selectExecutor,CAP,APEX_ROUND_CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND,automaticImplementer} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
-import {atomic,immutable,read,repo,snapshot,changes,git,SAFE_DIFF,riskyGitConfig} from './artifact.mjs';
+import {atomic,immutable,read,repo,snapshot,changes,git,hash,SAFE_DIFF,riskyGitConfig} from './artifact.mjs';
 import {acquire,assertLease,release} from './writer-lease.mjs';
 import {notify} from './notify.mjs';
 import {loadProject,saveProject,teamConfig,activeMilestone,settleTask} from './project.mjs';
 import {assertWorkflow,assertWorkflowTask,workflowInput} from './workflow-plan.mjs';
+import {readOnlyPlan,selectReadOnly,workManifest} from './read-only-plan.mjs';
 import {measure} from './metrics.mjs';
 import {recordHostWindow} from './lead-usage.mjs';
 import {presetTaskInput} from './installation.mjs';
@@ -271,8 +272,15 @@ function init(c,input) {
   if(adaptive&&requested==='sol'&&grant?.executor!=='sol')throw Error('ROLE_GATE: Sol implements only an APEX round');
   if(requested==='sonnet'&&!grant&&!automaticImplementer(configuration,requested))throw Error('ROLE_GATE: Sonnet requires adaptive controller authorization');
   input=contract.brief(input);
+  const readOnly=readOnlyPlan(input.read_only,input.scope);
+  for(const job of readOnly?.subtasks??[]){
+    if(projectTask&&!project.team.some(t=>t.member===job.executor))throw Error('READ_ONLY_PLAN: executor is not on the approved project team: '+job.executor);
+    if(!configuration.external.available.includes(job.executor)&&!configuration.review.reviewers.includes(job.executor))throw Error('READ_ONLY_PLAN: executor is not enabled: '+job.executor);
+    assertVendor(configuration,job.executor);
+  }
   if(input.verification)checkPreserve(c.root,input);
   const limits=validateLimits({...configuration.limits,...validateLimits(input.limits)});
+  if(readOnly?.subtasks.length&&!limits.max_wall_ms)throw Error('READ_ONLY_PLAN: planned subtasks require a task wall-time limit');
   if(c.writerHeld())throw Error('Existing writer; recover first');
   const pendingDir=path.join(c.dir,'tasks',input.task_id);
   if(fs.existsSync(pendingDir)){
@@ -313,7 +321,7 @@ function init(c,input) {
   if(redoDelegation&&!DELEGABLE_OWNERS.includes(executor))throw Error(`REDO_DELEGATION: ${executor} is not an automatic implementer; delegate rejections only for grok, antigravity, haiku or luna rounds`);
   const base=snapshot(c.root);
   c.s={
-    schema_version:SCHEMA_VERSION,architecture:ARCHITECTURE,package_version:VERSION,configuration,routing,limits,
+    schema_version:SCHEMA_VERSION,architecture:ARCHITECTURE,package_version:VERSION,configuration,routing,limits,...(readOnly?{read_only:readOnly}:{}),
     initial_executor:executor,active_executor:executor,owner:null,
     attempts:Object.fromEntries([...EXECUTORS,'lead'].map(e=>[e,0])),
     sessions:Object.fromEntries(EXECUTORS.map(e=>[e,null])),
@@ -341,6 +349,7 @@ function init(c,input) {
   if(delegation)c.art('delegation.json',delegation);
   if(redoDelegation)c.art('redo-delegation.json',redoDelegation);
   if(reconciliation)c.art('reconciliation-grant.json',reconciliation);
+  if(readOnly)c.art('read-only-plan.json',readOnly);
   if(grant)c.art(`implement-grant-${grant.revision}.json`,grant);
   c.save();
   try{recordHostWindow(c.root,c.s);}catch(e){c.s.host_usage_error='host usage binding unavailable';c.save();}
@@ -411,6 +420,8 @@ function consult(c,input) {
   const mode=input.mode;
   if(!['advisor','committee','review'].includes(mode))throw Error('Consult mode must be advisor, committee or review');
   if(c.writerHeld())throw Error('Writer still present; recover');
+  if(s.read_only&&JSON.stringify(c.optional('read-only-plan.json'))!==JSON.stringify(s.read_only))throw Error('READ_ONLY_PLAN: frozen record mismatch');
+  const selected=selectReadOnly(s,input);
 
   assertBudget(c.root,s);
   if(mode==='review'){
@@ -424,6 +435,7 @@ function consult(c,input) {
   const adaptive=mode==='review'&&s.configuration.review.strategy==='lead-gated-adaptive';
   let adaptivePlan=null;
   let size=mode==='committee'?2:1;
+  if(selected)size=selected.length;
   const explicit=input.executors!==undefined;
   let picks,panel=null;
   if(s.phase==='LEAD_DECISION_REQUIRED'){
@@ -467,7 +479,8 @@ function consult(c,input) {
     return e;
   };
   // adaptive는 위에서 필수 리뷰어를 정했다. 설정 목록으로 빼거나 순서를 바꾸지 않는다.
-  if(!adaptive&&explicit){
+  if(selected){picks=selected.map(t=>hire(t.executor));}
+  else if(!adaptive&&explicit){
     if(!Array.isArray(input.executors)||input.executors.length!==size||new Set(input.executors).size!==size){
       throw Error(`${mode} needs ${size} distinct executor(s)`);
     }
@@ -502,7 +515,8 @@ function consult(c,input) {
   const id='c'+((s.consults?.length??0)+1);
   const n=s.iteration;
   const latest=c.optional(`brief-${n}.json`)??c.optional('initial-brief.json');
-  const cumulative=taskChangeEvidence(c.taskdir(),s,snapshot(c.root));
+  const consultBase=snapshot(c.root);
+  const cumulative=taskChangeEvidence(c.taskdir(),s,consultBase);
   const changed=cumulative.changed;
   // 읽기 전용 위원(Sonnet은 Bash도 없다)이 diff를 볼 수 있게 직접 넣어 준다. 새 파일은 목록만 있으므로 직접 읽어야 한다.
   const diff=changed.length?git(c.root,['diff',...SAFE_DIFF,'HEAD','--',...changed]):'';
@@ -514,17 +528,19 @@ function consult(c,input) {
   };
 
   // 모든 위원의 dispatch를 먼저 만든다. 하나라도 실패하면(예: Windows 명령줄 길이) 상태를 바꾸지 않는다.
-  const requests=members.map(m=>{
+  const manifests={};
+  const requests=members.map((m,index)=>{
     const a=adapter(m.executor);
     const max=Math.min(CONTEXT_DIFF_MAX,a.contextDiffMax??Infinity),cut=diff.length>max;
     const memberContext={...context,diff:diff.slice(0,max),diff_truncated:cut,
       diff_note:'git diff HEAD of all net task changes since base-1, including recovered/inter-round changes; review every changed file. unattributed_changes are not verified worker contributions. Pre-existing dirty content can appear in the HEAD diff; base-1 is the task baseline. Untracked new files are not shown, read them directly'
         +(cut?`. The diff was cut at ${max} characters: read the rest of each changed file directly (or run git diff HEAD -- <file>) before judging it`:'')};
     const brief={
-      task_id:s.task_id,round:n,repo_root:c.root,objective:latest.objective,scope:latest.scope,
+      task_id:s.task_id,round:n,repo_root:c.root,objective:latest.objective,scope:selected?{...latest.scope,paths:selected[index].paths}:latest.scope,
       constraints:latest.constraints,success_criteria:latest.success_criteria,allowed_actions:['read'],
       ...(latest.prior_experience?{prior_experience:latest.prior_experience}:{}),
-      consult:{id,mode,member:m.member,question:input.question,focus:input.focus??[],context:memberContext}
+      consult:{id,mode,member:m.member,question:input.question,focus:selected?.[index]?.focus??input.focus??[],context:memberContext,
+       work_manifest:manifests[m.member]=workManifest({mode,member:m.member,scope:latest.scope,focus:input.focus,digest:consultBase.digest,subtask:selected?.[index],workflowDigest:s.project?.workflow_digest})}
     };
     const d=a.dispatch(brief,{token:'consult',owner:m.executor},{
       session:a.newSession(),resume:false,probe:m.cli,
@@ -535,6 +551,7 @@ function consult(c,input) {
   });
 
   const base=snapshot(c.root);
+  if(base.digest!==consultBase.digest)throw Error('READ_ONLY_PLAN: tree changed while preparing consult');
   let storedPlan=null;
   if(adaptive){
     storedPlan={version:1,task_id:s.task_id,round:n,owner:s.owner,criticality:adaptivePlan.criticality,strategy:adaptivePlan.strategy,review_policy:adaptivePlan.review_policy,reviewers:[...adaptivePlan.reviewers],effort:adaptivePlan.effort,risk:adaptivePlan.risk,revision:s.assignment.revision,baseline_digest:base.digest};
@@ -546,15 +563,17 @@ function consult(c,input) {
     storedPlan={...storedPlan,reviewers:[...panel.reviewers],effort:panel.effort,planned:[...adaptivePlan.reviewers],kept:panel.kept,substitutes:panel.substitutes,substitution_reason:panel.substitution_reason,...(panel.replaces?.length?{replaces:panel.replaces}:{})};
   }
   const roster=members.map(({member,executor})=>({member,executor}));
+  const execution={revision:1,slots:s.read_only?.slots??2,manifests,prompt_hashes:Object.fromEntries(requests.map(([member,request])=>[member,hash(request.prompt)]))};
   c.art(`consult-${id}-base.json`,base);
   for(const [member,request] of requests)c.art(`consult-${id}-${member}.json`,request);
-  c.art(`consult-${id}.json`,{id,mode,question:input.question,focus:input.focus??[],members:roster,phase:s.phase,
+  c.art(`consult-${id}.json`,{id,mode,question:input.question,focus:input.focus??[],members:roster,phase:s.phase,execution,
     ...(panel?{planned:storedPlan.planned,substitutes:panel.substitutes,substitution_reason:panel.substitution_reason}:{})});
 
   if(mode==='review')s.review_runs={...(s.review_runs??{}),[n]:(s.review_runs?.[n]??0)+1};
   else s.consult_runs=(s.consult_runs??0)+size;
+  if(selected)s.read_only_used=[...(s.read_only_used??[]),...selected.map(t=>t.id)];
   s.hint=null;
-  s.open_consult={id,mode,members:roster,digest:base.digest,started_at:new Date().toISOString(),...(storedPlan?{adaptive:true,plan:storedPlan}:{})};
+  s.open_consult={id,mode,members:roster,digest:base.digest,started_at:new Date().toISOString(),execution,...(storedPlan?{adaptive:true,plan:storedPlan}:{})};
   c.save();
   return {
     consult_id:id,mode,members:roster,command:process.execPath,args:[BRIDGE,c.root,'--consult',id],
@@ -567,6 +586,9 @@ function consultFinish(c,input) {
   const open=s.open_consult;
   if(!open)throw Error('No open consult');
   if(input.quiescent!==true)throw Error('Confirm consult workers and children stopped');
+  const unlock=acquireLock(path.join(c.dir,'locks/consult-execution.lock'));
+  try{
+  if(open.execution?.revision===1&&open.members.some(m=>fs.existsSync(path.join(c.taskdir(),`launch-consult-${open.id}-${m.member}.json`))&&c.optional(`quiescence-consult-${open.id}-${m.member}.json`)?.quiescent!==true))throw Error('PROCESS_SHUTDOWN_UNPROVEN: retain open consult; confirm stopped processes and recover/archive before further work');
 
   const base=read(path.join(c.taskdir(),`consult-${open.id}-base.json`));
   const now=snapshot(c.root);
@@ -577,6 +599,7 @@ function consultFinish(c,input) {
   const members=open.members.map(m=>{
     const file=path.join(c.taskdir(),`consult-result-${open.id}-${m.member}.json`);
     if(!fs.existsSync(file))return {...m,ok:false};
+    if(open.execution?.revision===1&&c.optional(`quiescence-consult-${open.id}-${m.member}.json`)?.quiescent!==true)return {...m,ok:false,reason:'PROCESS_SHUTDOWN_UNPROVEN'};
     const r=read(file);
     if(!violated){
       results.push({...r,executor:m.executor});
@@ -600,6 +623,7 @@ function consultFinish(c,input) {
   if(open.mode==='review'&&!violated)applied=open.adaptive?applyAdaptiveReview(c,open,results):applyDelegatedReview(c,open,members[0],results[0]);
   c.save();
   return {...record,results,phase:s.phase,...(applied?{review:applied}:{}),finding_summary:safeFindingSummary(s,c.taskdir())};
+  }finally{unlock();}
 }
 
 // 옵트인 리뷰. 합의·불일치·누락 모두 리드 게이트에서 멈춘다. auto_apply와 adopt는 이 판정을 적용하지 않는다.
@@ -862,6 +886,7 @@ function applyDelegatedReview(c,open,member,result) {
 
 function begin(c,input) {
   const s=c.s;
+  if(input?.read_only!==undefined&&JSON.stringify(readOnlyPlan(input.read_only,input.scope??c.optional('initial-brief.json')?.scope))!==JSON.stringify(s.read_only??null))throw Error('READ_ONLY_PLAN: permissions are fixed at init');
   if(s.project?.workflow_digest){
     const root=s.project.source_root??c.root,p=loadProject(root);assertWorkflow(root,p);
     if(p.workflow.digest!==s.project.workflow_digest)throw Error('WORKFLOW: task plan changed');

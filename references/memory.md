@@ -1,5 +1,7 @@
 # 기억 계층 (AnchorMind 설계를 들여온 내장 작업기억)
 
+HF-I07의 선택적 출처 검증·제한 회수 패킷·후보 일괄 검토·사용 관측은 [memory-recall](memory-recall.md)을 참고한다. 실제 효과는 아직 실측하지 않았다.
+
 [AnchorMind](https://github.com/jinho-von-choi/memento-mcp)의 설계를 벤치마킹해 HyperFusion 안에 직접 구현한 **에이전트 공유 장기 작업기억**이다. 외부 서버나 DB는 쓰지 않는다. 정본도 아니다.
 
 ```

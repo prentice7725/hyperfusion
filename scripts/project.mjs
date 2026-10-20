@@ -214,7 +214,7 @@ export function teamReport(root,p=loadProject(root)) {
  const workflow=validateWorkflow(p);
  if(workflow){
   L.push('## Static workflow','','One implementation at a time. Approval freezes dependencies, scope, acceptance commands and limits. Checkpoint acknowledgement remains required.','',`Dry-run order: ${workflow.order.join(' → ')}`,'');
-  for(const m of p.milestones)for(const t of m.tasks)L.push(`- ${t.id}: dependencies ${t.depends_on?.join(', ')||'none'}; workspace ${t.workspace??'shared'}${t.integrates?`; integrates ${t.integrates}`:''}; scope ${t.scope.paths.join(', ')}; limits ${JSON.stringify(t.limits)}; acceptance ${JSON.stringify({criteria:t.success_criteria,commands:t.acceptance_commands,map:t.acceptance_map})}`);
+  for(const m of p.milestones)for(const t of m.tasks)L.push(`- ${t.id}: dependencies ${t.depends_on?.join(', ')||'none'}; workspace ${t.workspace??'shared'}${t.integrates?`; integrates ${t.integrates}`:''}; scope ${t.scope.paths.join(', ')}; limits ${JSON.stringify(t.limits)}; acceptance ${JSON.stringify({criteria:t.success_criteria,commands:t.acceptance_commands,map:t.acceptance_map})}${t.read_only?`; read_only ${JSON.stringify(t.read_only)}`:''}`);
   L.push('');
  }
  if(p.warnings?.length)L.push('## 확인할 점','',...p.warnings.map(w=>`- ${w}`),'');

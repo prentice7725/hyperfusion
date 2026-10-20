@@ -1,6 +1,6 @@
 import path from 'node:path';
 import {adapter} from './adapters/index.mjs';
-import {read} from './artifact.mjs';
+import {read,hash} from './artifact.mjs';
 import {implementDispatch,sameGrant,sameAssignment,assertImplementRound} from './review-plan.mjs';
 import {assertVendor} from './vendor-policy.mjs';
 
@@ -51,6 +51,8 @@ export function verifyConsult(root,state,dir,request,{id,member,executor}) {
  let brief;
  try{brief=JSON.parse(request.prompt).brief;}catch{throw Error('DISPATCH_TAMPERED: consult prompt is not a brief; nothing was started');}
  const c=brief?.consult;
+ const execution=state.open_consult?.execution;
+ if(execution?.revision===1&&(hash(request.prompt)!==execution.prompt_hashes?.[member]||canon(c?.work_manifest)!==canon(execution.manifests?.[member])))throw Error('DISPATCH_TAMPERED: read-only manifest/shared evidence changed; nothing was started');
  const ok=c&&c.id===id&&c.member===member&&brief.task_id===state.task_id&&brief.repo_root===root
   &&Array.isArray(brief.allowed_actions)&&brief.allowed_actions.length===1&&brief.allowed_actions[0]==='read'
   &&request.executor===executor&&request.kind==='consult';
