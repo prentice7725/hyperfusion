@@ -1,5 +1,7 @@
 # HyperFusion
 
+Unreleased HF-I06 adds opt-in experimental two-worktree implementation and explicit reviewed-result application. Serial execution remains the default; parent integration and combined acceptance stay mandatory. See [parallel implementation](references/parallel-implementation.md). Live speed/cost improvements have not been measured.
+
 Bounded read-only work (HF-I05, unreleased): existing consultations/reviews use at most two slots per task workspace. Init-time `read_only` definitions fix approved paths, focus and executors; `consult.subtasks` selects additional analysis. Mandatory reviewers retain all shared evidence on one digest. Successful siblings survive invocation failure; budget exhaustion, unknown shutdown and writer conflicts stop queued work. See [usage and limits](references/read-only-work.md).
 
 Static task dependencies (HF-I04, unreleased): milestone tasks can declare `depends_on`; `node scripts/project.mjs schedule REPO` reports deterministic order and readiness. Approval freezes scopes, acceptance and budgets. Implementations remain serial. Shared tasks require controller CLOSE; isolated tasks also require parent integration acceptance and an explicit receipt. Existing checkpoint acknowledgement remains required. See [plan format and usage](references/workflow-plan.md).

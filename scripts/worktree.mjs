@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {git,repo,read,atomic} from './artifact.mjs';
+import {git,repo,read,atomic,snapshot} from './artifact.mjs';
 import {stateHome,repoId,controlPath,ensureControl,assertPlainDir,acquireLock} from './control-dir.mjs';
 import {isMain,samePath} from './platform.mjs';
 import {TERMINAL_PHASES} from './state-policy.mjs';
 import {readInput,printError} from './cli.mjs';
 import {loadProject,saveProject,withProjectLock} from './project.mjs';
-import {assertWorkflowTask} from './workflow-plan.mjs';
+import {assertWorkflowTask,parallelPolicy,sourceIdentity} from './workflow-plan.mjs';
+import {prepareSource,exportBundle,applyBundle} from './integration-bundle.mjs';
 
 const valid=id=>typeof id==='string'&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(id);
 const workspacePath=(root,id)=>path.resolve(stateHome(),'worktrees',repoId(root),id);
@@ -20,9 +21,16 @@ export function createWorktree(root,id) {
   return withProjectLock(root,()=>{
    const project=loadProject(root),task=assertWorkflowTask(root,project,id,workspacePath(root,id));
    if(task.workspace!=='isolated')throw Error('WORKFLOW: shared task cannot use a worktree');
+   const parallel=parallelPolicy(project);
+   if(parallel&&project.milestones.some(m=>m.tasks.some(t=>t.status==='active')))throw Error('WORKFLOW: prepare worktrees before any active implementation');
+   const source=parallel?snapshot(root):null;
    const record=createUnboundWorktree(root,id);
+   if(parallel){
+    const names=new Set([...git(root,['ls-files','-z','--cached','--others','--exclude-standard']).split('\0'),...Object.keys(snapshot(record.workspace).files)]);
+    prepareSource(root,record.workspace,source,[...names].filter(Boolean));
+   }
    ensureControl(record.workspace);
-   atomic(controlPath(record.workspace,'workflow-parent.json'),{source_root:root,task_id:id,digest:project.workflow.digest});
+   atomic(controlPath(record.workspace,'workflow-parent.json'),{source_root:root,task_id:id,digest:project.workflow.digest,...(parallel?{source_identity:sourceIdentity(source)}:{})});
    const planned=project.milestones.flatMap(m=>m.tasks).find(t=>t.id===id);
    planned.status='reserved';planned.workspace_root=record.workspace;saveProject(root,project);
    return record;
@@ -30,6 +38,8 @@ export function createWorktree(root,id) {
  }
  return createUnboundWorktree(root,id);
 }
+export function bundleWorktree(root,id){root=repo(root);return withProjectLock(root,()=>exportBundle(root,loadProject(root),id));}
+export function applyWorktree(root,id,input={}){root=repo(root);return withProjectLock(root,()=>applyBundle(root,loadProject(root),id,input));}
 function createUnboundWorktree(root,id) {
  root=repo(root);if(!valid(id))throw Error('Invalid task_id');
  return locked(root,()=>{
@@ -70,7 +80,7 @@ export function removeWorktree(root,id,input={}) {
  });
 }
 if(isMain(import.meta.url)){
- try{const [action,root,id,file]=process.argv.slice(2);const result=action==='create'?createWorktree(root,id):action==='list'?listWorktrees(root):action==='remove'?removeWorktree(root,id,readInput(file)):null;
-  if(result===null)throw Error('Usage: worktree.mjs create|list|remove REPO [TASK_ID] [INPUT.json|-]');console.log(JSON.stringify(result,null,2));
+ try{const [action,root,id,file]=process.argv.slice(2);const result=action==='create'?createWorktree(root,id):action==='list'?listWorktrees(root):action==='bundle'?bundleWorktree(root,id):action==='apply'?applyWorktree(root,id,readInput(file)):action==='remove'?removeWorktree(root,id,readInput(file)):null;
+  if(result===null)throw Error('Usage: worktree.mjs create|list|bundle|apply|remove REPO [TASK_ID] [INPUT.json|-]');console.log(JSON.stringify(result,null,2));
  }catch(e){printError(e);}
 }

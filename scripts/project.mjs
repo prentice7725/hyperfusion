@@ -213,7 +213,7 @@ export function teamReport(root,p=loadProject(root)) {
  }
  const workflow=validateWorkflow(p);
  if(workflow){
-  L.push('## Static workflow','','One implementation at a time. Approval freezes dependencies, scope, acceptance commands and limits. Checkpoint acknowledgement remains required.','',`Dry-run order: ${workflow.order.join(' → ')}`,'');
+  L.push('## Static workflow','',p.parallel_implementation?`Experimental parallel implementation: at most ${p.parallel_implementation.slots} isolated tasks; reason: ${p.parallel_implementation.reason}. Integration stays serialized.`:'One implementation at a time.','Approval freezes dependencies, scope, acceptance commands and limits. Checkpoint acknowledgement remains required.','',`Dry-run order: ${workflow.order.join(' → ')}`,'');
   for(const m of p.milestones)for(const t of m.tasks)L.push(`- ${t.id}: dependencies ${t.depends_on?.join(', ')||'none'}; workspace ${t.workspace??'shared'}${t.integrates?`; integrates ${t.integrates}`:''}; scope ${t.scope.paths.join(', ')}; limits ${JSON.stringify(t.limits)}; acceptance ${JSON.stringify({criteria:t.success_criteria,commands:t.acceptance_commands,map:t.acceptance_map})}${t.read_only?`; read_only ${JSON.stringify(t.read_only)}`:''}`);
   L.push('');
  }
@@ -232,7 +232,7 @@ export function propose(root,plan) {
   const warnings=validatePlan(root,plan);
   const p={version:1,status:'PROPOSED',revision:(old?.revision??0)+1,name:plan.name,summary:plan.summary,
    sources:plan.sources.map(s=>({path:s,sha256:hash(fs.readFileSync(path.join(root,s)))})),
-   team:plan.team,excluded:plan.excluded,review:plan.review,...(plan.preset?{preset:plan.preset}:{}),
+   team:plan.team,excluded:plan.excluded,review:plan.review,...(plan.preset?{preset:plan.preset}:{}),...(plan.parallel_implementation!==undefined?{parallel_implementation:plan.parallel_implementation}:{}),
    milestones:plan.milestones.map(m=>({...m,status:'pending',tasks:m.tasks.map(t=>({...t,status:'planned'}))})),
    risks:plan.risks??[],questions:plan.questions??[],warnings,history:[...(old?.history??[]),{at:now(),event:'proposed',by:'lead',revision:(old?.revision??0)+1}]};
   saveProject(root,p);
