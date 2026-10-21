@@ -3,19 +3,21 @@ import crypto from 'node:crypto';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import {isMain,isWin,killTree,assertCommandLine} from './platform.mjs';
-import {read,immutable,repo} from './artifact.mjs';
+import {read,immutable,repo,snapshot} from './artifact.mjs';
 import {assertLease} from './writer-lease.mjs';
 import {result as validateResult,consultResult} from './contracts.mjs';
 import {adapter} from './adapters/index.mjs';
 import {notify} from './notify.mjs';
 import {executionAllowed} from './review-plan.mjs';
-import {controlPath,ensureControl} from './control-dir.mjs';
+import {controlPath,ensureControl,acquireLock} from './control-dir.mjs';
+import {settledSlots} from './read-only-plan.mjs';
 import {workerEnv} from './worker-env.mjs';
 import {verifyExecute,verifyConsult} from './dispatch-verify.mjs';
 import {assertBudget} from './budgets.mjs';
 import {printError} from './cli.mjs';
 import {maskTransport} from './redaction.mjs';
 import {watchProcessTree} from './process-proof.mjs';
+import {recordCompletion,controllerDigest} from './reconciliation.mjs';
 import {openMonitor} from './worker-monitor.mjs';
 
 const timeoutFor=(root,state,executor,override)=>{
@@ -136,6 +138,7 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
  }
  immutable(path.join(dir,`session-${n}.json`),{executor:request.executor,session_id:parsed.session_id});
  immutable(path.join(dir,`result-${n}.json`),result);
+ if(state.reconciliation&&parsed.quiescence?.quiescent===true)recordCompletion(root,dir,String(n),{task_id:state.task_id,round:n,executor:request.executor,controller_digest:controllerDigest(state)},['launch','process','envelope','quiescence','dispatch','brief','base','result','session'].map(k=>`${k}-${n}.json`));
  await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} done (${result.status})`);
  // 여기서 lease를 놓지 않는다. 리드가 정지 여부를 확인하고 finish 해야 한다.
  return {status:'RESULT_READY',executor:request.executor,task_id:state.task_id,round:n,result_file:path.join(dir,`result-${n}.json`),quiescence:parsed.quiescence,next_action:'confirm quiescence, then fusion-state finish with writer token; result is read automatically'};
@@ -145,22 +148,37 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
 export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuiescence=false,signal}={}) {
  root=repo(root);
  ensureControl(root);
+ const unlock=acquireLock(controlPath(root,'locks/consult-execution.lock'));
+ try{
  const state=read(controlPath(root,'state.json'));
  const open=state.open_consult;
  if(!open||open.id!==id)throw Error('No open consult '+id);
  const dir=controlPath(root,'tasks',state.task_id);
- const runs=await Promise.allSettled(open.members.map(async m=>{
+ const slots=open.execution?.slots??2;
+ const proofRequired=open.execution?.revision===1||open.members.length>slots||proveQuiescence;
+ const runs=await settledSlots(open.members,slots,async m=>{
+  const current=read(controlPath(root,'state.json'));
+  if(signal?.aborted)throw Error('READ_ONLY_QUEUE_INTERRUPTED');
+  if(controllerDigest(current)!==controllerDigest(state))throw Error('READ_ONLY_STATE_CHANGED');
+  if(fs.existsSync(controlPath(root,'locks/writer.json'))||fs.existsSync(controlPath(root,'locks/acceptance.json')))throw Error('READ_ONLY_WRITER_OR_ACCEPTANCE_PRESENT');
+  if(snapshot(root).digest!==open.digest)throw Error('READ_ONLY_TREE_CHANGED');
   const sent=read(path.join(dir,`consult-${id}-${m.member}.json`));
   const request={...sent,...verifyConsult(root,state,dir,sent,{id,member:m.member,executor:m.executor})};
-  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs),maxBytes,proveQuiescence,signal});
-  const result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);
+  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs),maxBytes,proveQuiescence:proofRequired,signal});
+  let result;try{result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);}catch(error){error.quiescence=parsed.quiescence;throw error;}
   const file=path.join(dir,`consult-result-${id}-${m.member}.json`);
   immutable(file,result);
+  if(proofRequired&&parsed.quiescence?.quiescent!==true)throw Object.assign(Error('READ_ONLY_SHUTDOWN_UNPROVEN'),{quiescence:parsed.quiescence});
+  if(state.reconciliation&&parsed.quiescence?.quiescent===true){
+   const tag=`consult-${id}-${m.member}`;
+   recordCompletion(root,dir,tag,{task_id:state.task_id,round:state.iteration,executor:m.executor,controller_digest:controllerDigest(state)},[`launch-${tag}.json`,`process-${tag}.json`,`envelope-${tag}.json`,`quiescence-${tag}.json`,`${tag}.json`,`consult-${id}.json`,`consult-${id}-base.json`,`consult-result-${id}-${m.member}.json`]);
+  }
   return {member:m.member,executor:m.executor,ok:true,recommended_verdict:result.recommended_verdict,findings:result.findings.length,result_file:file,quiescence:parsed.quiescence};
- }));
+ },{stopOn:error=>error.quiescence?.quiescent!==true});
  const members=runs.map((r,i)=>r.status==='fulfilled'?r.value:{member:open.members[i].member,executor:open.members[i].executor,ok:false,error:r.reason.message,quiescence:r.reason.quiescence??null});
  await notify(`HyperFusion ${state.task_id}`,`${open.mode} ${id} done: `+members.map(m=>`${m.executor} ${m.ok?m.recommended_verdict:'failed'}`).join(', '));
  return {status:'CONSULT_READY',consult_id:id,mode:open.mode,members,next_action:'confirm quiescence, then fusion-state consult-finish'};
+ }finally{unlock();}
 }
 
 if(isMain(import.meta.url)) {

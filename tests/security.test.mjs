@@ -68,6 +68,16 @@ test('migrate refuses while a control.lock exists and leaves the legacy folder i
  assert.equal(fs.existsSync(f.control),false);
 });
 
+test('migrate never overwrites an existing external destination',t=>{
+ const f=fixture(t);toLegacy(f);
+ const legacy=fs.readFileSync(path.join(f.root,'.fusion','state.json'));
+ fs.mkdirSync(f.control,{recursive:true});
+ const marker=path.join(f.control,'preserve.txt');fs.writeFileSync(marker,'existing external evidence');
+ assert.throws(()=>migrate(f.root),/Already migrated/);
+ assert.equal(fs.readFileSync(marker,'utf8'),'existing external evidence');
+ assert.deepEqual(fs.readFileSync(path.join(f.root,'.fusion','state.json')),legacy);
+});
+
 test('HF_STATE_DIR decides where the control directory lives, and one repository always maps to one directory',t=>{
  const f=fixture(t,{initialize:false});
  assert.equal(controlRoot(f.root),f.control);

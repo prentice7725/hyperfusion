@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {read,atomic} from './artifact.mjs';
 import {acquireLock} from './lock.mjs';
+import {checkProvenance,provenanceKey,matchesProvenance} from './memory-provenance.mjs';
 
 // 에이전트 공유 작업기억 저장소. AnchorMind의 설계(fragment, workspace 격리, 중복 병합, 모순 탐지,
 // importance 감쇠, TTL, 연상 확산, 출처·신뢰 표시)를 의존성 없이 로컬 파일로 구현한다.
@@ -100,11 +101,12 @@ function withStore(w,fn) {
 
 // 저장. 같은 내용이면 병합하고, 예전에 기각된 내용이면 거절하고, 충돌하면 검토 대기열로 보낸다.
 export function remember(w,f,{now=Date.now()}={}) {
+ const problems=checkProvenance(f.provenance);if(problems.length)throw Error(problems.join('; '));
  return withStore(w,s=>{
   const at=new Date(now).toISOString();
   const rejected=s.fragments.find(x=>x.assertion==='rejected'&&x.type===f.type&&duplicate(x.content,f.content));
   if(rejected)return {status:'refused',id:rejected.id,reason:'previously rejected memory; resolve it explicitly if it became true'};
-  const dup=s.fragments.find(x=>active(x)&&x.type===f.type&&duplicate(x.content,f.content));
+  const dup=s.fragments.find(x=>active(x)&&x.type===f.type&&provenanceKey(x.provenance)===provenanceKey(f.provenance)&&duplicate(x.content,f.content));
   if(dup){
    dup.importance=Math.min(1,Math.max(dup.importance,LEVEL[f.importance]??0.6)+0.05);
    dup.keywords=[...new Set([...dup.keywords,...(f.keywords??[])])];
@@ -115,17 +117,19 @@ export function remember(w,f,{now=Date.now()}={}) {
   const conflicts=s.fragments.filter(x=>active(x)&&x.type===f.type&&contradicts(x.content,f.content)).map(x=>x.id);
   const id='f'+crypto.randomUUID().slice(0,8);
   s.fragments.push({id,type:f.type,content:f.content,keywords:f.keywords??[],importance:LEVEL[f.importance]??0.6,assertion:f.assertion,
-   anchor_key:f.anchor_key,links:f.links??[],sources:[f.source],status:conflicts.length?'needs_review':'active',conflicts_with:conflicts,
+   provenance:f.provenance,anchor_key:f.anchor_key,links:f.links??[],sources:[f.source],status:conflicts.length?'needs_review':'active',conflicts_with:conflicts,
    created_at:at,updated_at:at,expires_at:f.ttl_days?new Date(now+f.ttl_days*DAY).toISOString():undefined,recall_count:0});
   return {status:conflicts.length?'needs_review':'stored',id,conflicts_with:conflicts};
  });
 }
 
 // 검색: 어휘 점수(BM25) × (0.5 + 감쇠된 중요도) × 신뢰도, 그다음 링크·같은 작업 기억으로 1단계 연상 확산.
-export function recall(w,query,{type,keywords,limit=8,now=Date.now(),touch=true}={}) {
+export function recall(w,query,{type,keywords,provenance,limit=8,now=Date.now(),touch=true}={}) {
+ const problems=checkProvenance(provenance);if(problems.length)throw Error(problems.join('; '));
+ if(!Number.isInteger(limit)||limit<1||limit>100)throw Error('memory limit must be an integer from 1 to 100');
  const s=load(w);
  const live=s.fragments.filter(f=>active(f)&&f.assertion!=='rejected'&&!expired(f,now));
- const pool=live.filter(f=>(!type||f.type===type)&&(!keywords?.length||keywords.some(k=>f.keywords.includes(k))));
+ const pool=live.filter(f=>matchesProvenance(f.provenance,provenance)&&(!type||f.type===type)&&(!keywords?.length||keywords.some(k=>f.keywords.includes(k))));
  const q=[...new Set(tokens(query))];
  const docs=pool.map(f=>({f,t:tokens(f.content+' '+f.keywords.join(' '))}));
  const avg=docs.reduce((n,d)=>n+d.t.length,0)/(docs.length||1);
@@ -138,19 +142,19 @@ export function recall(w,query,{type,keywords,limit=8,now=Date.now(),touch=true}
  }
  const top=[...score.entries()].sort((a,b)=>b[1]-a[1]).slice(0,limit);
  // 연상 확산: 상위 기억과 명시적으로 링크됐거나 같은 작업(hf:<task>)에서 나온 기억을 낮은 점수로 함께 꺼낸다.
- const byId=Object.fromEntries(live.map(f=>[f.id,f])),spread=new Map();
+ const byId=Object.fromEntries(pool.map(f=>[f.id,f])),spread=new Map();
  for(const [id,sc] of top){
   const f=byId[id],task=f.keywords.find(k=>k.startsWith('hf:'));
-  for(const g of live)if(g.id!==id&&!score.has(g.id)&&(f.links.includes(g.id)||g.links.includes(id)||(task&&g.keywords.includes(task))))spread.set(g.id,Math.max(spread.get(g.id)??0,sc*0.3));
+  for(const g of pool)if(g.id!==id&&!score.has(g.id)&&(f.links.includes(g.id)||g.links.includes(id)||(task&&g.keywords.includes(task))))spread.set(g.id,Math.max(spread.get(g.id)??0,sc*0.3));
  }
- const hits=[...top.map(([id,sc])=>({f:byId[id],score:sc,via:'match'})),...[...spread.entries()].sort((a,b)=>b[1]-a[1]).slice(0,Math.ceil(limit/2)).map(([id,sc])=>({f:byId[id],score:sc,via:'association'}))];
+ const hits=[...top.map(([id,sc])=>({f:byId[id],score:sc,via:'match'})),...[...spread.entries()].sort((a,b)=>b[1]-a[1]).slice(0,Math.ceil(limit/2)).map(([id,sc])=>({f:byId[id],score:sc,via:'association'}))].slice(0,limit);
  // 검토 대기 중인 충돌 기억은 결과에 표시만 한다. 리드가 정리하기 전엔 일꾼에게 넘기지 않는다.
  const review=s.fragments.filter(f=>f.status==='needs_review'&&q.some(x=>tokens(f.content).includes(x)));
  if(touch&&hits.length)withStore(w,st=>{for(const h of hits){const f=st.fragments.find(x=>x.id===h.f.id);if(f){f.last_recalled_at=new Date(now).toISOString();f.recall_count=(f.recall_count??0)+1;}}});
  return {hits:hits.map(h=>({...view(h.f,now),score:Math.round(h.score*1000)/1000,via:h.via})),needs_review:review.map(f=>view(f,now))};
 }
 
-const view=(f,now)=>({id:f.id,type:f.type,content:f.content,assertion:f.assertion,anchor_key:f.anchor_key,keywords:f.keywords,importance:Math.round(effective(f,now)*100)/100,status:f.status,conflicts_with:f.conflicts_with?.length?f.conflicts_with:undefined,sources:f.sources.length});
+const view=(f,now)=>({id:f.id,type:f.type,content:f.content,assertion:f.assertion,provenance:f.provenance,source_context:'unvalidated; compare with current SOT/Git',expires_at:f.expires_at,anchor_key:f.anchor_key,keywords:f.keywords,importance:Math.round(effective(f,now)*100)/100,status:f.status,conflicts_with:f.conflicts_with?.length?f.conflicts_with:undefined,sources:f.sources.length});
 
 // 세션 시작용 핵심 기억: anchor 전부 + 감쇠 점수 상위(verified 우선).
 export function context(w,{limit=10,now=Date.now()}={}) {

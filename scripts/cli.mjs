@@ -15,6 +15,7 @@ export function errorRecord(error) {
   BUDGET_EXCEEDED:'Inspect report and task limits; no further worker launch is allowed.',
   MODEL_UNSUPPORTED:'Remove the model override or use a CLI supporting --model.',
   EFFORT_UNSUPPORTED:'Use a reasoning_effort value this CLI accepts, update the CLI, or remove the setting.'};
- return {code,message,next_action:error.next_action??actions[code]??'Inspect status and the error; correct the input or use the documented recovery procedure.'};
+ return {code,message,next_action:error.next_action??actions[code]??'Inspect status and the error; correct the input or use the documented recovery procedure.',
+  ...(error.diagnostic?{diagnostic:error.diagnostic}:{})};
 }
 export function printError(error) {console.error(JSON.stringify(errorRecord(error)));process.exitCode=1;}

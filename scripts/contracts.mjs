@@ -105,6 +105,7 @@ export function consultResult(v,task_id,consult_id,member,mode) {
   requireThat(v.recommended_verdict==='pass'?v.blocking_criteria.length===0:v.blocking_criteria.length>0,'Review verdict and blocking_criteria disagree');
  }
  requireThat(Array.isArray(v.findings)&&v.findings.every(f=>f&&reportedPath(f.file)&&Number.isInteger(f.line)&&f.line>=0&&['blocker','major','minor','nit'].includes(f.severity)&&str(f.issue)&&typeof f.suggestion==='string'),'Invalid consult findings');
+ requireThat(v.findings.every(f=>(f.ac_ids===undefined||(Array.isArray(f.ac_ids)&&f.ac_ids.length>0&&f.ac_ids.length<=20&&f.ac_ids.every(id=>typeof id==='string'&&/^AC\d+$/.test(id))))&&(f.evidence===undefined||typeof f.evidence==='string')),'Invalid optional finding AC ids or evidence');
  return v;
 }
 // 반려 근거. LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. redo/alternative는 줄 위치가 있는

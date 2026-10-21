@@ -81,8 +81,11 @@ export function migrate(root) {
   if(fs.existsSync(path.join(from,'locks/control.lock')))throw Error('control.lock exists: a controller may be running, or one crashed. Confirm, then see recovery-protocol.md');
   if(fs.lstatSync(from).isSymbolicLink())throw Error('Symlink protocol directory forbidden');
 
-  fs.mkdirSync(to,{recursive:true,mode:0o700});
-  fs.cpSync(from,to,{recursive:true,errorOnExist:true,force:false});
+  fs.mkdirSync(path.dirname(to),{recursive:true,mode:0o700});
+  // Reserve a new destination exclusively. Some Node versions reject cpSync
+  // onto an existing directory when errorOnExist is set, even when it is empty.
+  fs.mkdirSync(to,{mode:0o700});
+  for(const entry of fs.readdirSync(from))fs.cpSync(path.join(from,entry),path.join(to,entry),{recursive:true,errorOnExist:true,force:false});
   const files=listFiles(from);
   for(const rel of files){
     const same=fs.existsSync(path.join(to,rel))&&sha256(fs.readFileSync(path.join(from,rel)))===sha256(fs.readFileSync(path.join(to,rel)));

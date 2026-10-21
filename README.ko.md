@@ -8,6 +8,21 @@ v0.26.0은 중요한 adaptive 작업에 교차 벤더 페어 리뷰를 추가합
 
 > **버전.** 패키지 릴리스는 `0.26.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
+## 미출시 컨트롤러 개선
+
+| 영역 | 사용 방법과 범위 |
+| --- | --- |
+| 정지 사유·지표 (HF-I01) | 읽기 전용 `diagnose`, 고정 사유 코드, 관측된 시간·사용량. 모르는 값은 미확인으로 유지합니다. |
+| 중단 작업 (HF-I02) | 읽기 전용 `resume`과 init에서 허용한 명시적 `reconcile`. 작업자 재실행·자동 승인은 하지 않습니다. |
+| 리뷰 지적 (HF-I03) | `findings`, `revision-packet`, `@findings`. 표시를 묶어도 원본 근거와 필수 리뷰는 보존합니다. |
+| 정적 의존성 (HF-I04) | `project.mjs schedule`, 고정 계획, CLOSE·통합 영수증과 체크포인트 확인. 구현은 직렬입니다. |
+| 읽기 전용 작업 (HF-I05) | 상담·리뷰 최대 2슬롯. 고정 범위와 필수 공통 근거를 유지합니다. |
+| 기억 (HF-I07) | 출처·버전 필터, 제한 회수, 후보 일괄 검토와 검색·유용성 관측을 구분합니다. |
+
+사용 안내: [재개·정산](references/reconciliation.md), [지적 원장](references/finding-ledger.md), [작업 계획](references/workflow-plan.md), [읽기 전용 작업](references/read-only-work.md), [기억 회수](references/memory-recall.md), [반복 벤치마크](references/benchmark-pilot.md).
+
+새 실행 권한은 명시적으로 허용해야 하며, 조회·지표 기능은 권한을 부여하지 않습니다. 병렬 구현(HF-I06)은 기본 개선에서 제외한 별도 초안 실험입니다. 실모델 비용·시간 절감은 미측정이며, 플랫폼 검증은 해당 PR의 정확한 커밋 결과로 확인합니다. 상세 이력은 [CHANGELOG](CHANGELOG.md)에 둡니다.
+
 ## 왜 만들었나
 
 1. **토큰 절약.** 비싼 모델(Opus)이 코드를 쓰고 테스트를 돌리며 로그를 읽는 데 토큰을 태우는 건 낭비다. Opus는 계획, 반려, 최종 검수만 하고, 구현과 테스트 반복은 더 싼 모델이나 다른 구독의 모델이 한다. 성공한 작업당 Opus 토큰을 핵심 지표로 재고 기록한다.

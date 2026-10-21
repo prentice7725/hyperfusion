@@ -5,6 +5,8 @@ import {stateHome,repoId,controlPath,ensureControl,assertPlainDir,acquireLock} f
 import {isMain,samePath} from './platform.mjs';
 import {TERMINAL_PHASES} from './state-policy.mjs';
 import {readInput,printError} from './cli.mjs';
+import {loadProject,saveProject,withProjectLock} from './project.mjs';
+import {assertWorkflowTask} from './workflow-plan.mjs';
 
 const valid=id=>typeof id==='string'&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(id);
 const workspacePath=(root,id)=>path.resolve(stateHome(),'worktrees',repoId(root),id);
@@ -12,6 +14,23 @@ const manifest=(root,id)=>controlPath(root,'worktrees',id+'.json');
 const locked=(root,fn)=>{ensureControl(root);const unlock=acquireLock(controlPath(root,'locks/worktrees.lock'));try{return fn();}finally{unlock();}};
 
 export function createWorktree(root,id) {
+ root=repo(root);
+ const p=loadProject(root);
+ if(p?.workflow){
+  return withProjectLock(root,()=>{
+   const project=loadProject(root),task=assertWorkflowTask(root,project,id,workspacePath(root,id));
+   if(task.workspace!=='isolated')throw Error('WORKFLOW: shared task cannot use a worktree');
+   const record=createUnboundWorktree(root,id);
+   ensureControl(record.workspace);
+   atomic(controlPath(record.workspace,'workflow-parent.json'),{source_root:root,task_id:id,digest:project.workflow.digest});
+   const planned=project.milestones.flatMap(m=>m.tasks).find(t=>t.id===id);
+   planned.status='reserved';planned.workspace_root=record.workspace;saveProject(root,project);
+   return record;
+  });
+ }
+ return createUnboundWorktree(root,id);
+}
+function createUnboundWorktree(root,id) {
  root=repo(root);if(!valid(id))throw Error('Invalid task_id');
  return locked(root,()=>{
   const workspace=workspacePath(root,id),file=manifest(root,id);

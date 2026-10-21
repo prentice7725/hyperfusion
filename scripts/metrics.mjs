@@ -1,4 +1,6 @@
+import {collectAutomation,aggregateAutomation} from './automation-metrics.mjs';
 import {weightedUsage} from './usage-weights.mjs';
+import {collectMemory} from './memory-observations.mjs';
 import {readInput,printError} from './cli.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -50,6 +52,7 @@ export function measure(root,observations=null) {
  const countedImplementers=[...EXECUTORS,...(runs.some(r=>r.executor==='sol'&&r.role==='implement')?['sol']:[])];
  const outcomes=s.reviews??[];
  const v={task_id:s.task_id,success:s.phase==='CLOSE',hooks_observed:s.hook_observation?.hooks_observed??false,hook_observation:s.hook_observation??null,
+  automation:collectAutomation(root,s,runs),memory:collectMemory(root,s),
   communication_language:s.communication_language??null,rework_rate:outcomes.length?outcomes.filter(r=>['redo','alternative'].includes(r.verdict)).length/outcomes.length:null,
   initial_executor:s.initial_executor??null,attempts:s.attempts??null,
   objective:'minimize total Claude (Opus + Sonnet + Haiku) tokens per successful task',
@@ -96,6 +99,14 @@ export function refreshHostUsage(root,taskId,observation) {
   claude_total_tokens:accounting.claude_total_tokens,claude_tokens_per_success:prior.success?accounting.claude_total_tokens:null};
  atomic(file,updated);return updated;
 }
+// CLOSE is measured during verify, before autopilot writes its final event.
+// Refresh only observational fields after that journal is durable.
+export function refreshAutomationMetrics(root,state) {
+ const file=controlPath(root,'metrics',state.task_id+'.json');
+ if(!fs.existsSync(file))return;
+ const prior=read(file);
+ atomic(file,{...prior,automation:collectAutomation(root,state,collectRunUsage(root,state))});
+}
 function summarize(records) {
  const successes=records.filter(r=>r.success).length;
  const covered=records.length>0&&records.every(r=>knownNumber(r.lead_usage?.lead_tokens));
@@ -112,7 +123,7 @@ function summarize(records) {
 // 작은 diff에 한해 리드 직접 수정을 허용하는 예외를 데이터로 정할 수 있다(지금은 허용하지 않는다).
 export function aggregate(records) {
  const groups=['low','medium','high',null].map(d=>[d??'unset',records.filter(r=>(r.difficulty??null)===d)]).filter(([,list])=>list.length);
- return {...summarize(records),by_difficulty:Object.fromEntries(groups.map(([d,list])=>[d,summarize(list)]))};
+ return {...summarize(records),automation:aggregateAutomation(records),by_difficulty:Object.fromEntries(groups.map(([d,list])=>[d,summarize(list)]))};
 }
 export function aggregateRepo(root) {
  const dir=controlPath(root,'metrics');

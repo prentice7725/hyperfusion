@@ -8,6 +8,21 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 > **Versions.** The package release is `0.26.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
 
+## Unreleased controller improvements
+
+| Area | Entry point and limits |
+| --- | --- |
+| Stops and metrics (HF-I01) | Read-only `diagnose`, stable reason codes and observed timing/usage; unknown values remain unknown. |
+| Interrupted tasks (HF-I02) | Read-only `resume` and init-granted explicit `reconcile`; no worker relaunch or automatic approval. |
+| Review findings (HF-I03) | `findings`, `revision-packet` and `@findings`; grouping never removes raw evidence or mandatory review. |
+| Static dependencies (HF-I04) | `project.mjs schedule`, frozen plans, CLOSE/integration receipts and checkpoint acknowledgment. Implementation stays serial. |
+| Read-only work (HF-I05) | At most two consultation/review slots with frozen scopes and complete mandatory coverage. |
+| Memory (HF-I07) | Source/version filters, bounded recall, candidate batch review and separate retrieval/usefulness observations. |
+
+Usage: [reconciliation](references/reconciliation.md), [findings](references/finding-ledger.md), [workflow plans](references/workflow-plan.md), [read-only work](references/read-only-work.md), [memory recall](references/memory-recall.md), [repeated benchmark](references/benchmark-pilot.md).
+
+New execution authority requires explicit grants; diagnostics and metrics do not grant it. Parallel implementation (HF-I06) is excluded from this core change and remains a separate draft experiment. Real-model cost/time savings are unmeasured; platform results must be checked on the exact PR head. Detailed history is in [CHANGELOG](CHANGELOG.md).
+
 ## Why HyperFusion
 
 1. **Reduce lead-model token use.** Opus owns planning, rejection, and final review. Workers handle implementation and test loops. The project records lead tokens per successful task; unmeasured usage stays unknown.

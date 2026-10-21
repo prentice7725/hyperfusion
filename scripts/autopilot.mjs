@@ -9,6 +9,7 @@ import {ensureControl,controlPath,acquireLock} from './control-dir.mjs';
 import {isMain} from './platform.mjs';
 import {readInput,printError,errorRecord} from './cli.mjs';
 import {SCHEMA_VERSION} from './versions.mjs';
+import {refreshAutomationMetrics} from './metrics.mjs';
 
 // 정지 확인이 실패하면 이유와 남은 프로세스를 메시지에 남긴다(리드와 CI 로그에서 바로 보이게).
 const proofText=q=>q?`${q.reason}${q.remaining?.length?`; remaining ${JSON.stringify(q.remaining.slice(0,5))}`:''}${q.checks?`; checks ${q.checks}`:''}`:'missing evidence';
@@ -48,17 +49,23 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
  const stop=(reason,error)=>{
   const s=state();journal.finished_at=new Date().toISOString();journal.reason=reason;
   if(error)journal.error=errorRecord(error);
+  if(error?.diagnostic)journal.gate_diagnostic=error.diagnostic;
+  else if(reason==='LEAD_DECISION_REQUIRED'){
+   try{journal.gate_diagnostic=run(root,'diagnose');}catch(e){journal.gate_diagnostic={eligible:false,reason_codes:['DIAGNOSTIC_ERROR'],error:errorRecord(e)};}
+  }
   atomic(file,journal);
+  try{if(s.task_id===task)refreshAutomationMetrics(root,s);}catch(e){journal.metrics_error=errorRecord(e);atomic(file,journal);}
   // 복구 단계로 멈췄다면 왜 멈췄는지(프로세스 정지 미확인 등)를 함께 돌려준다. 호출한 쪽과 CI 로그에서 바로 보인다.
   return {status:'NEEDS_LEAD',task_id:task,phase:s.phase,owner:s.owner,round:s.iteration,reason,steps,
    ...(s.phase==='RECOVERY_REQUIRED'&&s.last_errors?.length?{last_errors:s.last_errors.slice(0,3).map(e=>String(e).slice(0,600))}:{}),
-   next_action:error?'Inspect the journal and status; manually settle or recover before retrying.':run(root,'status',{summary:true}).next_action,journal_file:file,...(error?{error:journal.error}:{})};
+   next_action:error?'Inspect the journal and status; manually settle or recover before retrying.':run(root,'status',{summary:true}).next_action,journal_file:file,...(error?{error:journal.error}:{}),
+   ...(journal.gate_diagnostic?{diagnostic:journal.gate_diagnostic}:{})};
  };
  try {
   const initial=state();task=initial.task_id;
   if(initial.schema_version!==SCHEMA_VERSION)throw failure('LEGACY_STATE','Autopilot requires the current state schema');
   file=controlPath(root,'tasks',task,`autopilot-${crypto.randomUUID()}.json`);
-  journal={task_id:task,started_at:new Date().toISOString(),events:[]};atomic(file,journal);
+  journal={task_id:task,initial_phase:initial.phase,started_at:new Date().toISOString(),events:[]};atomic(file,journal);
   try {
    for(;;){
     const s=state();
