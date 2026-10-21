@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Audit follow-up: consolidate the three README introductions into a capability summary. This core branch contains HF-I01–HF-I05 and HF-I07 only; isolated parallel implementation remains a separately reviewed draft pending the G4 measurement gate.
+
 - Node 24 상태 마이그레이션에서 새 목적지 디렉터리에 대한 `cpSync`의 EEXIST를 피하도록 항목별 배타 복사를 적용했다. 기존 목적지 덮어쓰기 금지·해시 검증·writer lease 보존은 유지한다.
 
 - HF-I07: 출처·버전 필터, 선택적 아티팩트 해시 검증, 근거 포인터를 보존하는 제한 회수 패킷, 장부 해시 기반 일괄 검토와 검색·브리프 포함·리드 보고 유용성 지표를 추가했다. 수정된 후보는 원래의 verified 표시를 상속하지 않는다.

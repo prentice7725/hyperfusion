@@ -1,24 +1,5 @@
 # HyperFusion
 
-Bounded read-only work (HF-I05, unreleased): existing consultations/reviews use at most two slots per task workspace. Init-time `read_only` definitions fix approved paths, focus and executors; `consult.subtasks` selects additional analysis. Mandatory reviewers retain all shared evidence on one digest. Successful siblings survive invocation failure; budget exhaustion, unknown shutdown and writer conflicts stop queued work. See [usage and limits](references/read-only-work.md).
-
-Static task dependencies (HF-I04, unreleased): milestone tasks can declare `depends_on`; `node scripts/project.mjs schedule REPO` reports deterministic order and readiness. Approval freezes scopes, acceptance and budgets. Implementations remain serial. Shared tasks require controller CLOSE; isolated tasks also require parent integration acceptance and an explicit receipt. Existing checkpoint acknowledgement remains required. See [plan format and usage](references/workflow-plan.md).
-
-Review finding ledger (HF-I03, unreleased): `node scripts/fusion-state.mjs findings REPO` and `revision-packet REPO` expose bounded unresolved findings with raw evidence pointers. Redo input `lead_feedback:"@findings"` explicitly forwards a correction packet. Only exact duplicates share a display entry; moved lines require unique context matches. `resolve-finding` records an observation backed by new-digest acceptance and review evidence without changing approval or required reviewer seats. See [usage and limits](references/finding-ledger.md).
-
-## Inspect automation stops and interrupted tasks (unreleased)
-
-`node scripts/fusion-state.mjs diagnose REPO` evaluates the existing delegated approval checks and returns stable `reason_codes`, per-check evidence requirements, policy revision, round/digest and the original `unmet`/`passed` text. It grants no authority. Invalid evidence remains visible as `DIAGNOSTIC_ERROR`; policy refusal also carries these diagnostics into CLI errors and autopilot stops.
-
-`node scripts/fusion-state.mjs resume REPO` returns a bounded, read-only reconstruction packet: frozen policy summary, attempt counts/limits, artifact availability and process uncertainty. It omits prompts and lease tokens, creates no locks or state directories, and bypasses acceptance recovery writes. Existing launches, open consultations and uncertain dispatches require inspection and controller revalidation; artifact presence is never shutdown or approval proof. Legacy tasks remain inspectable. Automatic resume remains disabled. New tasks can grant explicit evidence-based settlement at init; see [reconciliation](references/reconciliation.md).
-
-Automation metrics now add an `automation` object to task metrics and paired benchmark summaries: observed eligibility, policy approvals, stops by reason, launch transport attempts grouped by role/model/effort, review seat time, review wall wait and Grok xhigh review seat time. Failed transports remain in time and cost accounting. Parallel review intervals count once in wall wait. Host model invocations stay unknown. Phase timing covers complete, nonoverlapping autopilot journal windows; older or incomplete journals remain unknown. Run `node scripts/metrics.mjs REPO` to refresh task evidence and `node scripts/metrics.mjs --aggregate REPO` for repository totals. These observations do not change grants or approval behavior.
-
-Run `npm run test:recovery` for serial fake-CLI settlement and crash-boundary regressions. An uncertain verification record or missing terminal settlement marker now produces an explicit stop in `reconcile` and `resume`; neither recommends replaying verification. Full Ubuntu/Windows validation remains pending.
-
-This completes another observation slice of HF-I01/HF-I02. Explicit reconciliation now adds frozen init grants, completion hashes, fresh process checks and operation receipts for existing finish/review settlement. Full crash/restart qualification, stop-code coverage outside delegated approval and live paired evaluation remain pending.
-
-
 v0.26.0 adds cross-vendor review pairs for important adaptive tasks. Grok implementation and ordinary consultation stay at medium; only a designated deep-review seat uses xhigh. Plans are fixed at task initialization, reviewers run independently in parallel, and conflicts stay with the lead. See [review pairs](references/review-pairs.md), [acceptance and agent guards](references/agent-guards.md), and [CHANGELOG](CHANGELOG.md).
 
 English | [한국어](README.ko.md) | [日本語](README.ja.md)
@@ -26,6 +7,21 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
 > **Versions.** The package release is `0.26.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
+
+## Unreleased controller improvements
+
+| Area | Entry point and limits |
+| --- | --- |
+| Stops and metrics (HF-I01) | Read-only `diagnose`, stable reason codes and observed timing/usage; unknown values remain unknown. |
+| Interrupted tasks (HF-I02) | Read-only `resume` and init-granted explicit `reconcile`; no worker relaunch or automatic approval. |
+| Review findings (HF-I03) | `findings`, `revision-packet` and `@findings`; grouping never removes raw evidence or mandatory review. |
+| Static dependencies (HF-I04) | `project.mjs schedule`, frozen plans, CLOSE/integration receipts and checkpoint acknowledgment. Implementation stays serial. |
+| Read-only work (HF-I05) | At most two consultation/review slots with frozen scopes and complete mandatory coverage. |
+| Memory (HF-I07) | Source/version filters, bounded recall, candidate batch review and separate retrieval/usefulness observations. |
+
+Usage: [reconciliation](references/reconciliation.md), [findings](references/finding-ledger.md), [workflow plans](references/workflow-plan.md), [read-only work](references/read-only-work.md), [memory recall](references/memory-recall.md), [repeated benchmark](references/benchmark-pilot.md).
+
+New execution authority requires explicit grants; diagnostics and metrics do not grant it. Parallel implementation (HF-I06) is excluded from this core change and remains a separate draft experiment. Real-model cost/time savings are unmeasured; platform results must be checked on the exact PR head. Detailed history is in [CHANGELOG](CHANGELOG.md).
 
 ## Why HyperFusion
 
