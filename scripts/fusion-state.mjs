@@ -10,7 +10,7 @@ import {atomic,immutable,read,repo,snapshot,changes,git,hash,SAFE_DIFF,riskyGitC
 import {acquire,assertLease,release} from './writer-lease.mjs';
 import {notify} from './notify.mjs';
 import {loadProject,saveProject,teamConfig,activeMilestone,settleTask} from './project.mjs';
-import {assertWorkflow,assertWorkflowTask,workflowInput} from './workflow-plan.mjs';
+import {assertWorkflow,assertWorkflowTask,assertParallelBegin,workflowInput} from './workflow-plan.mjs';
 import {readOnlyPlan,selectReadOnly,workManifest} from './read-only-plan.mjs';
 import {measure} from './metrics.mjs';
 import {recordHostWindow} from './lead-usage.mjs';
@@ -890,6 +890,7 @@ function begin(c,input) {
   if(s.project?.workflow_digest){
     const root=s.project.source_root??c.root,p=loadProject(root);assertWorkflow(root,p);
     if(p.workflow.digest!==s.project.workflow_digest)throw Error('WORKFLOW: task plan changed');
+    assertParallelBegin(root,p,s.task_id,c.root);
     const planned=p.milestones.flatMap(m=>m.tasks).find(t=>t.id===s.task_id);
     if(planned?.status!=='active')throw Error('WORKFLOW: task is not active');
     input=workflowInput(root,p,planned,input);

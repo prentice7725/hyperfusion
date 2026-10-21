@@ -13,14 +13,29 @@ const fail=message=>{throw Error('WORKFLOW: '+message);};
 const sameWorkspace=(a,b)=>typeof a==='string'&&typeof b==='string'&&samePath(a,b);
 const tasks=p=>p.milestones.flatMap((m,index)=>m.tasks.map(t=>({...t,milestone:m.id,milestone_index:index})));
 const fields=['id','kind','difficulty','depends_on','workspace','integrates','scope','success_criteria','acceptance_commands','acceptance_map','acceptance_timeout_ms','acceptance_artifacts','verification','acceptance_baseline_green','limits','read_only'];
-export const workflowEnabled=p=>p.milestones.some(m=>m.tasks.some(t=>t.depends_on!==undefined||t.integrates!==undefined||t.workspace!==undefined||t.read_only!==undefined));
+export const workflowEnabled=p=>p.parallel_implementation!==undefined||p.milestones.some(m=>m.tasks.some(t=>t.depends_on!==undefined||t.integrates!==undefined||t.workspace!==undefined||t.read_only!==undefined));
 const spec=t=>Object.fromEntries(fields.filter(k=>t[k]!==undefined).map(k=>[k,t[k]]));
-export const workflowDefinition=p=>p.milestones.map(m=>({id:m.id,tasks:m.tasks.map(spec)}));
+export const workflowDefinition=p=>{
+ const milestones=p.milestones.map(m=>({id:m.id,tasks:m.tasks.map(spec)}));
+ return p.parallel_implementation===undefined?milestones:{parallel_implementation:p.parallel_implementation,milestones};
+};
+export function parallelPolicy(p) {
+ const v=p.parallel_implementation;
+ if(v===undefined)return null;
+ if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!['slots','reason'].includes(k))||v.slots!==2||typeof v.reason!=='string'||!v.reason.trim()||v.reason.length>300)fail('parallel_implementation needs {slots:2,reason}');
+ return v;
+}
+// Conservative even on POSIX: a plan may later run on a case-insensitive host.
+export const scopesOverlap=(a,b)=>a.some(x=>b.some(y=>{
+ x=x.toLowerCase();y=y.toLowerCase();return x===y||x.startsWith(y+'/')||y.startsWith(x+'/');
+}));
+export const sourceIdentity=tree=>hash(canonical({head:tree.head,files:Object.fromEntries(Object.entries(tree.files).filter(([name])=>!name.startsWith('.git/')))}));
 const canonical=v=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,x[k]])):x);
 export const workflowDigest=p=>hash(canonical(workflowDefinition(p)));
 
 export function validateWorkflow(p) {
  if(!workflowEnabled(p))return null;
+ parallelPolicy(p);
  const list=tasks(p),byId=new Map();
  if(list.length>200)fail('at most 200 static tasks');
  for(const t of list){
@@ -49,6 +64,12 @@ export function validateWorkflow(p) {
   }
  }
  for(const t of list)if(t.workspace==='isolated'&&list.filter(i=>i.integrates===t.id).length!==1)fail(t.id+' needs exactly one integration task in the same milestone');
+ if(parallelPolicy(p))for(const m of p.milestones){
+  const children=m.tasks.filter(t=>t.workspace==='isolated');
+  if(!children.length)continue;
+  const join=m.tasks.find(t=>(t.workspace??'shared')==='shared'&&!t.integrates&&children.every(child=>(t.depends_on??[]).includes(child.id)&&child.scope.paths.every(name=>t.scope.paths.some(p=>name===p||name.startsWith(p+'/')))&&child.acceptance_commands.every(c=>t.acceptance_commands.includes(c))));
+  if(!join)fail(m.id+' parallel work needs a shared join covering every isolated dependency, scope and acceptance command');
+ }
  const seen=new Set(),active=new Set(),order=[];
  function visit(t){if(active.has(t.id))fail('cyclic dependencies');if(seen.has(t.id))return;active.add(t.id);edges(t).forEach(id=>visit(byId.get(id)));active.delete(t.id);seen.add(t.id);order.push(t.id);}
  list.forEach(visit);
@@ -96,12 +117,19 @@ export function workflowReadiness(root,p) {
   if(p.status!=='ACTIVE')reasons.push('PROJECT_NOT_ACTIVE');
   if(t.milestone!==active?.id)reasons.push('CHECKPOINT_PENDING');
   if(t.status!=='planned')reasons.push('TASK_'+String(t.status).toUpperCase());
-  if(running.length)reasons.push('IMPLEMENTATION_RUNNING');
+  if(running.length){
+   const peers=[...new Set(running)].map(id=>byId.get(id));
+   if(!parallelPolicy(p)||t.workspace!=='isolated'||peers.some(peer=>peer?.workspace!=='isolated'))reasons.push('IMPLEMENTATION_RUNNING');
+   else {
+    if(peers.length>=p.parallel_implementation.slots)reasons.push('PARALLEL_SLOTS_FULL');
+    if(peers.some(peer=>scopesOverlap(t.scope.paths,peer.scope.paths)))reasons.push('PARALLEL_SCOPE_CONFLICT');
+   }
+  }
   for(const id of t.depends_on??[]){const dep=byId.get(id);if(!closed(root,p,id)||dep.workspace==='isolated'&&!integrated(root,p,id))reasons.push('DEPENDENCY_UNSATISFIED:'+id);}
   if(t.integrates&&!closed(root,p,t.integrates))reasons.push('ISOLATED_CLOSE_REQUIRED:'+t.integrates);
   return {id:t.id,milestone:t.milestone,workspace:t.workspace??'shared',ready:!reasons.length,reasons};
  });
- return {revision:1,digest:frozen.digest,serial:true,order:frozen.order,ready:entries.filter(t=>t.ready).map(t=>t.id),tasks:entries};
+ return {revision:1,digest:frozen.digest,serial:!parallelPolicy(p),...(p.parallel_implementation?{slots:p.parallel_implementation.slots}:{}),order:frozen.order,ready:entries.filter(t=>t.ready).map(t=>t.id),tasks:entries};
 }
 export function workflowInput(root,p,t,input) {
  assertWorkflow(root,p);
@@ -116,10 +144,25 @@ export function workflowInput(root,p,t,input) {
 }
 export function assertWorkflowTask(root,p,id,workspace,{reserved=false}={}) {
  const t=tasks(p).find(t=>t.id===id);if(!t)fail('unknown task');
- if(reserved){assertWorkflow(root,p);if(t.status!=='reserved'||!sameWorkspace(t.workspace_root,workspace))fail('reservation mismatch');}
+ if(reserved){
+  assertWorkflow(root,p);if(t.status!=='reserved'||!sameWorkspace(t.workspace_root,workspace))fail('reservation mismatch');
+  if(parallelPolicy(p)){
+   const binding=read(controlPath(workspace,'workflow-parent.json'));
+   if(binding.source_identity!==sourceIdentity(snapshot(root)))fail('parent source changed after worktree preparation');
+  }
+ }
  else {const row=workflowReadiness(root,p).tasks.find(t=>t.id===id);if(!row.ready)fail(row.reasons.join(', '));}
  if((t.workspace==='isolated')===sameWorkspace(workspace,root))fail('wrong workspace');
  return t;
+}
+export function assertParallelBegin(root,p,id,workspace) {
+ if(!parallelPolicy(p))return;
+ const t=tasks(p).find(t=>t.id===id);
+ if(t?.workspace!=='isolated')return;
+ const binding=read(controlPath(workspace,'workflow-parent.json'));
+ if(binding.source_identity!==sourceIdentity(snapshot(root)))fail('parent source changed after worktree preparation');
+ const peers=tasks(p).filter(other=>other.id!==id&&['active','reserved'].includes(other.status));
+ if(peers.length>=p.parallel_implementation.slots||peers.some(other=>other.workspace!=='isolated'||scopesOverlap(t.scope.paths,other.scope.paths)))fail('parallel reservation conflict');
 }
 export function recordWorkflowClose(root,p,taskId,workspace) {
  assertWorkflow(root,p);

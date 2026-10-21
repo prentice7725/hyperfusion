@@ -15,13 +15,17 @@ v0.26.0은 중요한 adaptive 작업에 교차 벤더 페어 리뷰를 추가합
 | 정지 사유·지표 (HF-I01) | 읽기 전용 `diagnose`, 고정 사유 코드, 관측된 시간·사용량. 모르는 값은 미확인으로 유지합니다. |
 | 중단 작업 (HF-I02) | 읽기 전용 `resume`과 init에서 허용한 명시적 `reconcile`. 작업자 재실행·자동 승인은 하지 않습니다. |
 | 리뷰 지적 (HF-I03) | `findings`, `revision-packet`, `@findings`. 표시를 묶어도 원본 근거와 필수 리뷰는 보존합니다. |
-| 정적 의존성 (HF-I04) | `project.mjs schedule`, 고정 계획, CLOSE·통합 영수증과 체크포인트 확인. 구현은 직렬입니다. |
+| 정적 의존성 (HF-I04) | `project.mjs schedule`, 고정 계획, CLOSE·통합 영수증과 체크포인트 확인. 기본 구현은 직렬이며, 아래 HF-I06 초안에서만 실험적 예외를 둡니다. |
 | 읽기 전용 작업 (HF-I05) | 상담·리뷰 최대 2슬롯. 고정 범위와 필수 공통 근거를 유지합니다. |
 | 기억 (HF-I07) | 출처·버전 필터, 제한 회수, 후보 일괄 검토와 검색·유용성 관측을 구분합니다. |
 
 사용 안내: [재개·정산](references/reconciliation.md), [지적 원장](references/finding-ledger.md), [작업 계획](references/workflow-plan.md), [읽기 전용 작업](references/read-only-work.md), [기억 회수](references/memory-recall.md), [반복 벤치마크](references/benchmark-pilot.md).
 
-새 실행 권한은 명시적으로 허용해야 하며, 조회·지표 기능은 권한을 부여하지 않습니다. 병렬 구현(HF-I06)은 기본 개선에서 제외한 별도 초안 실험입니다. 실모델 비용·시간 절감은 미측정이며, 플랫폼 검증은 해당 PR의 정확한 커밋 결과로 확인합니다. 상세 이력은 [CHANGELOG](CHANGELOG.md)에 둡니다.
+새 실행 권한은 명시적으로 허용해야 하며, 조회·지표 기능은 권한을 부여하지 않습니다. 실모델 비용·시간 절감은 미측정이며, 플랫폼 검증은 해당 PR의 정확한 커밋 결과로 확인합니다. 상세 이력은 [CHANGELOG](CHANGELOG.md)에 둡니다.
+
+### HF-I06: G4에서 보류하는 별도 초안 실험
+
+이 초안은 명시적으로 선택하는 격리 작업 2개의 병렬 구현, 검토된 결과의 직렬 적용과 통합 후 수용 검증을 추가합니다. 기본 개선 PR에서는 제외하며 운영 적용이 승인된 상태가 아닙니다. 독립 작업에서 실제 HF-I05 비교 측정으로 시간 이득을 확인하고 품질·전체 비용 기준을 검토한 뒤, 정확한 커밋의 Ubuntu·Windows CI까지 통과하기 전에는 병합하지 않습니다. [병렬 구현과 병합 조건](references/parallel-implementation.md)을 참조하세요.
 
 ## 왜 만들었나
 

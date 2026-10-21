@@ -4,7 +4,9 @@
 
 ## Unreleased
 
-- Audit follow-up: consolidate the three README introductions into a capability summary. This core branch contains HF-I01–HF-I05 and HF-I07 only; isolated parallel implementation remains a separately reviewed draft pending the G4 measurement gate.
+- HF-I06 draft: opt-in two-worktree reservations, immutable reviewed-result bundles, pre-launch serialized application and a required combined-acceptance join. This experiment is excluded from the core PR and must remain unmerged until the G4 measurement gate and exact-head platform CI pass.
+- Audit fix: the supervised parallel lifecycle fixture now supplies every required forbidden action and evidence field. An always-run validation of the same brief prevents process-inventory skips from masking this contract regression.
+- Audit follow-up: consolidate the three README introductions into a capability summary. The separate core PR contains HF-I01–HF-I05 and HF-I07 only; isolated parallel implementation remains a separately reviewed draft pending the G4 measurement gate.
 
 - Node 24 상태 마이그레이션에서 새 목적지 디렉터리에 대한 `cpSync`의 EEXIST를 피하도록 항목별 배타 복사를 적용했다. 기존 목적지 덮어쓰기 금지·해시 검증·writer lease 보존은 유지한다.
 

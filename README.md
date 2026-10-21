@@ -15,13 +15,17 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 | Stops and metrics (HF-I01) | Read-only `diagnose`, stable reason codes and observed timing/usage; unknown values remain unknown. |
 | Interrupted tasks (HF-I02) | Read-only `resume` and init-granted explicit `reconcile`; no worker relaunch or automatic approval. |
 | Review findings (HF-I03) | `findings`, `revision-packet` and `@findings`; grouping never removes raw evidence or mandatory review. |
-| Static dependencies (HF-I04) | `project.mjs schedule`, frozen plans, CLOSE/integration receipts and checkpoint acknowledgment. Implementation stays serial. |
+| Static dependencies (HF-I04) | `project.mjs schedule`, frozen plans, CLOSE/integration receipts and checkpoint acknowledgment. Implementation is serial by default; see the draft HF-I06 exception below. |
 | Read-only work (HF-I05) | At most two consultation/review slots with frozen scopes and complete mandatory coverage. |
 | Memory (HF-I07) | Source/version filters, bounded recall, candidate batch review and separate retrieval/usefulness observations. |
 
 Usage: [reconciliation](references/reconciliation.md), [findings](references/finding-ledger.md), [workflow plans](references/workflow-plan.md), [read-only work](references/read-only-work.md), [memory recall](references/memory-recall.md), [repeated benchmark](references/benchmark-pilot.md).
 
-New execution authority requires explicit grants; diagnostics and metrics do not grant it. Parallel implementation (HF-I06) is excluded from this core change and remains a separate draft experiment. Real-model cost/time savings are unmeasured; platform results must be checked on the exact PR head. Detailed history is in [CHANGELOG](CHANGELOG.md).
+New execution authority requires explicit grants; diagnostics and metrics do not grant it. Real-model cost/time savings are unmeasured; platform results must be checked on the exact PR head. Detailed history is in [CHANGELOG](CHANGELOG.md).
+
+### HF-I06: separate draft experiment, held at G4
+
+This draft adds explicitly selected two-worktree implementation with serialized reviewed-bundle application and combined acceptance. It is excluded from the core PR and is not approved for production rollout. Keep this PR unmerged until actual HF-I05 paired measurements show useful wall-time gains on independent work, quality/cost guardrails are reviewed, and Ubuntu/Windows CI passes on the exact head. See [parallel implementation and merge gates](references/parallel-implementation.md).
 
 ## Why HyperFusion
 
