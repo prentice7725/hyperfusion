@@ -886,6 +886,8 @@ function applyDelegatedReview(c,open,member,result) {
 
 function begin(c,input) {
   const s=c.s;
+  // 첫 라운드에 입력이 없으면 init 때 받은 brief를 그대로 쓴다(next가 권하는 것과 같다). 리드가 같은 내용을 다시 넘기지 않아도 된다.
+  if(s.phase==='PLAN'&&(!input||!Object.keys(input).length))input=c.optional('initial-brief.json')??input;
   if(input?.read_only!==undefined&&JSON.stringify(readOnlyPlan(input.read_only,input.scope??c.optional('initial-brief.json')?.scope))!==JSON.stringify(s.read_only??null))throw Error('READ_ONLY_PLAN: permissions are fixed at init');
   if(s.project?.workflow_digest){
     const root=s.project.source_root??c.root,p=loadProject(root);assertWorkflow(root,p);
@@ -1825,21 +1827,28 @@ function nextStep(c) {
   const bridge=(...extra)=>({command:process.execPath,args:[BRIDGE,root,...extra]});
   if(s.open_consult){
     return step({step:'run the consult bridge once, then consult-finish',run:bridge('--consult',s.open_consult.id),
-      then:{action:'consult-finish',command_line:line('consult-finish'),input:{quiescent:true}}});
+      then:{action:'consult-finish',command_line:`${line('consult-finish',false)} --quiescent`,input:{quiescent:true}}});
   }
   switch(s.phase){
   case 'PLAN':case 'REDO':case 'ALTERNATIVE_REQUIRED':case 'TAKEOVER_REQUIRED':{
     const brief=c.optional(`brief-${s.iteration}.json`)?files(`brief-${s.iteration}.json`):files('initial-brief.json');
     const redo=s.phase!=='PLAN';
-    return step({step:'begin: send the brief to the worker',action:'begin',command_line:line('begin'),
-      input_from:brief,input_note:redo?'Add lead_feedback to that brief: "@review" forwards the review findings, or write concrete orders ({file,line,comment} allowed).':'Use the init brief as is.',
+    // 쉬운 작업이고 수용 명령이 기준 트리에서 실패한 것이 확인됐으면, 오토파일럿이 begin부터 독립 리뷰까지 한 명령으로 돈다.
+    // 단계마다 리드가 한 턴씩 쓰는 고정 비용을 줄이려는 것이다. 오토파일럿 자체의 조건 검사는 그대로다.
+    const review=s.configuration.review??{};
+    const auto=!redo&&c.optional('initial-brief.json')?.difficulty==='low'&&s.acceptance_baseline?.status==='red'
+      &&(review.strategy==='lead-gated-adaptive'||review.auto_apply===true);
+    return step({step:'begin: send the brief to the worker',action:'begin',command_line:line('begin',redo),
+      ...(auto?{prefer:{action:'autopilot',command_line:`node "${SELF}" autopilot "${root}"`,
+        note:'Low difficulty with red-proven acceptance: autopilot runs begin, the worker, finish and the independent review in one command, then stops at VERIFY or a lead gate.'}}:{}),
+      input_from:brief,input_note:redo?'Add lead_feedback to that brief: "@review" forwards the review findings, or write concrete orders ({file,line,comment} allowed).':'Without input, begin uses the init brief as is.',
       ...(s.phase==='ALTERNATIVE_REQUIRED'?{choose:'executor: name a different worker, or omit to let the router pick'}:{}),
       ...(s.phase==='TAKEOVER_REQUIRED'?{choose:'takeover_reason is required'}:{}),
       then:'run the command in the begin output once, then finish'});}
   case 'EXECUTING':
     if(!s.writer)return step({step:'no writer lease: recover',action:'recover',command_line:line('recover'),input:{quiescent:true,reason:'<why it is safe>'}});
-    return step({step:'run the worker bridge once, confirm the processes stopped, then finish',run:bridge(),
-      then:{action:'finish',command_line:line('finish'),input:{token:s.writer.token,quiescent:true},
+    return step({step:'run the worker bridge once; it proves the processes stopped and prints the finish command',run:bridge(),
+      then:{action:'finish',command_line:`${line('finish',false)} --token ${s.writer.token} --quiescent`,input:{token:s.writer.token,quiescent:true},
         note:s.owner==='lead'?'Lead takeover needs an explicit result.':'The result is read from result-N.json; do not paste it.'}});
   case 'REVIEW':{
     const delegated=s.configuration.review?.by==='delegate';
@@ -1847,7 +1856,8 @@ function nextStep(c) {
       ?step({step:'delegate-review: another model reviews read-only',action:'delegate-review',command_line:line('delegate-review'),input:{},
         then:'run the bridge in the output once, then consult-finish with {"quiescent":true}'})
       :step({step:'review the diff yourself',action:'review',command_line:line('review'),
-        input:{verdict:'<pass|redo|alternative|decision>',rationale:'<text>',blocking_criteria:['<AC id: reason>'],commands_run:['git diff'],independent_diff_review:true}});}
+        input:{verdict:'<pass|redo|alternative|decision>',rationale:'<text>',blocking_criteria:['<AC id: reason>'],commands_run:['git diff'],independent_diff_review:true},
+        pass_command_line:`${line('review',false)} --verdict pass --rationale "<text>" --command-run "git diff" --independent-diff-review`});}
   case 'LEAD_DECISION_REQUIRED':{
     const packet=s.lead_packet?.file?files(s.lead_packet.file):null;
     return step({step:'read the lead packet, then decide',...(packet?{read_first:packet}:{}),action:'lead-decision',command_line:line('lead-decision'),
@@ -1857,7 +1867,8 @@ function nextStep(c) {
       ...(s.delegation?{delegated_policy:policyEvaluation(c)}:{})});}
   case 'VERIFY':{
     const brief=c.optional(`brief-${s.iteration}.json`);
-    return step({step:'verify: the controller reruns the acceptance commands itself',action:'verify',command_line:line('verify'),
+    const plain=brief?.acceptance_commands&&!s.acceptance_test_changes?.length;
+    return step({step:'verify: the controller reruns the acceptance commands itself',action:'verify',command_line:plain?`${line('verify',false)} --acceptance-satisfied`:line('verify'),
       input:brief?.acceptance_commands?{acceptance_satisfied:true,...(s.acceptance_test_changes?.length?{acceptance_test_change_reason:'<why the reviewed test changes preserve meaningful acceptance evidence>'}:{})}:{acceptance_satisfied:true,tests:[{command:'<what you ran>',status:'pass'}]},
       ...(s.acceptance_test_changes?.length?{acceptance_test_changes:s.acceptance_test_changes,warning:'ACCEPTANCE_TEST_MODIFIED: PASS alone cannot authorize CLOSE'}:{})});}
   case 'DECISION_REQUIRED':
@@ -2019,6 +2030,40 @@ function dispatch(c,action,input) {
   return handler(c,input);
 }
 
+// 짧은 입력은 명령줄 옵션으로도 받는다. 호스트 셸이 중괄호·따옴표가 섞인 JSON(heredoc, echo 파이프)을 막으면
+// 리드가 입력 파일을 따로 써야 해서 한 단계가 늘기 때문이다. 같은 칸을 파일과 옵션에서 함께 주면 거절한다.
+const INPUT_FLAGS={
+  '--token':{key:'token',kind:'value',actions:['finish']},
+  '--quiescent':{key:'quiescent',kind:'true',actions:['finish','consult-finish','recover']},
+  '--reason':{key:'reason',kind:'value',actions:['recover']},
+  '--acceptance-satisfied':{key:'acceptance_satisfied',kind:'true',actions:['verify']},
+  '--verdict':{key:'verdict',kind:'value',actions:['review']},
+  '--rationale':{key:'rationale',kind:'value',actions:['review']},
+  '--blocking':{key:'blocking_criteria',kind:'list',actions:['review']},
+  '--command-run':{key:'commands_run',kind:'list',actions:['review']},
+  '--independent-diff-review':{key:'independent_diff_review',kind:'true',actions:['review']},
+};
+function inputFlags(action,flags,input) {
+  const given=new Set();
+  for(let i=0;i<flags.length;){
+    const spec=INPUT_FLAGS[flags[i]];
+    if(!spec){i++;continue;}
+    if(!spec.actions.includes(action))throw Error(`${flags[i]} is not an input of ${action}`);
+    if(Object.hasOwn(input,spec.key)&&!given.has(spec.key))throw Error(`${spec.key} is given both in the input file and as ${flags[i]}`);
+    let take=1,value=true;
+    if(spec.kind!=='true'){
+      value=flags[i+1];take=2;
+      if(value===undefined||value.startsWith('--'))throw Error(flags[i]+' needs a value');
+    }
+    if(spec.kind==='list')input[spec.key]=[...(input[spec.key]??[]),value];
+    else if(given.has(spec.key))throw Error(flags[i]+' is given twice');
+    else input[spec.key]=value;
+    given.add(spec.key);flags.splice(i,take);
+  }
+  // 옵션으로 쓴 리뷰는 빈 목록을 생략할 수 있다(통과 판정에는 차단 기준이 없다).
+  if(action==='review'&&given.has('verdict'))for(const key of ['blocking_criteria','commands_run'])input[key]??=[];
+}
+
 // 명령줄 진입점. 모듈 최상위에서 await하면 안 된다: autopilot.mjs가 이 파일을 import하므로, 이 파일이 평가를 끝내기 전에
 // autopilot을 await하면 서로 기다리다 'unsettled top-level await'(종료 코드 13)로 아무 일도 못 하고 끝난다.
 async function cli() {
@@ -2066,6 +2111,7 @@ async function cli() {
       }
     } else {
     const input=readInput(file);
+    inputFlags(action,flags,input);
     if(action==='status'&&flags.includes('--summary')&&flags.includes('--monitor'))throw Error('status summary and monitor are separate views');
     if(action==='status'&&flags.length===1&&(flags[0]==='--summary'||flags[0]==='--monitor')){
       input[flags[0]==='--summary'?'summary':'monitor']=true;

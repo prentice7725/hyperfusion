@@ -80,13 +80,14 @@ test('next names the one command to run in every phase, with the values the lead
  const stateBefore=()=>fs.readFileSync(path.join(f.control,'state.json'),'utf8');
  let before=stateBefore();
  let n=run(f.root,'next',{});
- assert.equal(n.action,'begin');assert.match(n.command_line,/ begin .* -$/);assert.match(n.input_from,/initial-brief\.json$/);
+ assert.equal(n.action,'begin');assert.match(n.command_line,/ begin "[^"]+"$/);assert.match(n.input_from,/initial-brief\.json$/);
  assert.equal(stateBefore(),before,'next never changes the state');
 
  f.begin();
  n=run(f.root,'next',{});
  assert.equal(n.phase,'EXECUTING');
  assert.equal(n.then.input.token,f.state().writer.token);
+ assert.ok(n.then.command_line.endsWith(` --token ${f.state().writer.token} --quiescent`),n.then.command_line);
  assert.equal(n.then.input.quiescent,true);
  assert.equal(n.run.command,process.execPath);assert.equal(n.run.args.length,2);
 
@@ -109,6 +110,53 @@ test('next names the one command to run in every phase, with the values the lead
  n=run(f.root,'next',{});
  assert.equal(n.action,'verify');
  assert.deepEqual(n.input.acceptance_satisfied,true);
+});
+
+// 리드가 단계마다 턴을 덜 쓰게 하는 입력 경로들. 실제 명령줄로 확인한다.
+const BRIDGE=fileURLToPath(new URL('../scripts/executor-bridge.mjs',import.meta.url));
+const raw=(f,action,input,...flags)=>spawnSync(process.execPath,[SCRIPT,action,f.root,...(input===undefined?[]:['-']),...flags],{encoding:'utf8',env:process.env,input:input===undefined?undefined:JSON.stringify(input),timeout:60000});
+
+test('begin without input uses the init brief, and its view tells the lead to pass nothing on stdin',t=>{
+ const f=fixture(t);
+ const out=cli(f,'begin',undefined);
+ assert.equal(out.json.stdin,undefined);assert.match(out.json.run_note,/nothing on stdin/);
+ assert.equal(read(path.join(f.control,'tasks',f.brief.task_id,'brief-1.json')).objective,f.brief.objective);
+ assert.equal(f.state().phase,'EXECUTING');
+});
+
+test('the bridge command line proves the worker stopped and prints the finish command, which settles the round',t=>{
+ const f=fixture(t);f.begin();
+ const r=spawnSync(process.execPath,[BRIDGE,f.root],{encoding:'utf8',env:process.env,timeout:120000});
+ assert.equal(r.status,0,r.stderr);
+ const out=JSON.parse(r.stdout);
+ assert.equal(out.quiescence?.quiescent,true,JSON.stringify(out.quiescence));
+ const token=f.state().writer.token;
+ assert.ok(out.finish_command.endsWith(` finish "${f.root}" --token ${token} --quiescent`),out.finish_command);
+ assert.equal(cli(f,'finish',undefined,'--token',token,'--quiescent').json.phase,'REVIEW');
+});
+
+test('short review and finish inputs take flags; flags never silently override or leak into other actions',async t=>{
+ const f=fixture(t);f.begin();await execute(f.root);
+ const token=f.state().writer.token;
+ assert.notEqual(raw(f,'finish',{token},'--token',token,'--quiescent').status,0,'the same field from the file and a flag is refused');
+ assert.notEqual(raw(f,'finish',undefined,'--quiescent','--acceptance-satisfied').status,0,'a flag of another action is refused');
+ assert.notEqual(raw(f,'finish',undefined,'--token','--quiescent').status,0,'a value flag needs a value');
+ assert.equal(f.state().phase,'EXECUTING');
+ assert.equal(cli(f,'finish',undefined,'--token',token,'--quiescent').json.phase,'REVIEW');
+ const out=cli(f,'review',undefined,'--verdict','pass','--rationale','Inspected source','--command-run','git diff','--independent-diff-review');
+ assert.equal(out.json.phase,'VERIFY');
+ assert.deepEqual(f.state().reviews.at(-1).commands_run,['git diff']);
+});
+
+test('next prefers autopilot only for a low task whose acceptance commands were proven red',t=>{
+ for(const [difficulty,expected] of [['low','autopilot'],['medium',undefined]]){
+  const f=fixture(t,{initialize:false});
+  run(f.root,'init',{...f.brief,executor:'grok',difficulty,acceptance_commands:['node -e "process.exit(1)"']});
+  assert.equal(f.state().acceptance_baseline.status,'red');
+  const n=run(f.root,'next',{});
+  assert.equal(n.prefer?.action,expected,difficulty);
+  if(expected)assert.match(n.prefer.command_line,/ autopilot "[^"]+"$/);
+ }
 });
 
 test('next in a classic task points to review, and after a rejection to begin with the review findings',t=>{

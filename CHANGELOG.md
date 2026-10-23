@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 리드 고정 비용 줄이기(B01·B02 실측에서 리드 턴의 약 40%가 막힌 명령과 우회에 쓰였다): 쉬운(`low`) 작업이고 수용 명령이 init에서 red로 확인되면 `next`와 SKILL.md가 `autopilot`을 권한다. 첫 `begin`은 입력이 없으면 init brief를 쓰고, `begin` 출력은 일꾼 stdin 대신 "stdin 없이 브리지만 실행"을 안내한다. 명령줄 브리지는 오토파일럿과 같은 프로세스 트리 정지 증명을 하고, 증명되면 `finish_command`를 출력한다. `finish`·`consult-finish`·`recover`·`review`·`verify`는 짧은 입력을 옵션(`--token`, `--quiescent`, `--verdict` 등)으로도 받는다. 파일과 옵션에 같은 칸이 있으면 거절한다. 실제 절감 효과는 재측정 전까지 미확인이다.
+
 - Audit follow-up: consolidate the three README introductions into a capability summary. This core branch contains HF-I01–HF-I05 and HF-I07 only; isolated parallel implementation remains a separately reviewed draft pending the G4 measurement gate.
 
 - Node 24 상태 마이그레이션에서 새 목적지 디렉터리에 대한 `cpSync`의 EEXIST를 피하도록 항목별 배타 복사를 적용했다. 기존 목적지 덮어쓰기 금지·해시 검증·writer lease 보존은 유지한다.

@@ -2,6 +2,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import {isMain,isWin,killTree,assertCommandLine} from './platform.mjs';
 import {read,immutable,repo,snapshot} from './artifact.mjs';
 import {assertLease} from './writer-lease.mjs';
@@ -19,6 +20,8 @@ import {maskTransport} from './redaction.mjs';
 import {watchProcessTree} from './process-proof.mjs';
 import {recordCompletion,controllerDigest} from './reconciliation.mjs';
 import {openMonitor} from './worker-monitor.mjs';
+
+const STATE_CLI=fileURLToPath(new URL('./fusion-state.mjs',import.meta.url));
 
 const timeoutFor=(root,state,executor,override)=>{
  // 일꾼별 timeout_ms 설정이 있으면 그 값, 없으면 20분.
@@ -140,8 +143,13 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
  immutable(path.join(dir,`result-${n}.json`),result);
  if(state.reconciliation&&parsed.quiescence?.quiescent===true)recordCompletion(root,dir,String(n),{task_id:state.task_id,round:n,executor:request.executor,controller_digest:controllerDigest(state)},['launch','process','envelope','quiescence','dispatch','brief','base','result','session'].map(k=>`${k}-${n}.json`));
  await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} done (${result.status})`);
- // 여기서 lease를 놓지 않는다. 리드가 정지 여부를 확인하고 finish 해야 한다.
- return {status:'RESULT_READY',executor:request.executor,task_id:state.task_id,round:n,result_file:path.join(dir,`result-${n}.json`),quiescence:parsed.quiescence,next_action:'confirm quiescence, then fusion-state finish with writer token; result is read automatically'};
+ // 여기서 lease를 놓지 않는다. 리드가 finish 해야 한다. 정지가 증명됐으면 리드가 따로 확인하지 않도록 칠 명령을 그대로 준다.
+ const stopped=parsed.quiescence?.quiescent===true;
+ return {status:'RESULT_READY',executor:request.executor,task_id:state.task_id,round:n,result_file:path.join(dir,`result-${n}.json`),quiescence:parsed.quiescence,
+  next_action:stopped?'Worker processes are proven stopped; run finish_command (the result is read automatically)'
+   :parsed.quiescence?'Process shutdown was not proven; stop the remaining processes yourself, then finish with the writer token and quiescent:true'
+   :'confirm quiescence, then fusion-state finish with writer token; result is read automatically',
+  ...(stopped?{finish_command:`node "${STATE_CLI}" finish "${root}" --token ${request.token} --quiescent`}:{})};
 }
 
 // 상담(advisor/committee) 한 건의 위원을 병렬로 실행한다. writer lease 없이 읽기 전용으로 돈다.
@@ -177,14 +185,18 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuies
  },{stopOn:error=>error.quiescence?.quiescent!==true});
  const members=runs.map((r,i)=>r.status==='fulfilled'?r.value:{member:open.members[i].member,executor:open.members[i].executor,ok:false,error:r.reason.message,quiescence:r.reason.quiescence??null});
  await notify(`HyperFusion ${state.task_id}`,`${open.mode} ${id} done: `+members.map(m=>`${m.executor} ${m.ok?m.recommended_verdict:'failed'}`).join(', '));
- return {status:'CONSULT_READY',consult_id:id,mode:open.mode,members,next_action:'confirm quiescence, then fusion-state consult-finish'};
+ const stopped=members.every(m=>m.quiescence?.quiescent===true);
+ return {status:'CONSULT_READY',consult_id:id,mode:open.mode,members,
+  next_action:stopped?'Reviewer processes are proven stopped; run finish_command':'confirm quiescence, then fusion-state consult-finish',
+  ...(stopped?{finish_command:`node "${STATE_CLI}" consult-finish "${root}" --quiescent`}:{})};
  }finally{unlock();}
 }
 
 if(isMain(import.meta.url)) {
  try{
   const [root,flag,id]=process.argv.slice(2);
-  const out=flag==='--consult'?await consult(root,id):await execute(root);
+  // 명령줄 실행은 리드가 부른다. 프로세스 트리 정지를 여기서 증명해 리드가 직접 확인하지 않게 한다(오토파일럿과 같은 증명).
+  const out=flag==='--consult'?await consult(root,id,{proveQuiescence:true}):await execute(root,{proveQuiescence:true});
   console.log(JSON.stringify(out,null,2));
  }catch(e){printError(e);}
 }
