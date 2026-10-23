@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Windows 프로세스 표 조회가 Node 프로세스마다 PowerShell 하나를 띄워 두고 재사용한다. 매번 `powershell.exe`와 CIM 모듈을 새로 띄우던 비용(이 PC에서 조회당 약 1.7~2.2초)이 약 0.23초로 줄었다. 조회 결과(CIM 스냅숏)·시간 제한·실패 시 닫힘은 그대로이고, 상주 PowerShell과 그 자손은 표에서 제외되며 Node가 끝나면 함께 끝난다.
+
 - Audit follow-up: consolidate the three README introductions into a capability summary. This core branch contains HF-I01–HF-I05 and HF-I07 only; isolated parallel implementation remains a separately reviewed draft pending the G4 measurement gate.
 
 - Node 24 상태 마이그레이션에서 새 목적지 디렉터리에 대한 `cpSync`의 EEXIST를 피하도록 항목별 배타 복사를 적용했다. 기존 목적지 덮어쓰기 금지·해시 검증·writer lease 보존은 유지한다.

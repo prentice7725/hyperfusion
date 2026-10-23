@@ -66,6 +66,27 @@ test('a genuine leftover child of the exited root still fails the proof',async()
  assert.deepEqual(proof.remaining.map(p=>p.name),['leftover.exe']);
 });
 
+// Windows는 PowerShell 하나를 띄워 두고 조회마다 재사용한다. 그 PowerShell이 표에 끼거나,
+// 쉬는 동안 Node를 붙잡거나, Node가 끝난 뒤에 남으면 안 된다.
+import {spawnSync} from 'node:child_process';
+import {processTable} from '../scripts/process-proof.mjs';
+const PROOF=new URL('../scripts/process-proof.mjs',import.meta.url).href;
+test('the reused Windows inventory process stays out of the table, does not keep Node alive and ends with it',{skip:process.platform!=='win32'&&'Windows only'},async()=>{
+ const script=`const {processTable}=await import(${JSON.stringify(PROOF)});
+const tables=[];for(let i=0;i<3;i++)tables.push(await processTable());
+const mine=t=>t.filter(p=>p.parent===process.pid).map(p=>p.name).sort().join();
+const both=await Promise.all([processTable(),processTable()]);
+console.log(JSON.stringify({pid:process.pid,own:[...tables,...both].map(mine)}));`;
+ const r=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:90000,windowsHide:true});
+ assert.equal(r.status,0,r.stderr||'the idle inventory process kept Node alive');
+ const out=JSON.parse(r.stdout);
+ // Node 자신의 conhost.exe 하나는 예전부터 보인다. PowerShell이나 그 conhost가 더해지면 안 된다.
+ assert.ok(out.own.every(names=>names===''||names==='conhost.exe'),JSON.stringify(out.own));
+ let left=[];
+ for(let i=0;i<20;i++){left=(await processTable()).filter(p=>p.parent===out.pid);if(!left.length)break;await new Promise(r=>setTimeout(r,500));}
+ assert.deepEqual(left,[],'nothing started by the exited process remains');
+});
+
 import {autopilot} from '../scripts/autopilot.mjs';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';

@@ -1,10 +1,11 @@
-import {execFile} from 'node:child_process';
+import {execFile,spawn} from 'node:child_process';
 import {isWin} from './platform.mjs';
 
 // Cold CIM startup can take over 10 seconds on a busy Windows CI runner.
 // Keep a bounded timeout, without interpreting a timeout as proof of shutdown.
+const TABLE_TIMEOUT_MS=isWin?30000:10000;
 const command=(file,args)=>new Promise((resolve,reject)=>{
- const child=execFile(file,args,{encoding:'utf8',windowsHide:true,timeout:isWin?30000:10000,maxBuffer:8*1024*1024},(e,out)=>{
+ const child=execFile(file,args,{encoding:'utf8',windowsHide:true,timeout:TABLE_TIMEOUT_MS,maxBuffer:8*1024*1024},(e,out)=>{
   if(e){if(e.killed)e.code='PROCESS_TABLE_TIMEOUT';reject(e);}else resolve({out,pid:child.pid});
  });
  // The inventory query has no input. Windows PowerShell can wait on an open
@@ -12,12 +13,54 @@ const command=(file,args)=>new Promise((resolve,reject)=>{
  child.stdin.end();
 });
 
+// Starting powershell.exe and loading CIM costs seconds, and supervision polls every second.
+// One PowerShell per Node process answers every Windows query: one line in, one JSON line out.
+// It reads until our stdin closes, so it ends with this process; a failure or timeout kills it
+// and the next query starts a fresh one. The answer is the same CIM snapshot as before.
+// Load the system module explicitly: automatic module discovery can stall in
+// a filtered environment on hosted Windows runners. Do not resolve a repo module.
+const INVENTORY="$ErrorActionPreference='Stop'; Import-Module (Join-Path $PSHOME 'Modules\\CimCmdlets\\CimCmdlets.psd1'); "+
+ "while($null -ne [Console]::In.ReadLine()){ try{ $rows=CimCmdlets\\Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,@{n='created';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}}}; [Console]::Out.WriteLine((ConvertTo-Json -InputObject @($rows) -Compress)) } catch { [Console]::Out.WriteLine('!'+$_.Exception.Message) }; [Console]::Out.Flush() }";
+let inventory=null;
+const tableError=(message,code)=>Object.assign(Error(message),{code});
+function inventoryServer() {
+ if(inventory)return inventory;
+ const child=spawn('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(INVENTORY,'utf16le').toString('base64')],{windowsHide:true,stdio:['pipe','pipe','ignore']});
+ const server={pid:child.pid,waiting:[],buffer:''};
+ // An idle server must not keep this process alive; a pending query must.
+ const hold=on=>{for(const h of [child,child.stdin,child.stdout])on?h.ref():h.unref();};
+ const fail=e=>{
+  if(inventory===server)inventory=null;
+  for(const w of server.waiting.splice(0)){clearTimeout(w.timer);w.reject(e);}
+  hold(false);child.kill();
+ };
+ child.on('error',e=>fail(tableError(e.message,'PROCESS_TABLE_UNAVAILABLE')));
+ child.on('exit',()=>fail(tableError('Process inventory server exited','PROCESS_TABLE_UNAVAILABLE')));
+ child.stdin.on('error',()=>{});
+ child.stdout.setEncoding('utf8');
+ child.stdout.on('data',chunk=>{
+  server.buffer+=chunk;
+  for(let i;(i=server.buffer.indexOf('\n'))>=0;){
+   const line=server.buffer.slice(0,i).trim();server.buffer=server.buffer.slice(i+1);
+   const w=server.waiting.shift();if(!w)continue;
+   clearTimeout(w.timer);if(!server.waiting.length)hold(false);
+   line.startsWith('!')?w.reject(tableError(line.slice(1),'PROCESS_TABLE_UNAVAILABLE')):w.resolve(line);
+  }
+ });
+ server.query=()=>new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>fail(tableError('Process table query timed out','PROCESS_TABLE_TIMEOUT')),TABLE_TIMEOUT_MS);
+  server.waiting.push({resolve,reject,timer});hold(true);child.stdin.write('\n');
+ });
+ hold(false);
+ return inventory=server;
+}
+process.once('exit',()=>{try{process.kill(inventory?.pid);}catch{}});
+
 export async function processTable() {
  let rows,query;
  if(isWin){
-  // Load the system module explicitly: automatic module discovery can stall in
-  // a filtered environment on hosted Windows runners. Do not resolve a repo module.
-  query=await command('powershell.exe',['-NoProfile','-NonInteractive','-Command',"Import-Module (Join-Path $PSHOME 'Modules\\CimCmdlets\\CimCmdlets.psd1') -ErrorAction Stop; CimCmdlets\\Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,@{n='created';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}}} | ConvertTo-Json -Compress"]);
+  const server=inventoryServer();
+  query={out:await server.query(),pid:server.pid};
   const parsed=JSON.parse(query.out);rows=(Array.isArray(parsed)?parsed:[parsed]).map(p=>({pid:p.ProcessId,parent:p.ParentProcessId,created:p.created,...(typeof p.Name==='string'?{name:p.Name}:{})}));
  } else {
   query=await command('ps',['-eo','pid=,ppid=,stat=,lstart=']);
