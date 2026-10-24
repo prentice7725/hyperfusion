@@ -101,11 +101,14 @@ export function compareRepeated(current,candidate,pricing=null,{repetitions=3}={
  const aWall=p95(current),bWall=p95(candidate);
  const quality=rows=>rows.length>0&&['wrong_closes','escaped_regressions','scope_violations'].every(key=>rows.every(r=>Number.isInteger(r[key])&&r[key]>=0))?Object.fromEntries(['wrong_closes','escaped_regressions','scope_violations'].map(key=>[key,rows.reduce((n,r)=>n+r[key],0)])):null;
  const aQuality=quality(current),bQuality=quality(candidate),leadReduction=reduction(weighted(current),weighted(candidate));
+ // Optional planted-defect outcome (evidence-retrieval experiment). Only booleans count; others stay unknown.
+ const detection=rows=>{const known=rows.filter(r=>typeof r.buried_defect_detected==='boolean');
+  return known.length?{planted:known.length,detected:known.filter(r=>r.buried_defect_detected).length,missed:known.filter(r=>!r.buried_defect_detected).length,unknown:rows.length-known.length}:null;};
  const providerReduction=reduction(provider(current),provider(candidate));
  return {status:complete?'recorded-repeated-comparison':'incomplete',expected_pairs:CASES.length*repetitions,
   recorded_pairs:trials.filter(r=>r.status==='recorded').length,gaps,trials,
-  current:{successes:successes(current),lead_weighted_per_success:weighted(current),provider_cost_per_success:provider(current),p95_wall_ms:aWall,quality:aQuality},
-  candidate:{successes:successes(candidate),lead_weighted_per_success:weighted(candidate),provider_cost_per_success:provider(candidate),p95_wall_ms:bWall,quality:bQuality},
+  current:{successes:successes(current),lead_weighted_per_success:weighted(current),provider_cost_per_success:provider(current),p95_wall_ms:aWall,quality:aQuality,defect_detection:detection(current)},
+  candidate:{successes:successes(candidate),lead_weighted_per_success:weighted(candidate),provider_cost_per_success:provider(candidate),p95_wall_ms:bWall,quality:bQuality,defect_detection:detection(candidate)},
   lead_weighted_reduction:leadReduction,provider_cost_reduction:providerReduction,
   guardrails_complete:complete&&allKnown(current,'provider_cost_usd')&&allKnown(candidate,'provider_cost_usd')&&aQuality!==null&&bQuality!==null&&known(aWall)&&known(bWall),
   p95_wall_ratio:complete&&aWall>0&&known(bWall)?bWall/aWall:null,

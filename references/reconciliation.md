@@ -134,6 +134,6 @@ and source changes, and repeated inspection/settlement without new transport
 records. A separate paired-panel case also requires every mandatory completion
 sidecar and retains the important-task lead gate after both independent passes.
 The default `npm test` also discovers both files in the existing
-Ubuntu/Windows, Node 20/24 CI matrix. Local fake-CLI results do not establish
+Ubuntu/Windows, Node 24 CI matrix. Local fake-CLI results do not establish
 live-model effectiveness, all possible crash windows or complete cross-platform
 qualification. The full platform checks and live canary remain release gates.

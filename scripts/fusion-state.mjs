@@ -37,6 +37,7 @@ import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
 import {readStatusLine} from './status-line.mjs';
 import {takeReconciliation,reconciliationPlan,publicPlan,operationName,revalidateProcesses,assertReconciliationGrant} from './reconciliation.mjs';
 import {captureFindings,recordFindingMap,findingLedger,findingSummary,safeFindingSummary,revisionPacket,resolveFinding} from './finding-ledger.mjs';
+import {evidencePacket,evidenceSearch} from './evidence-index.mjs';
 import {gateCollector} from './gate-diagnostics.mjs';
 import {resumePacket,inspectionControl} from './resume-packet.mjs';
 import {sameFamily} from './review-plan.mjs';
@@ -1940,7 +1941,7 @@ async function reconcileUnlocked(root,input={}) {
 export function run(root,action,input={}) {
  root=repo(root);
  const file=controlPath(root,'workflow-parent.json');
- if(!fs.existsSync(file)||['status','report','next','findings','revision-packet','diagnose','resume'].includes(action)||action==='reconcile'&&input.apply!==true)return runUnlocked(root,action,input);
+ if(!fs.existsSync(file)||['status','report','next','findings','revision-packet','evidence','evidence-search','diagnose','resume'].includes(action)||action==='reconcile'&&input.apply!==true)return runUnlocked(root,action,input);
  const binding=read(file),parent=repo(binding.source_root);
  if(parent===root)throw Error('WORKFLOW: invalid parent binding');
  const unlock=acquireLock(controlPath(parent,'locks/control.lock'));
@@ -1958,6 +1959,11 @@ function runUnlocked(root,action,input={}) {
     const c=inspectionControl(root);
     if(action==='revision-packet')return revisionPacket(c.s,c.taskdir());
     const ledger=findingLedger(c.s,c.taskdir());return input.full===true?ledger:findingSummary(ledger);
+  }
+  if(action==='evidence'||action==='evidence-search'){
+    const c=inspectionControl(root);
+    if(action==='evidence')return evidencePacket(c.s,c.taskdir());
+    return evidenceSearch(c.s,c.taskdir(),input.query,{limit:input.limit??8,byteBudget:input.byte_budget??12000,round:input.round??null});
   }
   // Inspection bypasses mutation hooks, acceptance recovery and lock creation.
   if(action==='resume')return resumePacket(root);
