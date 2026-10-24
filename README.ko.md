@@ -1,12 +1,12 @@
 # HyperFusion
 
-v0.26.0은 중요한 adaptive 작업에 교차 벤더 페어 리뷰를 추가합니다. Grok 구현·일반 상담은 medium, 지정된 심층 리뷰 자리만 xhigh를 사용합니다. 작업 시작 때 정책을 고정하고 독립·병렬로 검토하며, 의견 충돌은 리드가 판단합니다. [페어 리뷰](references/review-pairs.md), [수용 테스트와 에이전트 보호](references/agent-guards.md), [CHANGELOG](CHANGELOG.md)를 참고하세요.
+v0.27.0은 읽기 전용 진단·재개 패킷, 명시적으로 허가된 복구 정산, 리뷰 지적 원장, 정적 작업 의존성, 제한된 읽기 전용 작업, 출처를 보존하는 기억, 반복 A/B 벤치마크를 추가합니다. 리드가 컨트롤러 조작에 쓰는 턴을 줄였고(옵션 입력, 브리지가 출력하는 finish 명령, 검증된 쉬운 작업의 autopilot), Windows 감시가 빨라졌습니다. [복구 정산](references/reconciliation.md), [작업 계획](references/workflow-plan.md), [기억](references/memory.md), [CHANGELOG](CHANGELOG.md)를 참고하세요.
 
 [English](README.md) | 한국어 | [日本語](README.ja.md)
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.26.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.27.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 미출시 컨트롤러 개선
 
