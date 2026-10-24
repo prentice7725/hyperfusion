@@ -1,12 +1,12 @@
 # HyperFusion
 
-v0.26.0 adds cross-vendor review pairs for important adaptive tasks. Grok implementation and ordinary consultation stay at medium; only a designated deep-review seat uses xhigh. Plans are fixed at task initialization, reviewers run independently in parallel, and conflicts stay with the lead. See [review pairs](references/review-pairs.md), [acceptance and agent guards](references/agent-guards.md), and [CHANGELOG](CHANGELOG.md).
+v0.27.0 adds read-only diagnostics and resume packets, explicitly granted recovery reconciliation, a review-finding ledger, static task dependencies, bounded read-only work, provenance-aware memory and repeated A/B benchmarks. The lead spends fewer turns on controller plumbing (flag inputs, a bridge-printed finish command, autopilot for proven low tasks), and Windows supervision is faster. See [reconciliation](references/reconciliation.md), [workflow plans](references/workflow-plan.md), [memory](references/memory.md), and [CHANGELOG](CHANGELOG.md).
 
 English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.26.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
+> **Versions.** The package release is `0.27.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
 
 ## Unreleased controller improvements
 
