@@ -31,7 +31,8 @@ const gitEnv={...process.env,GIT_OPTIONAL_LOCKS:'0',GIT_TERMINAL_PROMPT:'0',GIT_
 // Git applies includes, conditional includes and worktree config to normal commands.
 // Read that same effective configuration, not just the main .git/config. A parent
 // file's mtime/size cannot invalidate a changed include or worktree-local setting.
-// Re-read before each Git invocation; configuration errors must fail closed.
+// Re-read before each Git invocation, or once per synchronous snapshot (pinGitConfig);
+// configuration errors must fail closed.
 function effectiveConfig(root) {
  try{
   const fields=execFileSync('git',[...NEUTRAL,'-C',root,'config','--show-scope','--includes','-z','--list'],{encoding:'utf8',maxBuffer:64*1024*1024,env:gitEnv,windowsHide:true,stdio:['ignore','pipe','ignore']}).split('\0');
@@ -51,7 +52,15 @@ function neutralArgs(root) {
  }
  return args;
 }
-export function git(root,args) {return execFileSync('git',[...neutralArgs(root),'-C',root,...args],{encoding:'utf8',maxBuffer:64*1024*1024,env:gitEnv,windowsHide:true});}
+// 한 번의 동기 읽기 묶음(snapshot)은 설정을 한 번만 읽어 그 안의 git 호출에 같이 쓴다. 묶음 안에서는 설정을 끈 git과
+// 파일 읽기만 돌고 일꾼·수용 명령 같은 저장소 코드는 돌지 않는다. 묶음이 끝나면 버리므로 다음 호출은 다시 읽는다.
+let pinned=null;
+function pinGitConfig(root,read) {
+ if(pinned)return read();
+ pinned={root,args:neutralArgs(root)};
+ try{return read();}finally{pinned=null;}
+}
+export function git(root,args) {return execFileSync('git',[...(pinned?.root===root?pinned.args:neutralArgs(root)),'-C',root,...args],{encoding:'utf8',maxBuffer:64*1024*1024,env:gitEnv,windowsHide:true});}
 // 사람이 읽는 diff는 외부 diff 도구와 textconv를 쓰지 않는다.
 export const SAFE_DIFF=['--no-ext-diff','--no-textconv'];
 // 한 프로세스 안에서 같은 저장소를 수없이 확인한다(run, execute, autopilot이 매번 부른다). 성공한 확인만 기억하되,
@@ -144,7 +153,8 @@ function headAndCommon(root) {
  return {head:git(root,['rev-parse','HEAD']).trim(),common:undefined};
 }
 
-export function snapshot(root) {
+export function snapshot(root) {return pinGitConfig(root,()=>readSnapshot(root));}
+function readSnapshot(root) {
  const files={};
  const {head,common:gitCommon,gitDir}=headAndCommon(root);
  const names=[...new Set(git(root,['ls-files','-z','--cached','--others','--exclude-standard']).split('\0').filter(Boolean))].sort();

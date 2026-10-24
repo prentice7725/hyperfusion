@@ -123,3 +123,15 @@ test('malformed included configuration fails closed instead of dropping neutrali
  assert.throws(()=>git(f.root,['status','--porcelain']),/GIT_CONFIG_UNREADABLE/);
  assert.ok(riskyGitConfig(f.root).some(k=>/unreadable/i.test(k)));
 });
+
+// snapshot은 설정을 한 번 읽어 그 안의 git 호출에 같이 쓴다(횟수는 snapshot-spawns.test.mjs). 다음 snapshot은 바뀐 설정을 다시 읽는다.
+test('a filter added after one snapshot is neutralized by the next',t=>{
+ const f=fixture(t,{initialize:false});const {marker,command}=cleanFilter(f);
+ snapshot(f.root);
+ f.git('config','filter.review.clean',command);f.git('config','filter.review.required','true');
+ // 크기가 같고 시각만 다르면 git status가 내용을 걸러 비교하므로 clean 필터가 불린다.
+ const file=path.join(f.root,'a.txt'),size=fs.statSync(file).size;
+ fs.writeFileSync(file,'x'.repeat(size));fs.utimesSync(file,new Date(Date.now()+60000),new Date(Date.now()+60000));
+ snapshot(f.root);
+ assert.equal(fs.existsSync(marker),false,'the second snapshot must read the new filter');
+});

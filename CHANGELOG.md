@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+- 컨트롤러 git 호출은 여전히 매번 유효 설정을 다시 읽어 코드를 실행할 수 있는 항목을 끄지만, 한 번의 `snapshot` 안에서는 설정을 한 번만 읽어 그 안의 git 호출(5회)에 같이 쓴다. 그 사이에는 설정을 끈 git과 파일 읽기만 돌고 저장소 코드는 돌지 않으며, snapshot이 끝나거나 실패하면 버린다. 가장 느린 테스트에서 설정 읽기가 253회에서 77회로 줄었다.
+- 같은 동작 안에서 방금 찍은 스냅샷을 수용 명령의 실행 전 상태(init·finish·verify), 리뷰어용 수용 결과(delegate-review), 자동 반려 판정(consult-finish), 수용 실패 반려의 트리 확인(실행 직후 digest)에 다시 쓴다. 그 사이에는 컨트롤러 코드만 돌며, 사이에 생긴 변경은 수용 명령의 변경으로 잡혀 더 엄격해진다. 동작 경계와 probe 뒤 재확인은 그대로다. 가장 느린 테스트의 스냅샷이 44회에서 32회 이하로 줄었다.
+
+- Windows 프로세스 표 조회가 Node 프로세스마다 PowerShell 하나를 띄워 두고 재사용한다. 매번 `powershell.exe`와 CIM 모듈을 새로 띄우던 비용(이 PC에서 조회당 약 1.7~2.2초)이 약 0.23초로 줄었다. 조회 결과(CIM 스냅숏)·시간 제한·실패 시 닫힘은 그대로이고, 상주 PowerShell과 그 자손은 표에서 제외되며 Node가 끝나면 함께 끝난다.
+
 - 리드 고정 비용 줄이기(B01·B02 실측에서 리드 턴의 약 40%가 막힌 명령과 우회에 쓰였다): 쉬운(`low`) 작업이고 수용 명령이 init에서 red로 확인되면 `next`와 SKILL.md가 `autopilot`을 권한다. 첫 `begin`은 입력이 없으면 init brief를 쓰고, `begin` 출력은 일꾼 stdin 대신 "stdin 없이 브리지만 실행"을 안내한다. 명령줄 브리지는 오토파일럿과 같은 프로세스 트리 정지 증명을 하고, 증명되면 `finish_command`를 출력한다. `finish`·`consult-finish`·`recover`·`review`·`verify`는 짧은 입력을 옵션(`--token`, `--quiescent`, `--verdict` 등)으로도 받는다. 파일과 옵션에 같은 칸이 있으면 거절한다. 실제 절감 효과는 재측정 전까지 미확인이다.
 
 - Audit follow-up: consolidate the three README introductions into a capability summary. This core branch contains HF-I01–HF-I05 and HF-I07 only; isolated parallel implementation remains a separately reviewed draft pending the G4 measurement gate.
