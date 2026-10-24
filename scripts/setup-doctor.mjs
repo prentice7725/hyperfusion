@@ -27,7 +27,7 @@ const probeMember=name=>{
  catch(e){probeEvidence[name]={error:e.message,...e.probe};throw e;}
 };
 const check=(name,fn)=>{try{checks.push({name,ok:true,detail:fn()});}catch(e){checks.push({name,ok:false,detail:e.message,error:errorRecord(e)});}};
-check('node',()=>{if(Number(process.versions.node.split('.')[0])<20)throw Error('Node 20+ required');return process.version;});
+check('node',()=>{if(Number(process.versions.node.split('.')[0])<24)throw Error('Node 24+ required');return process.version;});
 // 옵션: --executor NAME, --smoke[=NAME,NAME] (설치된 일꾼에게 작은 작업을 실제로 시킨다. 비용이 든다)
 const argv=process.argv.slice(3),flags=[];let smokeWanted=null;
 for(const a of argv){if(a==='--smoke')smokeWanted='installed';else if(a.startsWith('--smoke='))smokeWanted=a.slice(8).split(',').filter(Boolean);else flags.push(a);}

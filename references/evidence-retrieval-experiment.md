@@ -98,11 +98,11 @@ default three repetitions. A small sample is not statistical proof.
 
 ## Index constraints (push+pull arm only)
 
-- `engines` is `node >=20` and the project has no runtime dependencies. Built-in
-  `node:sqlite` is not available on Node 20, so either implement a small
-  pure-JS inverted index or gate the feature on capability detection with an
-  explicit unavailable result. Do not add a native dependency for the
-  experiment.
+- `engines` is `node >=24` and the project has no runtime dependencies. The
+  implemented search is a small pure-JS BM25 index rebuilt per call. Built-in
+  `node:sqlite` (FTS5) exists on Node 24 but is not yet a stable API; consider
+  it only if per-call rebuilding becomes too slow, and never add a native
+  dependency for the experiment.
 - Index only controller-owned artifacts inside the control folder; apply the
   existing redaction rules before indexing and skip secret paths.
 - Store the raw artifact SHA-256 per entry; a mismatch invalidates the entry
