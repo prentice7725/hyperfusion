@@ -131,7 +131,11 @@ test('the bridge command line proves the worker stopped and prints the finish co
  const out=JSON.parse(r.stdout);
  assert.equal(out.quiescence?.quiescent,true,JSON.stringify(out.quiescence));
  const token=f.state().writer.token;
- assert.ok(out.finish_command.endsWith(` finish "${f.root}" --token ${token} --quiescent`),out.finish_command);
+ // 브리지는 저장소 루트를 실제 경로로 적는다. Windows 러너의 TEMP는 8.3 짧은 이름(RUNNER~1)이라 f.root와 글자가 다르다.
+ const printed=out.finish_command.match(/ finish "([^"]+)" --token (\S+) --quiescent$/);
+ assert.ok(printed,out.finish_command);
+ assert.equal(fs.realpathSync.native(printed[1]),fs.realpathSync.native(f.root));
+ assert.equal(printed[2],token);
  assert.equal(cli(f,'finish',undefined,'--token',token,'--quiescent').json.phase,'REVIEW');
 });
 
