@@ -23,7 +23,8 @@ export function compactView(action,out) {
   if(action==='consult-finish'&&key==='results'&&Array.isArray(value)){
    view.results=value.map(r=>({member:r.member,reviewer:r.executor,verdict:r.recommended_verdict,findings:r.findings?.length??0}));dropped.push('results.*');continue;
   }
-  if(descriptor&&(key==='cli'||key==='prompt')){dropped.push(key);continue;}
+  // stdin은 일꾼에게 갈 지시문이다. 브리지가 dispatch-N.json에서 직접 읽으므로 리드가 넘길 것이 아니다.
+  if(descriptor&&(key==='cli'||key==='prompt'||key==='stdin')){dropped.push(key);continue;}
   if(out.phase&&out.schema_version!==undefined&&STATE_BULK.includes(key)){dropped.push(key);continue;}
   if(key==='lead_decision'&&value&&typeof value==='object'){
    view[key]=pick(value,['authority','decision','requested_decision','round','owner','required_reviewer','next_executor','file','lead_filled_seats','overruled_reviews','keep_owner_reason']);
@@ -39,6 +40,7 @@ export function compactView(action,out) {
    view.review_results=out.review_results[out.iteration].map(r=>({executor:r.executor,verdict:r.verdict,ok:r.ok,...(r.superseded?{superseded:true}:{})}));
   }
  }
+ if(action==='begin'&&descriptor&&out.transport==='executor-cli')view.run_note='Run command with args once and pass nothing on stdin: the bridge reads dispatch-N.json itself, proves the worker processes stopped and prints the finish command.';
  if(dropped.length)view.omitted=`${dropped.join(', ')} (original task artifacts retain these fields; add --full to print everything)`;
  return view;
 }

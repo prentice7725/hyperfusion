@@ -60,6 +60,14 @@ test('HF init keeps the same benchmark measurement window and prevents premature
  assert.throws(()=>stopWindow('HF-B01',p.root,{success:false}),/CLOSE\/BLOCKED/);
 });
 
+test('every generated benchmark brief is accepted by controller init unchanged',t=>{
+ for(const id of ['HF-B01','HF-B02']){
+  const f=fixture(t,{initialize:false}),p=prepareFixture(id,path.join(f.temp,id));
+  run(p.root,'init',{...read(p.brief_file),executor:'grok'});
+  assert.equal(read(controlPath(p.root,'state.json')).task_id,id);
+ }
+});
+
 test('Java fixtures assert behavior when a JDK exists',t=>{
  if(spawnSync('javac',['-version']).error){t.skip('JDK unavailable');return;}
  const f=fixture(t,{initialize:false});
@@ -80,7 +88,9 @@ test('reference weights can reverse raw-token ranking; configured prices include
 
 test('Spring MVC fixture can pass its real HTTP regression after the service is repaired',t=>{
  const mvn=process.platform==='win32'?'mvn.cmd':'mvn';
- if(spawnSync('javac',['-version']).error||spawnSync(mvn,['-version'],{shell:process.platform==='win32'}).error){t.skip('JDK/Maven unavailable');return;}
+ // With shell:true a missing mvn.cmd reports a nonzero exit status instead of a spawn error.
+ const maven=spawnSync(mvn,['-version'],{shell:process.platform==='win32'});
+ if(spawnSync('javac',['-version']).error||maven.error||maven.status!==0){t.skip('JDK/Maven unavailable');return;}
  const f=fixture(t,{initialize:false}),p=prepareFixture('HF-B09',path.join(f.temp,'spring'));
  assert.equal(p.baseline_status,'red');
  fs.writeFileSync(path.join(p.root,'Task.java'),`public class Task {

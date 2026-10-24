@@ -9,6 +9,8 @@
 
 - Windows 프로세스 표 조회가 Node 프로세스마다 PowerShell 하나를 띄워 두고 재사용한다. 매번 `powershell.exe`와 CIM 모듈을 새로 띄우던 비용(이 PC에서 조회당 약 1.7~2.2초)이 약 0.23초로 줄었다. 조회 결과(CIM 스냅숏)·시간 제한·실패 시 닫힘은 그대로이고, 상주 PowerShell과 그 자손은 표에서 제외되며 Node가 끝나면 함께 끝난다.
 
+- 리드 고정 비용 줄이기(B01·B02 실측에서 리드 턴의 약 40%가 막힌 명령과 우회에 쓰였다): 쉬운(`low`) 작업이고 수용 명령이 init에서 red로 확인되면 `next`와 SKILL.md가 `autopilot`을 권한다. 첫 `begin`은 입력이 없으면 init brief를 쓰고, `begin` 출력은 일꾼 stdin 대신 "stdin 없이 브리지만 실행"을 안내한다. 명령줄 브리지는 오토파일럿과 같은 프로세스 트리 정지 증명을 하고, 증명되면 `finish_command`를 출력한다. `finish`·`consult-finish`·`recover`·`review`·`verify`는 짧은 입력을 옵션(`--token`, `--quiescent`, `--verdict` 등)으로도 받는다. 파일과 옵션에 같은 칸이 있으면 거절한다. 실제 절감 효과는 재측정 전까지 미확인이다.
+
 - Audit follow-up: consolidate the three README introductions into a capability summary. This core branch contains HF-I01–HF-I05 and HF-I07 only; isolated parallel implementation remains a separately reviewed draft pending the G4 measurement gate.
 
 - Node 24 상태 마이그레이션에서 새 목적지 디렉터리에 대한 `cpSync`의 EEXIST를 피하도록 항목별 배타 복사를 적용했다. 기존 목적지 덮어쓰기 금지·해시 검증·writer lease 보존은 유지한다.

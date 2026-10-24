@@ -28,7 +28,7 @@ export function prepareFixture(caseId,target) {
  const task=cases.find(c=>c.case_id===caseId);
  const brief={task_id:caseId,objective:task.objective,scope:{paths:editable},constraints:['Keep canonical acceptance fixtures unchanged'],
   success_criteria:['AC1: '+task.acceptance],allowed_actions:['read','edit','test'],task_kind:task.kind,difficulty:task.difficulty,
-  acceptance_commands:['node run.mjs'],acceptance_timeout_ms:120000,acceptance_artifacts:['.build/**'],executor_bash_rules:['Bash(node run.mjs)']};
+  acceptance_commands:['node run.mjs'],acceptance_timeout_ms:120000,acceptance_artifacts:['.build/**']};
  ensureControl(root);atomic(controlPath(root,'benchmark-fixture.json'),{...manifest,initial_tree});
  const brief_file=controlPath(root,'benchmark-brief.json');atomic(brief_file,brief);
  const result=spawnSync(process.execPath,['run.mjs'],{cwd:root,encoding:'utf8',timeout:60000});
