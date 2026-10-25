@@ -105,12 +105,37 @@ LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. �
 - `REASSIGN_OTHER`의 선택 작성자는 grok, antigravity, haiku, luna다. 빠지면 기존 교체 순서를 쓴다.
 - `ESCALATE`는 `DECISION_REQUIRED`, `BLOCK`은 `BLOCKED`다.
 
+### 지적별 처분 (`finding_dispositions`, 선택)
+
+리드는 판정과 함께 이번 라운드 지적을 하나씩 분류할 수 있다. 리드 패킷의 `finding_summary.displayed[].id`(`F-…`)를 쓴다.
+
+```json
+{"decision":"REDO","rationale":"AC1 fails on empty input","baseline_digest":"…","contract_change":false,
+ "finding_dispositions":[{"finding_id":"F-…","bucket":"act","reason":"empty input crashes"},
+                         {"finding_id":"F-…","bucket":"dismissed","reason":"the caller validates input upstream"}]}
+```
+
+| bucket | 뜻 | 다음 일꾼에게 |
+|---|---|---|
+| `act` | 이번 작업에서 고친다 | 리드 메모와 함께 전달 |
+| `consider` | 실제 문제지만 고칠지 다음 일꾼이 판단한다 | 전달 |
+| `noted` | 기록만 한다 | 전달하지 않음 |
+| `dismissed` | 기각. 가정일 뿐이거나 리뷰어가 문맥을 몰랐다 | 전달하지 않음 |
+| `contract_misread` | 리뷰어가 아니라 브리프·수용 기준이 모호했다. 다음 라운드 전에 계약을 고친다 | 전달 |
+
+- 모든 항목에 사유가 필요하다. 기각 사유는 리드 판단을 사용자가 되짚을 수 있게 하는 신뢰 장치다.
+- 이번 라운드 digest에서 끝난 리뷰의 지적만 받는다. 없는 ID, 중복, 다른 키는 거절하고 아무것도 기록하지 않는다.
+- `act`가 하나라도 있으면 APPROVE는 거절된다.
+- 처분은 관찰 기록이다. 승인 조건, 근거 있는 반려, 필수 리뷰 자리는 바꾸지 않는다. 반려 기준(`Unmet:`)은 처분과 관계없이 전달된다.
+- 지표 `review_dispositions.by_reviewer`가 리뷰어별 처분 수와 `actionable_rate`(act+consider / contract_misread를 뺀 전체)를 센다. 리뷰어 순서를 실적으로 정할 근거로 쓴다.
+
 기록은 `lead-decision-<라운드>.json`이다. 기준선 digest, 계약 변경 여부, 사유, 그리고 `usage-<라운드>.json`이 있으면 그 사용량을 담는다. 파일이 없으면 사용량을 0으로 만들지 않는다. 오토파일럿은 이 단계에서 멈춘다.
 
 규칙:
 - **자기 작업은 자기가 리뷰하지 않는다.** 리뷰어는 그 라운드를 구현한 일꾼과 달라야 한다. 리드가 takeover로 직접 쓴 코드도 다른 모델이 리뷰한다.
 - **리뷰어 우선순위:** 기본 순서는 Sol(GPT-6.1 Sol via Codex, 리드와 다른 계열이라 교차 검증에 가장 유리) → Sonnet → Antigravity → Grok → Luna이다. 설치 안 된 리뷰어는 건너뛴다. `strategy`가 없으면 Sol은 리뷰·상담만 하고 구현 lease는 받지 않는다. 옵트인 APEX 라운드는 위의 구현 역할을 따른다. 프로젝트가 있으면 승인된 팀의 리뷰어 순서를 쓴다.
 - **리뷰는 읽기 전용이다.** 상담과 같은 장치로 돌고, 전후 스냅샷이 다르면 판정을 버리고 RECOVERY_REQUIRED로 간다.
+- **리뷰어에게 결론을 주지 않는다.** 위임 리뷰의 `last_result`는 상태, 바꾼 파일, 일꾼이 인정한 미해결 항목만 담고 요약·테스트 보고·위험 평가는 `claims_withheld`로 키 이름만 남긴다. `recent_reviews`는 이전 반려 기준만 담는다. 테스트는 컨트롤러가 직접 돌린 `controller_acceptance`로 판단한다. 상담(advisor, committee)은 원인 분석에 필요하므로 전체 보고를 받는다.
 - **리드 전용 판정:** 리뷰어는 `takeover`를 낼 수 없다. `decision`을 내면 DECISION_REQUIRED가 되어 설계 판단은 리드가 한다.
 - **미완료 보고:** 일꾼이 미완료(`blocked` 등)라고 보고한 라운드는 리뷰어가 pass를 줘도 redo(`worker reported …`)로 바뀐다.
 - **판정 형식:** pass가 아닌데 반려 사유가 비어 있는 판정은 형식 오류로 버린다. 리뷰어가 실패하면 다음 리뷰어를 부르거나 리드가 직접 본다. 라운드당 위임 리뷰는 2회까지이고, 상담 예산(4회)과는 별개다.

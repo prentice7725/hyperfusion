@@ -61,6 +61,7 @@ const CONSULT_ORDERS={
  advisor:['You are an independent reviewer hired by the lead. Another worker produced the change described in context. Find what is wrong or missing against the success criteria.'],
  review:['You are the reviewer of record for this round. The lead applies your verdict as-is unless it overrides you, so be exact.',
   'Check the actual change (context.diff, and read new files directly) against every success criterion. pass only if every criterion is met by code you read and nothing in scope regresses.',
+  'context.last_result deliberately withholds the worker\'s own summary, test claims and risk notes (see claims_withheld), and recent_reviews carries only earlier blocking criteria. Judge from the code and context.controller_acceptance, not from anyone\'s conclusion.',
   'For anything but pass, blocking_criteria must list each unmet criterion id (e.g. AC2) or a short concrete defect. Every finding needs file and line so the next worker can act without the lead re-reading the diff.',
   'A redo or alternative counts only with at least one blocker or major finding at a real line (line >= 1) that shows the defect. Without one, your rejection is treated as advisory and the lead may overrule it.',
   'Verdict: redo when the same worker can fix it, alternative when the approach itself is wrong, decision only when requirements or architecture are ambiguous and the lead must choose.'],

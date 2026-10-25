@@ -26,6 +26,25 @@ function diffLines(root,s) {
  }catch{return null;}
 }
 
+// 리드가 지적마다 남긴 처분을 리뷰어별로 센다. actionable_rate는 리뷰어 지적 중 리드가 act/consider로 받아들인 비율이다.
+// contract_misread는 브리프 문제이므로 리뷰어 비율에서 빼고 따로 센다. 처분 기록이 없으면 null이다.
+function reviewDispositions(root,s) {
+ const dir=controlPath(root,'tasks',s.task_id);
+ let files=[];try{files=fs.readdirSync(dir).filter(f=>/^lead-decision-\d+\.json$/.test(f));}catch{}
+ const rows=files.flatMap(f=>{try{return read(path.join(dir,f)).finding_dispositions??[];}catch{return [];}});
+ if(!rows.length)return null;
+ const by_reviewer={};
+ for(const row of rows)for(const reviewer of row.reviewers??[]){
+  const r=by_reviewer[reviewer]??={act:0,consider:0,noted:0,dismissed:0,contract_misread:0};
+  if(row.bucket in r)r[row.bucket]++;
+ }
+ for(const r of Object.values(by_reviewer)){
+  const judged=r.act+r.consider+r.noted+r.dismissed;
+  r.actionable_rate=judged?(r.act+r.consider)/judged:null;
+ }
+ return {findings:rows.length,contract_misreads:rows.filter(r=>r.bucket==='contract_misread').length,by_reviewer};
+}
+
  // Include implementation, review, consult and separately observed host usage.
 export function measure(root,observations=null) {
  const s=read(controlPath(root,'state.json'));
@@ -74,6 +93,7 @@ export function measure(root,observations=null) {
   review_outcomes:(s.reviews??[]).map(r=>({owner:r.owner,verdict:r.verdict,round:r.round,reviewed_by:r.reviewed_by??'lead',...(r.overrode?{overrode:r.overrode}:{})})),
   // 리드가 직접 본 리뷰 대 위임 리뷰. 위임 비율이 오르면 Opus 토큰이 줄어야 한다.
   delegated_reviews:(s.reviews??[]).filter(r=>r.reviewed_by&&!['lead','controller'].includes(r.reviewed_by)).length,acceptance_returns:(s.reviews??[]).filter(r=>r.reviewed_by==='controller').length,lead_overrides:(s.reviews??[]).filter(r=>r.overrode).length,
+  review_dispositions:reviewDispositions(root,s),
   consults:(s.consults??[]).map(c=>({id:c.id,mode:c.mode,violated:c.violated,members:c.members.map(m=>({executor:m.executor,ok:m.ok,recommended_verdict:m.recommended_verdict??null}))})),consult_runs:s.consult_runs??0,
   worker_usage:usage,worker_rounds:Object.fromEntries(countedImplementers.map(e=>[e,runs.filter(r=>r.executor===e&&r.role==='implement').length])),
   worker_cost_estimate_usd:runs.length&&runs.every(r=>known(r.cost_usd))?runs.reduce((a,r)=>a+r.cost_usd,0):null,

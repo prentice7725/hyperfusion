@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+## 0.29.0 — 2026-10-25
+
+- 위임 리뷰어(`delegate-review`)는 일꾼의 주장을 받지 않는다. `context.last_result`에는 `status`, `files_changed`, `unresolved`, `needs_lead_decision`만 남고 요약·테스트 보고·위험 평가는 `claims_withheld`에 키 이름만 남는다. `recent_reviews`도 이전 반려 기준만 주고 이전 판정·사유는 뺀다. 테스트 결과는 컨트롤러가 돌린 `controller_acceptance`로 본다. advisor·committee 상담은 그대로다
+- `lead-decision`에 선택 입력 `finding_dispositions`(`[{finding_id, bucket, reason}]`): 리드가 이번 라운드 지적(`finding_summary`의 `F-…`)을 `act`·`consider`·`noted`·`dismissed`·`contract_misread`로 분류하고 사유를 남긴다. 기록에는 지적을 낸 리뷰어와 심각도가 붙는다. `act`가 있으면 APPROVE는 거절되고, `@findings` 전달 패킷은 `dismissed`·`noted` 지적을 빼고(`withheld_by_lead`) 나머지에 리드 메모를 붙인다. 반려 기준(`Unmet:`)은 그대로 넘긴다. 지표 `review_dispositions`가 리뷰어별 처분 수와 `actionable_rate`를 센다. 승인 조건·필수 리뷰 자리는 바뀌지 않는다
+
 ## 0.28.0 — 2026-10-25
 
 - 선택적 일꾼 코딩 정책: 설정 `coding_policy:"ponytail"`이면 구현 라운드 지시문에 고정된 Ponytail 규칙(MIT, 커밋 고정, 결과 JSON과 충돌하는 문장 제거)을 덧붙이고 정책 id·해시를 프롬프트에, `coding_policy`를 지표에 남긴다. 생략·위험은 `risks`로 보고하게 한다. 기본은 꺼짐이며 리뷰·상담에는 붙이지 않는다. 효과는 미측정이다.
