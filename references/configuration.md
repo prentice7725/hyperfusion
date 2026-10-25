@@ -78,6 +78,16 @@ v0.3 신규 작업용 설정은 [hyperfusion.v03.config.example.json](../hyperfu
 
 CLI registry의 기본 벤더 기준이며 임의 model override의 실 제공자, CLI 내부 MCP·프록시·추가 네트워크 요청 또는 이미 실행 중인 호스트 리드는 검증하거나 차단하지 않는다. 방화벽·DLP 대신이 아니다. 업무상 외부 전송을 완전히 막아야 하면 별도의 운영자 네트워크·CLI 정책도 필요하다.
 
+## 일꾼 코딩 정책 (`coding_policy`)
+
+`"coding_policy":"ponytail"`을 넣으면 컨트롤러가 구현 라운드의 일꾼 지시문 끝에 고정된 코딩 정책을 덧붙인다. 생략하면 지시문은 이전과 같다. 리뷰·상담 지시문에는 붙이지 않는다.
+
+- 정책 본문은 `assets/coding-policies/ponytail.md`다. [Ponytail](https://github.com/DietrichGebert/ponytail)의 `AGENTS.md`(커밋 `09c434a`, MIT, `assets/coding-policies/ponytail.LICENSE`)에서 가져왔고, 결과 JSON과 충돌하는 "답변 끝에 산문을 쓰라"는 문장과 `shortcut:` 주석 형식, 원본 저장소 전용 문장을 뺐다.
+- 생략·미확인 항목과 위험은 산문이 아니라 결과의 `risks`에 적게 한다. `unresolved`는 `complete`와 함께 쓸 수 없으므로 쓰지 않는다.
+- 브리프의 범위·성공 기준·`lead_feedback`·결과 규칙이 정책보다 우선한다고 함께 지시한다. 리드 브리프의 `coding_policy` 키는 무시하고 작업 설정 값만 쓴다.
+- 프롬프트에 정책 id·SHA-256·출처를 남기고, 작업 지표에 `coding_policy`를 기록한다. 효과는 `benchmark.mjs compare-repeated`로 정책을 켠 쪽과 끈 쪽을 짝지어 재야 하며, Ponytail이 공개한 수치는 이 프로젝트의 절감 근거가 아니다.
+- 알 수 없는 이름은 설정 오류로 거절한다.
+
 ## Codex 캐시·네트워크와 턴 상한
 
 `HF_CODEX_WRITABLE_ROOTS`는 이미 있는 절대 디렉터리의 JSON 배열, `HF_CODEX_NETWORK_ACCESS`는 `0` 또는 `1`이다. `HF_CODEX_WINDOWS_SANDBOX`(`elevated` 또는 `unelevated`)는 Windows에서 Codex 샌드박스 방식을 고르며 구현·리뷰·상담 모두에 적용된다([Codex 운영 안내](codex-runtime.md)의 Windows sandbox). 구현에만 적용하며 읽기 전용 리뷰·상담에는 전달하지 않는다. 저장소의 동명 실행기 옵션은 권한을 넓히지 못한다. 홈 전체, 상태·CLI 설정·스킬·Git 메타데이터와 겹치는 경로(부모·자식·링크 포함)는 거절한다. 캐시는 스냅샷 검증 밖이므로 소스나 인증 폴더를 허용하지 말 것. [Codex 운영 안내](codex-runtime.md)를 따른다.

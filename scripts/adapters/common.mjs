@@ -6,6 +6,7 @@ import {checkBashRules} from '../bash-policy.mjs';
 import {PROTOCOL,VERSION} from '../versions.mjs';
 import {assertVendor} from '../vendor-policy.mjs';
 import {instructionInventory} from '../instruction-inventory.mjs';
+import {codingPolicy} from '../coding-policy.mjs';
 
 // 외부 일꾼(Grok, Antigravity)이 공통으로 따르는 결과 계약과 지시문.
 export function resultSchema(task_id,round) {
@@ -89,9 +90,13 @@ export function prompt(brief,lease) {
    result_template:{task_id:brief.task_id,consult_id:c.id,member:c.member,summary:'Describe what you checked and concluded',findings:[],root_cause:'',plan:[],recommended_verdict:c.mode==='review'?'redo':'none',confidence:'low',...(c.mode==='review'?{blocking_criteria:[]}:{})},
    result_rules:CONSULT_RULES,instructions:[...commonOrders,...CONSULT_ORDERS[c.mode],...readOnlyOrders(lease.owner),PRIOR]});
  }
- return JSON.stringify({protocol:PROTOCOL,package_version:VERSION,...communication,lead:'Claude Opus 5.5',worker:lease.owner,brief,
+ // 코딩 정책은 구현 라운드에만 붙인다. 브리프의 범위·성공 기준·결과 형식이 정책보다 우선한다.
+ const {coding_policy:policyId,...plain}=brief,policy=policyId?codingPolicy(policyId):null;
+ const policyOrders=policy?[`Coding policy "${policy.id}" applies to how you write code. The brief scope, success criteria, lead_feedback and result rules take precedence over it. Put anything you deliberately skipped or did not check, and any risk, in risks; never as prose.`,policy.text]:[];
+ return JSON.stringify({protocol:PROTOCOL,package_version:VERSION,...communication,lead:'Claude Opus 5.5',worker:lease.owner,brief:plain,
+ ...(policy?{coding_policy:{id:policy.id,sha256:policy.sha256,source:policy.source}}:{}),
  result_template:{task_id:brief.task_id,round:brief.round,status:'complete',summary:'Describe actual outcome',files_read:[],files_changed:[],commands_run:[],tests:[],unresolved:[],risks:[],needs_lead_decision:false,recommended_next_action:'review'},
- result_rules:IMPLEMENT_RULES,instructions:[...commonOrders,...IMPLEMENT_ORDERS,...(brief.acceptance_commands?[ACCEPTANCE]:[])]});
+ result_rules:IMPLEMENT_RULES,instructions:[...commonOrders,...IMPLEMENT_ORDERS,...(brief.acceptance_commands?[ACCEPTANCE]:[]),...policyOrders]});
 }
 
 export function bashRules(brief) {
