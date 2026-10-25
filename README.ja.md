@@ -166,7 +166,7 @@ Claude CodeでOpus 5.5を選び：
 
 リードが[SKILL.md](SKILL.md)に従ってコントローラとブリッジを呼び出します。まず`node scripts/setup-doctor.mjs <リポジトリ>`でインストール状況を点検してください。設定は対象リポジトリの`hyperfusion.config.json`（例：`hyperfusion.config.example.json`）です。
 
-**リードガードフックの導入（推奨）。** `npm run guard:settings`が、このPCの絶対パスで書かれたフック設定（PreToolUse、Stop、SessionStart、UserPromptSubmit、SessionEnd、StopFailure）を出力します。その`hooks`の項目を`~/.claude/settings.json`（または対象リポジトリの`.claude/settings.json`）にマージします。既存の導入でも各イベントの新しい使用量収集コマンドをマージしてください。他のフックを保持し、既存コマンドの重複を避けます。
+**リードガードフックの導入（推奨）。** `npm run guard:settings`が、このPCの絶対パスで書かれたフック設定（PreToolUse、Stop、SessionStart、UserPromptSubmit、SessionEnd、StopFailure）を出力します。その`hooks`の項目を`~/.claude/settings.json`（または対象リポジトリの`.claude/settings.json`）にマージします。既存の導入でも各イベントの新しい使用量収集コマンドとMCPツールガード（`mcp__.*`）の項目をマージしてください。他のフックを保持し、既存コマンドの重複を避けます。
 
 **オートパイロット。** 初期化済みの作業は`node scripts/fusion-state.mjs autopilot <リポジトリ>`でラウンド実行と独立した委任レビューを自動進行できます。リードが承認した`acceptance_commands`が必要で、基準ツリーで失敗が確認された（red）コマンドでなければなりません（保存検証の作業は逆に、すでに通ることが確認されている必要があります）。classicのレビューでは`review.auto_apply:true`も必要です（`lead-gated-adaptive`はどのみちリードゲートで止まるため要求しません）。VERIFY・設計判断・BLOCKED・takeoverではリードに制御を返し、プロセス停止・スナップショット・予算・検証の確認に失敗した場合も停止します。リードが裁量権を与えた作業は、コントローラが承認したラウンドのverifyまで進みます（[運用説明（韓国語）](references/operations.md#오토파일럿)）。
 
