@@ -189,9 +189,11 @@ Elastic License 2.0; do not copy its source into this MIT project. Its
 `ctx_execute` runs code in the project directory with a denylist-filtered
 environment and network access, which is not OS isolation.
 
-The lead guard matches only `Edit|Write|MultiEdit|NotebookEdit` and `Bash`
-(`scripts/lead-guard.mjs`), so an MCP execution tool is outside the lead
-write guard. Any evaluation must:
+The lead guard now denies MCP tools outside a read-only allowlist during
+active work (`scripts/lead-guard.mjs`), so `ctx_execute` is blocked while a
+task or lease is active once the `mcp__.*` hook entry is installed. Hosts
+without that entry still leave an MCP execution tool outside the lead write
+guard. Any evaluation must:
 
 - run MCP-only in a disposable environment, with its hooks and auto-routing
   disabled, never in a repository with an active task
