@@ -4,12 +4,17 @@
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.28.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.29.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
-## 0.28.0の変更点
+## 最近の変更
+
+**0.29.0**
 
 - **レビュアーに結論を渡さない。** 委任レビュアーは、ワーカーの要約・テスト合格の報告・リスク評価や、以前のレビュアーの判定・理由を受け取りません。diff、ファイル、コントローラが自分で実行した受け入れ結果だけで判断します。→ [review（韓国語）](references/review-protocol.md)
 - **リードの指摘ごとの処分。** `lead-decision`で指摘ごとに`act`・`consider`・`noted`・`dismissed`・`contract_misread`と理由を残します。却下した指摘は次のワーカーに渡らず、指標がレビュアーごとの実効性（`actionable_rate`）を数えます。→ [review（韓国語）](references/review-protocol.md#지적별-처분-finding_dispositions-선택)
+
+**0.28.0**
+
 - **再レビュー用の`round-diff`。** 2ラウンド目から、今回のラウンドで変わった行だけを表示します。承認は引き続き累積diff全体が対象です。
 - **受け入れ失敗の抜粋。** 出力の末尾より前で最初に失敗した行とその後の数行を記録し、次ラウンドのフィードバックとリードの文脈に使います。
 - **リードガードがMCPツールも検査。** 読み取り専用と確認済みのツールと`HF_LEAD_MCP_ALLOW`に書いたツールだけが通ります。既存の導入では`npm run guard:settings`の`mcp__.*`項目をマージしてください。

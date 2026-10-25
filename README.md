@@ -4,12 +4,17 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.28.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
+> **Versions.** The package release is `0.29.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
 
-## What changed in 0.28.0
+## Recent changes
+
+**0.29.0**
 
 - **Reviewers get no conclusions.** Delegated reviewers no longer see the worker's summary, test claims or risk notes, nor earlier reviewers' verdicts and reasons. They judge from the diff, the files and controller-run acceptance results. See [review](references/review-protocol.md).
 - **Per-finding lead dispositions.** `lead-decision` can classify each finding as `act`, `consider`, `noted`, `dismissed` or `contract_misread` with a reason. Dismissed findings are not forwarded to the next worker, and metrics score each reviewer (`actionable_rate`). See [review](references/review-protocol.md#지적별-처분-finding_dispositions-선택).
+
+**0.28.0**
+
 - **`round-diff` for re-review.** From round 2, shows only the lines changed in the current round. Approval still covers the full cumulative diff.
 - **Acceptance failure excerpts.** The first failing line before the stored output tail, plus a few lines after it, feed the next round's feedback and the lead's review context.
 - **Lead guard covers MCP tools.** Only verified read-only tools and names listed in `HF_LEAD_MCP_ALLOW` pass. Existing installs must merge the `mcp__.*` entry from `npm run guard:settings`.

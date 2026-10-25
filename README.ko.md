@@ -4,12 +4,17 @@
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.28.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.29.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
-## 0.28.0에서 바뀐 것
+## 최근 변경
+
+**0.29.0**
 
 - **리뷰어에게 결론을 주지 않는다.** 위임 리뷰어는 일꾼의 요약·테스트 통과 보고·위험 평가와 이전 리뷰어의 판정·사유를 받지 않는다. diff, 파일, 컨트롤러가 직접 돌린 수용 결과로만 판단한다. → [review](references/review-protocol.md)
 - **리드의 지적별 처분.** `lead-decision`에서 지적마다 `act`·`consider`·`noted`·`dismissed`·`contract_misread`와 사유를 남긴다. 기각한 지적은 다음 일꾼에게 넘어가지 않고, 지표가 리뷰어별 실효성(`actionable_rate`)을 센다. → [review](references/review-protocol.md#지적별-처분-finding_dispositions-선택)
+
+**0.28.0**
+
 - **재검수용 `round-diff`.** 2라운드부터 이번 라운드에서 바뀐 줄만 보여 준다. 승인은 여전히 누적 diff 전체가 대상이다.
 - **수용 실패 발췌.** 출력 꼬리보다 앞에서 처음 실패한 줄과 그 뒤 몇 줄을 함께 남겨 다음 라운드 피드백과 리드 문맥에 쓴다.
 - **리드 가드가 MCP 도구도 검사한다.** 읽기 전용으로 확인된 도구와 `HF_LEAD_MCP_ALLOW`에 적은 도구만 통과한다. 기존 설치는 `npm run guard:settings`의 `mcp__.*` 항목을 병합해야 한다.
