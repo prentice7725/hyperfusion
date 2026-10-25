@@ -32,6 +32,8 @@ MCP 도구(`mcp__*`)도 같은 표로 판정한다. MCP 도구는 이름만으�
   - Serena(`serena`): `find_symbol`, `find_referencing_symbols`, `get_symbols_overview`, `search_for_pattern`, `find_file`, `list_dir`, `read_file`. 편집·셸·메모리 쓰기 도구는 넣지 않았다.
   - GitHub(`github`): `get_me`, `get_file_contents`, `get_commit`, `list_commits`, `list_branches`, `list_tags`, `get_tag`, `list_releases`, `get_latest_release`, `get_release_by_tag`, `search_code`, `search_commits`, `search_repositories`, `search_issues`, `search_pull_requests`, `issue_read`, `list_issues`, `get_label`, `list_issue_types`, `list_issue_fields`, `pull_request_read`, `list_pull_requests`, `actions_get`, `actions_list`, `get_job_logs`, `get_check_run`. 생성·수정·코멘트·병합·푸시·워크플로 실행·시크릿 스캔 도구는 넣지 않았다.
   - Context7(`context7`): `resolve-library-id`, `get-library-docs`, `query-docs`.
+  - Google Drive(`google_drive`, claude.ai 커넥터 이름 `Google_Drive`·`claude_ai_Google_Drive`): `search_files`, `list_recent_files`, `get_file_metadata`, `get_file_permissions`, `read_file_content`, `download_file_content`. 기준 문서(SoT)가 드라이브에 있는 프로젝트용이다. 생성·수정·복사·공유·휴지통 도구는 넣지 않았다.
+  - GitHub는 claude.ai 커넥터 이름 `claude_ai_GitHub`도 받는다.
   - 같은 서버를 다른 이름으로 등록했다면 기본 허용에 걸리지 않으므로 아래 운영자 추가를 쓴다.
 - 운영자 추가: 읽기 전용임을 직접 확인한 도구를 `HF_LEAD_MCP_ALLOW=mcp__server__tool,...`처럼 정확한 전체 이름으로 적는다. 와일드카드는 받지 않는다.
 - 이 검사는 도구 이름 기준의 협조적 가드다. 허용된 도구가 실제로 읽기만 하는지, MCP 서버가 cwd 밖의 다른 저장소를 다루는지는 확인하지 않는다.

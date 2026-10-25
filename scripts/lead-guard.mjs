@@ -20,7 +20,7 @@ import {readStatusLine} from './status-line.mjs';
 export const GUARDED_TOOLS=['Edit','Write','MultiEdit','NotebookEdit'];
 export const MCP_MATCHER='mcp__.*';
 // 읽기 전용으로 확인한 도구만 적는다. 쓰기·실행·코멘트·병합·실행 트리거 도구는 넣지 않는다.
-// 서버 이름은 직접 등록(github)과 플러그인 등록(plugin_github_github)을 모두 받는다. 다른 이름으로 등록한 서버는 HF_LEAD_MCP_ALLOW로 더한다.
+// 서버 이름은 직접 등록(github), 플러그인 등록(plugin_github_github)과 아래 별칭을 받는다. 다른 이름으로 등록한 서버는 HF_LEAD_MCP_ALLOW로 더한다.
 export const MCP_READ_ONLY={
  // Serena(https://github.com/oraios/serena): 심볼 조회·참조 찾기·검색·파일 읽기.
  serena:['find_symbol','find_referencing_symbols','get_symbols_overview','search_for_pattern','find_file','list_dir','read_file'],
@@ -29,8 +29,12 @@ export const MCP_READ_ONLY={
   'search_code','search_commits','search_repositories','search_issues','search_pull_requests','issue_read','list_issues','get_label','list_issue_types','list_issue_fields',
   'pull_request_read','list_pull_requests','actions_get','actions_list','get_job_logs','get_check_run'],
  // Context7(https://github.com/upstash/context7): 라이브러리 문서 조회.
- context7:['resolve-library-id','get-library-docs','query-docs']
+ context7:['resolve-library-id','get-library-docs','query-docs'],
+ // Google Drive: 설계 문서 등 기준 자료가 드라이브에 있는 프로젝트용 검색·읽기. 생성·수정·복사·공유·휴지통 도구는 넣지 않는다.
+ google_drive:['search_files','list_recent_files','get_file_metadata','get_file_permissions','read_file_content','download_file_content']
 };
+// 같은 서버가 호스트마다 다른 이름으로 붙는다(claude.ai 커넥터는 claude_ai_<이름>).
+export const MCP_SERVER_ALIASES={github:['claude_ai_GitHub'],google_drive:['Google_Drive','claude_ai_Google_Drive']};
 // 운영자가 읽기 전용임을 확인한 도구를 정확한 전체 이름(mcp__server__tool)으로 더한다. 와일드카드는 받지 않는다.
 export const MCP_ALLOW_ENV='HF_LEAD_MCP_ALLOW';
 
@@ -39,7 +43,7 @@ export function mcpReadOnly(name,env=process.env) {
  if(String(env[MCP_ALLOW_ENV]??'').split(',').map(v=>v.trim()).includes(name))return true;
  const cut=name.lastIndexOf('__');if(cut<='mcp_'.length)return false;
  const server=name.slice('mcp__'.length,cut),tool=name.slice(cut+2);
- return Object.entries(MCP_READ_ONLY).some(([id,tools])=>(server===id||server===`plugin_${id}_${id}`)&&tools.includes(tool));
+ return Object.entries(MCP_READ_ONLY).some(([id,tools])=>(server===id||server===`plugin_${id}_${id}`||MCP_SERVER_ALIASES[id]?.includes(server))&&tools.includes(tool));
 }
 
 // 파일이 아직 없을 수도 있으니 부모로 올라가며 .git(폴더 또는 worktree의 파일)을 찾는다.

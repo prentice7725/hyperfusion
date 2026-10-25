@@ -74,8 +74,8 @@ test('lead guard blocks MCP tools that are not known read-only while a task or l
  for(const tool of ['mcp__serena__replace_symbol_body','mcp__serena__execute_shell_command','mcp__plugin_serena_serena__rename_symbol','mcp__context-mode__ctx_execute','mcp__fs__write_file']){
   const out=mcp(f,tool);assert.ok(denied(out),tool);assert.match(out.hookSpecificOutput.permissionDecisionReason,new RegExp(`PLAN.*${tool}.*${MCP_ALLOW_ENV}`));
  }
- for(const tool of ['mcp__serena__find_symbol','mcp__serena__find_referencing_symbols','mcp__plugin_serena_serena__get_symbols_overview','mcp__github__pull_request_read','mcp__github__get_job_logs','mcp__plugin_github_github__get_file_contents','mcp__context7__query-docs'])assert.equal(mcp(f,tool),null,tool);
- for(const tool of ['mcp__github__merge_pull_request','mcp__github__push_files','mcp__github__add_issue_comment','mcp__github__actions_run_trigger','mcp__github__create_or_update_file','mcp__github__run_secret_scanning'])assert.ok(denied(mcp(f,tool)),tool);
+ for(const tool of ['mcp__serena__find_symbol','mcp__serena__find_referencing_symbols','mcp__plugin_serena_serena__get_symbols_overview','mcp__github__pull_request_read','mcp__github__get_job_logs','mcp__plugin_github_github__get_file_contents','mcp__context7__query-docs','mcp__Google_Drive__read_file_content','mcp__claude_ai_Google_Drive__search_files','mcp__google_drive__download_file_content'])assert.equal(mcp(f,tool),null,tool);
+ for(const tool of ['mcp__github__merge_pull_request','mcp__github__push_files','mcp__github__add_issue_comment','mcp__github__actions_run_trigger','mcp__github__create_or_update_file','mcp__github__run_secret_scanning','mcp__Google_Drive__update_file','mcp__Google_Drive__share_file','mcp__Google_Drive__trash_file','mcp__Google_Drive__create_file'])assert.ok(denied(mcp(f,tool)),tool);
  assert.equal(mcp(f,'mcp__fs__write_file',f.temp),null,'outside the repository is not guarded');
  f.begin();
  assert.match(mcp(f,'mcp__serena__insert_after_symbol').hookSpecificOutput.permissionDecisionReason,/grok.*writer lease/);
