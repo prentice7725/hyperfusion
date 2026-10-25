@@ -6,10 +6,19 @@ import path from 'node:path';
 import {hash} from './artifact.mjs';
 import {environmentFailure} from './contracts.mjs';
 import {findingLedger} from './finding-ledger.mjs';
-import {redactText} from './redaction.mjs';
+import {redactText,isSecretField} from './redaction.mjs';
 
-const MAX_FILE=4*1024*1024,MAX_TOTAL=32*1024*1024,SIGNAL_LIMIT=20;
-const clip=(s,n=300)=>String(s??'').slice(0,n);
+const MAX_FILE=4*1024*1024,MAX_TOTAL=32*1024*1024,SIGNAL_LIMIT=20,MAX_DEPTH=64,MAX_FILE_CHUNKS=5000,MAX_CHUNKS=20000;
+const mask=s=>redactText(String(s??''),{},{preserveLines:true});
+const clip=(s,n=300)=>mask(typeof s==='object'&&s!==null?JSON.stringify(s):s).slice(0,n);
+function display(value,key='',depth=0) {
+ if(isSecretField(key)&&value!==null&&value!==undefined&&value!=='')return '[REDACTED:secret]';
+ if(depth>MAX_DEPTH)return '[OMITTED:depth]';
+ if(typeof value==='string')return mask(value);
+ if(Array.isArray(value))return value.map(v=>display(v,'',depth+1));
+ if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,display(v,k,depth+1)]));
+ return value;
+}
 const FAILURE=/\b(?:not ok|fail(?:ed|ure|ures|ing)?|errors?|assert(?:ion)?(?:error)?|exception|panic(?:ked)?|traceback)\b/i;
 
 // Bounded, symlink-free JSON read that also returns the raw SHA-256 for pointers.
@@ -25,7 +34,7 @@ function artifact(dir,name) {
 const pointer=a=>a?.status==='present'?{file:a.file,sha256:a.sha256}:{file:a.file,status:a.status};
 
 function firstFailure(text) {
- const lines=String(text??'').replaceAll('\r\n','\n').split('\n');
+ const lines=mask(String(text??'').replaceAll('\r\n','\n')).split('\n');
  const index=lines.findIndex(l=>FAILURE.test(l));
  return index<0?null:{tail_line:index+1,text:clip(redactText(lines[index]))};
 }
@@ -35,7 +44,7 @@ function firstFailure(text) {
 export function evidencePacket(state,dir) {
  const n=state.iteration,signals=[],read=new Map();
  const get=name=>{if(!read.has(name))read.set(name,artifact(dir,name));return read.get(name);};
- const add=(code,detail,source)=>signals.push({code,...detail,...(source?{source:pointer(source)}:{})});
+ const add=(code,detail,source)=>signals.push({code,...display(detail),...(source?{source:pointer(source)}:{})});
  const usable=a=>{
   if(a.status==='invalid')add('ARTIFACT_UNREADABLE',{file:a.file,reason:a.reason});
   return a.status==='present'?a.value:null;
@@ -75,7 +84,7 @@ export function evidencePacket(state,dir) {
 
  if(Array.isArray(state.acceptance_test_changes)&&state.acceptance_test_changes.length)
   add('ACCEPTANCE_TEST_CHANGED',{paths:state.acceptance_test_changes.slice(0,20).map(p=>clip(typeof p==='string'?p:p?.path??JSON.stringify(p),200)),count:state.acceptance_test_changes.length});
- if(Array.isArray(state.last_errors)&&state.last_errors.length)add('CONTROLLER_ERRORS',{errors:state.last_errors.slice(0,5).map(e=>clip(e))});
+ if(Array.isArray(state.last_errors)&&state.last_errors.length)add('CONTROLLER_ERRORS',{errors:state.last_errors.slice(0,5).map(e=>clip(e)),count:state.last_errors.length,omitted:Math.max(0,state.last_errors.length-5),state_pointer:'/last_errors'});
 
  const results=(state.review_results?.[n]??[]).filter(r=>r&&!r.superseded&&r.ok!==false);
  const verdicts=[...new Set(results.map(r=>r.verdict))];
@@ -112,20 +121,78 @@ const SEARCHABLE=/^(?:acceptance-\d+-[\w-]+|raw-result-\d+|result-\d+|validation
 const roundOf=name=>{const m=/^(?:acceptance|raw-result|result|validation|review|lead-packet|revision-packet|brief)-(\d+)/.exec(name);return m?Number(m[1]):null;};
 const tokens=text=>String(text).toLowerCase().split(/[^\p{L}\p{N}_]+/u).filter(t=>t.length>1);
 
-function chunks(file,value,out,at='') {
- if(typeof value==='string'){
-  const lines=redactText(value).replaceAll('\r\n','\n').split('\n');
-  for(let i=0;i<lines.length;i+=8){
-   const text=lines.slice(i,i+8).join('\n');
-   if(text.trim())out.push({...file,pointer:at||'/',lines:lines.length>1?[i+1,Math.min(lines.length,i+8)]:null,text});
-  }
- }else if(Array.isArray(value))value.forEach((v,i)=>chunks(file,v,out,`${at}/${i}`));
- else if(value&&typeof value==='object')for(const [k,v] of Object.entries(value))chunks(file,v,out,`${at}/${k.replaceAll('~','~0').replaceAll('/','~1')}`);
- else if(typeof value==='number'||typeof value==='boolean')out.push({...file,pointer:at||'/',lines:null,text:`${at.split('/').pop()} ${value}`});
+// A consult's number is not its implementation round. Validate the controller
+// assignment and raw identity before deriving round provenance from its prompt.
+function consultRound(state,dir,name,value) {
+ const match=/^consult-result-(c\d+)-(m\d+)\.json$/.exec(name);
+ if(!match)return {round:roundOf(name)};
+ const [,id,member]=match,meta=artifact(dir,`consult-${id}.json`),request=artifact(dir,`consult-${id}-${member}.json`),finish=artifact(dir,`consult-${id}-finish.json`);
+ try{
+  const brief=JSON.parse(request.value?.prompt??'null')?.brief;
+  if(meta.status!=='present'||request.status!=='present'||!['advisor','committee','review'].includes(meta.value?.mode)
+   ||!meta.value.members?.some(m=>m.member===member&&typeof m.executor==='string'&&m.executor)
+   ||value?.task_id!==state.task_id||value?.consult_id!==id||value?.member!==member
+   ||brief?.task_id!==state.task_id||!Number.isSafeInteger(brief?.round)||brief.round<0
+   ||finish.status==='invalid'||finish.value?.violated)throw Error('provenance');
+  return {round:brief.round};
+ }catch{return {reason:'consult_provenance'};}
+}
+
+function chunks(file,value,remaining) {
+ const out=[],stack=[{value,at:'',key:'',depth:0}];
+ const push=row=>{
+  if(out.length>=MAX_FILE_CHUNKS||out.length>=remaining)throw Error('chunk_limit');
+  out.push(row);
+ };
+ while(stack.length){
+  const {value,at,key,depth}=stack.pop();
+  if(depth>MAX_DEPTH)throw Error('depth_limit');
+  if(isSecretField(key)&&value!==null&&value!==undefined&&value!==''){
+   push({...file,pointer:at||'/',lines:null,text:'[REDACTED:secret]'});
+  }else if(typeof value==='string'){
+   // Mask the whole string first (a private key may span chunk boundaries),
+   // preserving every original newline so ranges still point into the raw value.
+   const lines=mask(value.replaceAll('\r\n','\n')).split('\n');
+   for(let i=0;i<lines.length;i+=8){
+    const text=lines.slice(i,i+8).join('\n');
+    if(text.trim())push({...file,pointer:at||'/',lines:lines.length>1?[i+1,Math.min(lines.length,i+8)]:null,text});
+   }
+  }else if(Array.isArray(value)){
+   if(value.length>MAX_FILE_CHUNKS)throw Error('chunk_limit');
+   for(let i=value.length-1;i>=0;i--)stack.push({value:value[i],at:`${at}/${i}`,key:'',depth:depth+1});
+  }else if(value&&typeof value==='object'){
+   const entries=Object.entries(value);
+   if(entries.length>MAX_FILE_CHUNKS)throw Error('chunk_limit');
+   for(let i=entries.length-1;i>=0;i--){const [k,v]=entries[i];if(mask(k)!==k)throw Error('redaction_unsafe');stack.push({value:v,at:`${at}/${k.replaceAll('~','~0').replaceAll('/','~1')}`,key:k,depth:depth+1});}
+  }else if(typeof value==='number'||typeof value==='boolean')push({...file,pointer:at||'/',lines:null,text:`${at.split('/').pop()} ${value}`});
+ }
+ return out;
+}
+
+// used_bytes is the UTF-8 size of the complete compact JSON response, including
+// this counter. Reach its fixed point when a digit boundary changes that size.
+function responseBytes(out) {
+ for(let i=0;i<5;i++){
+  const bytes=Buffer.byteLength(JSON.stringify(out));
+  if(bytes===out.used_bytes)return bytes;
+  out.used_bytes=bytes;
+ }
+ return Buffer.byteLength(JSON.stringify(out));
+}
+function boundedResponse(out,budget) {
+ // Keep useful evidence before individual metadata rows. Totals remain explicit
+ // when the pointer lists themselves cannot fit in the complete response.
+ while(responseBytes(out)>budget){
+  if(out.omitted.length){out.omitted.pop();out.metadata_omitted.omitted++;}
+  else if(out.skipped.length){out.skipped.pop();out.metadata_omitted.skipped++;}
+  else if(out.hits.length){out.hits.pop();out.omitted_count++;out.metadata_omitted.omitted++;}
+  else throw Error('EVIDENCE_RESPONSE_BUDGET: required response metadata exceeds byte_budget; shorten the query or increase the budget');
+ }
+ return out;
 }
 
 // Pull search: in-memory BM25 rebuilt on every call, so it cannot serve stale text.
-// Whole hits are omitted rather than truncated, and omitted hits keep pointers.
+// Whole hits are omitted rather than truncated; metadata overflow has explicit counts.
 export function evidenceSearch(state,dir,query,{limit=8,byteBudget=12000,round=null}={}) {
  const terms=[...new Set(tokens(query??''))];
  if(!terms.length)throw Error('EVIDENCE_QUERY_EMPTY: supply a query with at least one word');
@@ -134,12 +201,16 @@ export function evidenceSearch(state,dir,query,{limit=8,byteBudget=12000,round=n
  if(round!==null&&!(Number.isSafeInteger(round)&&round>=0))throw Error('EVIDENCE_ROUND_INVALID');
  const docs=[],skipped=[];let total=0;
  for(const name of fs.readdirSync(dir).filter(f=>SEARCHABLE.test(f)).sort()){
-  if(round!==null&&roundOf(name)!==round)continue;
+  if(round!==null&&!name.startsWith('consult-result-')&&roundOf(name)!==round)continue;
   const a=artifact(dir,name);
   if(a.status!=='present'){skipped.push({file:name,reason:a.reason??a.status});continue;}
   if(total+a.bytes>MAX_TOTAL){skipped.push({file:name,reason:'total_budget'});continue;}
   total+=a.bytes;
-  chunks({file:name,sha256:a.sha256,round:roundOf(name)},a.value,docs);
+  const provenance=consultRound(state,dir,name,a.value);
+  if(provenance.reason){skipped.push({file:name,reason:provenance.reason});continue;}
+  if(round!==null&&provenance.round!==round)continue;
+  try{docs.push(...chunks({file:name,sha256:a.sha256,round:provenance.round},a.value,MAX_CHUNKS-docs.length));}
+  catch(e){skipped.push({file:name,reason:['depth_limit','chunk_limit'].includes(e.message)?e.message:'redaction_unsafe'});}
  }
  const tf=docs.map(d=>{const m=new Map();for(const t of tokens(`${d.pointer} ${d.text}`))m.set(t,(m.get(t)??0)+1);return m;});
  const lengths=tf.map(m=>[...m.values()].reduce((a,b)=>a+b,0)),avg=lengths.reduce((a,b)=>a+b,0)/(lengths.length||1);
@@ -155,13 +226,16 @@ export function evidenceSearch(state,dir,query,{limit=8,byteBudget=12000,round=n
   if(score>0)scored.push({...d,score:Math.round(score*1000)/1000});
  });
  scored.sort((a,b)=>b.score-a.score||a.file.localeCompare(b.file)||a.pointer.localeCompare(b.pointer));
- const hits=[],omitted=[];let used=0;
+ const out={revision:1,authoritative:false,task_id:state.task_id,query:terms,hits:[],omitted:[],omitted_count:0,
+  more_matches:Math.max(0,scored.length-limit),searched_files:new Set(docs.map(d=>d.file)).size,
+  skipped,skipped_count:skipped.length,metadata_omitted:{omitted:0,skipped:0},byte_budget:byteBudget,used_bytes:0,
+  note:'Display only. Read the evidence packet first; verify raw files by sha256. Metadata overflow is counted.'};
+ // Choose whole hits against the minimum envelope with explicit metadata counts.
+ // Final compaction retains individual metadata rows only while space permits.
  for(const h of scored.slice(0,limit)){
-  const size=Buffer.byteLength(JSON.stringify(h));
-  if(used+size<=byteBudget){hits.push(h);used+=size;}
-  else omitted.push({file:h.file,sha256:h.sha256,pointer:h.pointer,lines:h.lines,score:h.score});
+  out.hits.push(h);
+  const minimum={...out,omitted:[],skipped:[],metadata_omitted:{omitted:out.omitted_count,skipped:out.skipped_count}};
+  if(responseBytes(minimum)>byteBudget){out.hits.pop();out.omitted.push({file:h.file,sha256:h.sha256,pointer:h.pointer,lines:h.lines,score:h.score});out.omitted_count++;}
  }
- return {revision:1,authoritative:false,task_id:state.task_id,query:terms,hits,omitted,
-  more_matches:Math.max(0,scored.length-limit),searched_files:new Set(docs.map(d=>d.file)).size,skipped,byte_budget:byteBudget,used_bytes:used,
-  note:'Keyword retrieval cannot surface what was not asked for; read the evidence packet first. Text is redacted for display; verify against the raw file by sha256.'};
+ return boundedResponse(out,byteBudget);
 }

@@ -131,15 +131,38 @@ only `query` is required. Limits are 1–50 hits and 512–200000 bytes.
   `CHANGED_FILES_MISMATCH`, `ACCEPTANCE_TEST_CHANGED`, `CONTROLLER_ERRORS`,
   `REVIEW_VERDICT_DISAGREEMENT`, `SINGLE_REVIEWER_BLOCKING`,
   `REVIEW_SOURCE_WARNING`, `ARTIFACT_UNREADABLE`, `FINDING_LEDGER_UNAVAILABLE`).
-  Each carries the raw artifact name and SHA-256. More than 20 signals of one
-  code become an `omitted` count with source pointers. An empty list means no
+  Artifact-derived signals carry the raw artifact name and SHA-256.
+  State-derived controller errors name `/last_errors`, expose their full `count`
+  and explicit `omitted` count after the first five displayed errors. More than
+  20 signals of one code become an `omitted` count with source pointers. An empty list means no
   recognized signal, not a pass.
 - `evidence-search` builds an in-memory BM25 index on every call over
   controller-written results, acceptance, validation, review, lead and revision
   packets and briefs. Dispatch prompts and `state.json` are excluded. Files over
-  4 MiB, symlinks and unreadable JSON are listed in `skipped`. Text is redacted
-  with the transport rules before indexing and display. Whole hits beyond the
-  byte budget move to `omitted` with file, hash, JSON pointer and line range.
+  4 MiB, symlinks and unreadable JSON are listed in `skipped`; aggregate artifact
+  content is capped at 32 MiB. Consult results derive their round from a bounded,
+  validated consult assignment prompt (matching task, consult, member and assigned
+  reviewer for advisor, committee or review mode), rather than the consult number or a result-supplied round. Missing or
+  invalid provenance is skipped as `consult_provenance`; voided reviews are skipped.
+  Text uses the transport secret patterns and secret-field rules before indexing
+  and display, including plain values under `password`, `api_key` and token fields.
+  Unsafe field names are skipped as `redaction_unsafe` so their JSON pointers cannot
+  leak sensitive text. Raw files, hashes and JSON pointers remain unchanged.
+  Multiline masks preserve original newline counts: `lines` addresses the original
+  decoded JSON string at that pointer, not physical lines in serialized JSON.
+  Index traversal is iterative and bounded to depth 64, 5000 chunks per file and
+  20000 chunks per call. A file exceeding depth/chunk limits is skipped atomically
+  (`depth_limit`/`chunk_limit`), without retaining partial search evidence.
+- `byte_budget` bounds the complete compact UTF-8 JSON response, including query,
+  hits, `omitted`, `skipped`, counters and `used_bytes` itself. CLI search emits that
+  exact compact JSON without trailing whitespace. Whole hits are never truncated.
+  Omitted hits retain file, hash, JSON pointer and line range while space permits.
+  Evidence hits take priority over individual omission/skip metadata rows; when
+  those rows cannot fit, `metadata_omitted.omitted` and `.skipped` count the missing
+  rows. `omitted_count` and `skipped_count` always include both displayed and missing
+  rows; `more_matches` separately counts ranked matches beyond `limit`. Increase the
+  budget or narrow the query/round to recover more detail. Required response metadata
+  that cannot fit (for example a very long query) raises `EVIDENCE_RESPONSE_BUDGET`.
   Nothing is persisted, so there is no stale index to invalidate.
 - `benchmark.mjs compare-repeated` reports `defect_detection`
   (`planted`, `detected`, `missed`, `unknown`) per arm from an optional boolean

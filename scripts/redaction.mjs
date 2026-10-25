@@ -2,6 +2,7 @@ import {isIP} from 'node:net';
 
 const placeholder=kind=>`[REDACTED:${kind}]`;
 const SECRET_FIELD=/^(?:[\w.-]+[_-])?(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization|private[_-]?key)$/i;
+export const isSecretField=key=>SECRET_FIELD.test(key);
 const CONTROL_FIELD=new Set(['task_id','repo_root','round','id','member','file','files_read','files_changed','changed_files','paths','executor_bash_rules']);
 
 // 이미지 해상도 표기 파일명(icon@16.png, logo@2x.png, hero@1.5x.webp)은 이메일이 아니다. 도메인 자리가 "해상도 표기.이미지 확장자"이고,
@@ -12,34 +13,38 @@ const DENSITY_IMAGE_DOMAIN=/^\d+(?:\.\d+)?x?\.(?:png|apng|jpe?g|gif|webp|avif|bm
 const isImageDensityName=match=>DENSITY_IMAGE_DOMAIN.test(match.slice(match.lastIndexOf('@')+1));
 
 // Transport-only filtering. Local provenance artifacts stay unchanged; audit never stores originals.
-export function redactText(text,counts={}) {
+export function redactText(text,counts={}, {preserveLines=false}={}) {
+ // Evidence pointers refer to raw string line numbers, including masked blocks.
+ const replacement=(match,masked)=>preserveLines
+  ?masked+'\n'.repeat(Math.max(0,(match.match(/\n/g)??[]).length-(masked.match(/\n/g)??[]).length))
+  :masked;
  if(text.length>8*1024*1024)throw Object.assign(Error('Redaction text size limit exceeded'),{code:'REDACTION_UNSAFE'});
  const replace=(kind,pattern,filter=()=>true)=>{
   text=text.replace(pattern,match=>{
    if(!filter(match))return match;
    counts[kind]=(counts[kind]??0)+1;
-   return placeholder(kind);
+   return replacement(match,placeholder(kind));
   });
  };
  replace('private-key',/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z]+ )?PRIVATE KEY-----|$)/g);
  replace('api-key',/\b(?:sk-(?:ant-api\d+-|proj-)?[A-Za-z0-9_-]{16,}|xai-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{30,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16})\b/g);
  replace('token',/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g);
  text=text.replace(/(\b[a-z][a-z0-9+.-]{0,31}:\/\/)([^\s/@]+:[^\s/@]+)@/gi,(m,p)=>{
-  counts.secret=(counts.secret??0)+1;return p+placeholder('secret')+'@';
+  counts.secret=(counts.secret??0)+1;return replacement(m,p+placeholder('secret')+'@');
  });
  text=text.replace(/(\bBearer\s+)([A-Za-z0-9._~+\/-]+=*)/gi,(m,p)=>{
-  counts.token=(counts.token??0)+1;return p+placeholder('token');
+  counts.token=(counts.token??0)+1;return replacement(m,p+placeholder('token'));
  });
  // Quoted JSON/shell/diff assignments, including spaces inside quoted passwords.
  text=text.replace(/(\\"(?:[\w.-]{1,64}[_-])?(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization)\\"\s*:\s*\\")[\s\S]*?(\\")/gi,(m,p,end)=>{
-  counts.secret=(counts.secret??0)+1;return p+placeholder('secret')+end;
+  counts.secret=(counts.secret??0)+1;return replacement(m,p+placeholder('secret')+end);
  });
  text=text.replace(/((?:["']?\b(?:[\w.-]{1,64}[_-])?(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization)\b["']?)\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\s,;}&]+)/gi,(m,p,v)=>{
   // A preceding pass may have masked only part of this value. Mask the whole
   // assignment even when it already contains a placeholder (including user input).
   counts.secret=(counts.secret??0)+1;
   const quote=/^["']/.test(v)?v[0]:'';
-  return p+quote+placeholder('secret')+quote;
+  return replacement(m,p+quote+placeholder('secret')+quote);
  });
  replace('email',/[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?\.[A-Za-z]{2,63}/g,match=>!isImageDensityName(match));
  // IPv6, including compressed and IPv4-mapped forms. Validate candidates to avoid model/version matches.
@@ -65,7 +70,7 @@ export function redactValue(value,counts={},protectedValue=false,depth=0) {
  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>{
   const key=redactText(k,counts);
   if(key!==k)throw Object.assign(Error('Sensitive data in a transport field name'),{code:'REDACTION_UNSAFE'});
-  if(SECRET_FIELD.test(k)&&v!==null&&v!==undefined&&v!==''){
+  if(isSecretField(k)&&v!==null&&v!==undefined&&v!==''){
    counts.secret=(counts.secret??0)+1;return [k,placeholder('secret')];
   }
   return [k,redactValue(v,counts,protectedValue||CONTROL_FIELD.has(k),depth+1)];

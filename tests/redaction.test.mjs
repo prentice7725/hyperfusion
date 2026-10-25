@@ -99,3 +99,13 @@ test('real email addresses are still masked next to, or inside, image-like names
  // 실제 이메일이 든 파일명은 경로 필드에서 여전히 막힌다.
  assert.throws(()=>redactValue({scope:{paths:['alice@example.com.txt']}}),e=>e.code==='REDACTION_UNSAFE');
 });
+
+// Existing transport callers keep compact masks; evidence opts into raw line coordinates.
+test('line-preserving text redaction masks whole multiline secrets without shifting later evidence',()=>{
+ const input='header\n-----BEGIN PRIVATE KEY-----\nprivate body\n-----END PRIVATE KEY-----\npassword="first\nsecond"\nfailed later';
+ const masked=redactText(input,{},{preserveLines:true});
+ assert.equal(masked.split('\n').length,input.split('\n').length);
+ assert.equal(masked.split('\n')[6],'failed later');
+ for(const secret of ['private body','first','second'])assert.ok(!masked.includes(secret));
+ assert.ok(redactText(input).split('\n').length<input.split('\n').length);
+});

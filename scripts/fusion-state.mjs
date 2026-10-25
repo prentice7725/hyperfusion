@@ -2132,7 +2132,10 @@ async function cli() {
       input.executor=flags[1];
     }
     const out=action==='autopilot'?await (await import('./autopilot.mjs')).autopilot(root,input):await run(root,action,input);
-    console.log(JSON.stringify(full?out:compactView(action,out),null,2));
+    // Search budgets include the complete serialized response, so avoid pretty
+    // printing or a trailing newline that would exceed its measured byte count.
+    if(action==='evidence-search')process.stdout.write(JSON.stringify(out));
+    else console.log(JSON.stringify(full?out:compactView(action,out),null,2));
     }
   } catch(e){
     printError(e);
