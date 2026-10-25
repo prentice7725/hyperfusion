@@ -69,7 +69,7 @@ export function measure(root,observations=null) {
    const filled=s.lead_decision?.round===n?(s.lead_decision.lead_filled_seats?.length??0):0;
    return results.filter(r=>r.ok&&!r.superseded&&r.executor!==plan.owner).length+filled<plan.reviewers.filter(e=>e!=='lead').length;
   }):[],
-  task_kind:s.routing?.task_kind??null,difficulty:s.routing?.difficulty??null,diff_lines:diffLines(root,s),routing_mode:s.routing?.mode??null,routed_executor:s.routing?.executor??null,final_owner:s.owner??null,
+  task_kind:s.routing?.task_kind??null,difficulty:s.routing?.difficulty??null,diff_lines:diffLines(root,s),routing_mode:s.routing?.mode??null,coding_policy:s.configuration?.coding_policy??null,routed_executor:s.routing?.executor??null,final_owner:s.owner??null,
   // router 학습용. 어떤 일꾼이 어떤 판정을 받았는지.
   review_outcomes:(s.reviews??[]).map(r=>({owner:r.owner,verdict:r.verdict,round:r.round,reviewed_by:r.reviewed_by??'lead',...(r.overrode?{overrode:r.overrode}:{})})),
   // 리드가 직접 본 리뷰 대 위임 리뷰. 위임 비율이 오르면 Opus 토큰이 줄어야 한다.

@@ -6,6 +6,7 @@ import {validateLimits} from './budgets.mjs';
 import {MEMBERS} from './member-registry.mjs';
 import {validateVendors,assertVendor,vendorAllowed} from './vendor-policy.mjs';
 import {modelEffort,supportedAgyEfforts,selectAgyModel} from './adapters/agy-model.mjs';
+import {validCodingPolicy} from './coding-policy.mjs';
 
 // 리드는 Claude Opus 5.5 하나로 고정. 구현 일꾼은 Grok, Antigravity, Sonnet·Haiku(Claude Code), Luna(Codex).
 export const EXECUTORS=Object.keys(MEMBERS).filter(n=>MEMBERS[n].implement);
@@ -110,6 +111,7 @@ export function config(root) {
  const file=path.join(root,'hyperfusion.config.json');
  const v=fs.existsSync(file)?read(file):structuredClone(DEFAULT_CONFIG);
  if(v.allowed_vendors!==undefined)validateVendors(v.allowed_vendors);
+ validCodingPolicy(v.coding_policy);
  // Validate operator policy even if no particular executor is selected yet.
  vendorAllowed(v,'sol');
  const userRules=v.routing?.rules!==undefined;

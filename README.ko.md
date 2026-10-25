@@ -18,6 +18,7 @@ v0.27.0은 읽기 전용 진단·재개 패킷, 명시적으로 허가된 복구
 | 정적 의존성 (HF-I04) | `project.mjs schedule`, 고정 계획, CLOSE·통합 영수증과 체크포인트 확인. 구현은 직렬입니다. |
 | 읽기 전용 작업 (HF-I05) | 상담·리뷰 최대 2슬롯. 고정 범위와 필수 공통 근거를 유지합니다. |
 | 기억 (HF-I07) | 출처·버전 필터, 제한 회수, 후보 일괄 검토와 검색·유용성 관측을 구분합니다. |
+| 일꾼 코딩 정책 | 설정 `coding_policy:"ponytail"`로 구현 지시문에 고정 규칙을 덧붙입니다. 기본 꺼짐, 효과 미측정 ([설정](references/configuration.md#일꾼-코딩-정책-coding_policy)). |
 
 사용 안내: [재개·정산](references/reconciliation.md), [지적 원장](references/finding-ledger.md), [작업 계획](references/workflow-plan.md), [읽기 전용 작업](references/read-only-work.md), [기억 회수](references/memory-recall.md), [반복 벤치마크](references/benchmark-pilot.md).
 

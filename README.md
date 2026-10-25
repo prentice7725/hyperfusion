@@ -22,6 +22,7 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 | Static dependencies (HF-I04) | `project.mjs schedule`, frozen plans, CLOSE/integration receipts and checkpoint acknowledgment. Implementation stays serial. |
 | Read-only work (HF-I05) | At most two consultation/review slots with frozen scopes and complete mandatory coverage. |
 | Memory (HF-I07) | Source/version filters, bounded recall, candidate batch review and separate retrieval/usefulness observations. |
+| Worker coding policy | `coding_policy:"ponytail"` appends pinned rules to implementation prompts. Off by default; effect unmeasured ([configuration](references/configuration.md#일꾼-코딩-정책-coding_policy)). |
 
 Usage: [reconciliation](references/reconciliation.md), [findings](references/finding-ledger.md), [workflow plans](references/workflow-plan.md), [read-only work](references/read-only-work.md), [memory recall](references/memory-recall.md), [repeated benchmark](references/benchmark-pilot.md).
 

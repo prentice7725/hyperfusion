@@ -18,6 +18,7 @@ v0.27.0では読み取り専用の診断・再開パケット、明示的に許�
 | 静的依存関係 (HF-I04) | `project.mjs schedule`、固定計画、CLOSE・統合レシートとチェックポイント確認。実装は直列です。 |
 | 読み取り専用作業 (HF-I05) | 相談・レビューは最大2スロット。固定範囲と必須の共通証拠を維持します。 |
 | メモリ (HF-I07) | 出典・バージョンの絞り込み、制限付き検索、一括確認、取得と有用性の個別観測。 |
+| ワーカーのコーディング方針 | `coding_policy:"ponytail"`で実装指示に固定ルールを追加します。既定は無効、効果は未測定です（[設定](references/configuration.md#일꾼-코딩-정책-coding_policy)）。 |
 
 案内: [再開・精算](references/reconciliation.md)、[指摘台帳](references/finding-ledger.md)、[作業計画](references/workflow-plan.md)、[読み取り専用作業](references/read-only-work.md)、[メモリ検索](references/memory-recall.md)、[反復ベンチマーク](references/benchmark-pilot.md)。
 

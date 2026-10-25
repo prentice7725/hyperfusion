@@ -996,7 +996,8 @@ function begin(c,input) {
   const session=a?(s.sessions[owner]??a.newSession()):null;
   const resume=!!(a&&s.sessions[owner]);
   const promptFile=path.join(c.taskdir(),`prompt-${round}.txt`);
-  const brief={...input,repo_root:c.root,round};
+  // coding_policy는 작업 설정에서만 온다. 리드 브리프의 같은 키는 덮어쓴다.
+  const brief={...input,repo_root:c.root,round,coding_policy:s.configuration.coding_policy};
   const planned=implementDispatch(s,owner);
 
   // 프로브와 인자 검증은 lease 획득·시도 소모 전에 끝낸다.

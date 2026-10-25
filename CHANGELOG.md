@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- 선택적 일꾼 코딩 정책: 설정 `coding_policy:"ponytail"`이면 구현 라운드 지시문에 고정된 Ponytail 규칙(MIT, 커밋 고정, 결과 JSON과 충돌하는 문장 제거)을 덧붙이고 정책 id·해시를 프롬프트에, `coding_policy`를 지표에 남긴다. 생략·위험은 `risks`로 보고하게 한다. 기본은 꺼짐이며 리뷰·상담에는 붙이지 않는다. 효과는 미측정이다.
 - 지적 원장은 호출마다 디렉터리를 한 번만 읽어 해결 주석을 색인한다. 원본 해시·현재 라운드·수용/리뷰 근거는 여전히 매번 검증한다. 선택적 `tools/profile-controller.mjs`는 snapshot·ignoredManifest·원장 로컬 시간을 실측하고, 작업 유형별 brief 예시와 `tools/preflight-brief.mjs`는 기존 계약을 정적으로 검사한다. 모델 시간 절감·실행 자격·승인을 주장하거나 새 권한을 만들지 않는다.
 
 - 지원 Node를 24 이상으로 올렸다. `engines`, setup doctor 검사, CI 매트릭스(Ubuntu·Windows × Node 24)와 문서를 맞췄다. Node 20은 더 이상 검사하지 않는다.
