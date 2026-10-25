@@ -40,6 +40,7 @@ import {captureFindings,recordFindingMap,findingLedger,findingSummary,safeFindin
 import {evidencePacket,evidenceSearch} from './evidence-index.mjs';
 import {gateCollector} from './gate-diagnostics.mjs';
 import {resumePacket,inspectionControl} from './resume-packet.mjs';
+import {captureRoundBase,roundDelta} from './round-delta.mjs';
 import {sameFamily} from './review-plan.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation,PAIRED_REVIEW_POLICY} from './review-plan.mjs';
 
@@ -1030,6 +1031,8 @@ function begin(c,input) {
   c.save();
   c.art(`brief-${round}.json`,input);
   c.art(`base-${round}.json`,base);
+  // 재검수용 라운드 diff의 기준. 보조 기록이라 실패해도 라운드를 막지 않는다(round-diff가 미기록으로 알린다).
+  if(round>=2){try{c.art(`round-base-${round}.json`,captureRoundBase(c.root,base));}catch{}}
   // 수용 테스트를 돌릴 라운드는 무시된 파일의 기준선도 남긴다. 일꾼이 거기 코드를 심었는지 실행 전에 비교한다.
   if(input.acceptance_commands)c.art(`ignored-base-${round}.json`,ignoredManifest(c.root,input.acceptance_artifacts));
 
@@ -1863,7 +1866,8 @@ function nextStep(c) {
         then:'run the bridge in the output once, then consult-finish with {"quiescent":true}'})
       :step({step:'review the diff yourself',action:'review',command_line:line('review'),
         input:{verdict:'<pass|redo|alternative|decision>',rationale:'<text>',blocking_criteria:['<AC id: reason>'],commands_run:['git diff'],independent_diff_review:true},
-        pass_command_line:`${line('review',false)} --verdict pass --rationale "<text>" --command-run "git diff" --independent-diff-review`});}
+        pass_command_line:`${line('review',false)} --verdict pass --rationale "<text>" --command-run "git diff" --independent-diff-review`,
+        ...(s.iteration>=2?{round_delta:{command_line:line('round-diff',false),note:'read-only view of what changed since this round started; still review the cumulative diff before pass'}}:{})});}
   case 'LEAD_DECISION_REQUIRED':{
     const packet=s.lead_packet?.file?files(s.lead_packet.file):null;
     return step({step:'read the lead packet, then decide',...(packet?{read_first:packet}:{}),action:'lead-decision',command_line:line('lead-decision'),
@@ -1942,7 +1946,7 @@ async function reconcileUnlocked(root,input={}) {
 export function run(root,action,input={}) {
  root=repo(root);
  const file=controlPath(root,'workflow-parent.json');
- if(!fs.existsSync(file)||['status','report','next','findings','revision-packet','evidence','evidence-search','diagnose','resume'].includes(action)||action==='reconcile'&&input.apply!==true)return runUnlocked(root,action,input);
+ if(!fs.existsSync(file)||['status','report','next','findings','revision-packet','evidence','evidence-search','round-diff','diagnose','resume'].includes(action)||action==='reconcile'&&input.apply!==true)return runUnlocked(root,action,input);
  const binding=read(file),parent=repo(binding.source_root);
  if(parent===root)throw Error('WORKFLOW: invalid parent binding');
  const unlock=acquireLock(controlPath(parent,'locks/control.lock'));
@@ -1965,6 +1969,10 @@ function runUnlocked(root,action,input={}) {
     const c=inspectionControl(root);
     if(action==='evidence')return evidencePacket(c.s,c.taskdir());
     return evidenceSearch(c.s,c.taskdir(),input.query,{limit:input.limit??8,byteBudget:input.byte_budget??12000,round:input.round??null});
+  }
+  if(action==='round-diff'){
+    const c=inspectionControl(root);
+    return roundDelta(c.root,c.s,c.taskdir(),{charBudget:input.char_budget??60000});
   }
   // Inspection bypasses mutation hooks, acceptance recovery and lock creation.
   if(action==='resume')return resumePacket(root);
