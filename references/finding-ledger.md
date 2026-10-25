@@ -16,6 +16,10 @@ At review settlement the controller may capture hashes of up to five source line
 
 Context and location sidecars are presentation metadata. Raw review files reconstruct the ledger; missing or invalid metadata cannot remove a rejection. An observation failure does not change the controller's approval decision. There is no semantic/model deduplication, review-scope cache or automatic resolution.
 
+## Lead dispositions
+
+`lead-decision` may carry `finding_dispositions` that classify current-round findings as `act`, `consider`, `noted`, `dismissed` or `contract_misread`, each with a reason ([review-protocol](review-protocol.md)). The `@findings` packet omits `dismissed`/`noted` issues (listed in `withheld_by_lead`) and annotates the rest with the lead's note; blocking criteria are still forwarded. Dispositions do not change ledger `disposition`, approval or panel requirements.
+
 ## Record a fix
 
 `resolve-finding` accepts `{"finding_id":"F-…","reason":"…"}` using the normal JSON input argument. It requires a settled prior-digest finding with AC IDs, a current unchanged tree, new passing controller acceptance commands covering every finding AC with process shutdown proof, unchanged acceptance inputs, and current-digest review approval. It records an immutable annotation and does not approve or advance the task. Repeating the same annotation is idempotent. Changed evidence or a later round makes the annotation stale and the finding unresolved again.

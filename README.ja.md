@@ -1,54 +1,31 @@
 # HyperFusion
 
-v0.27.0では読み取り専用の診断・再開パケット、明示的に許可された復旧精算、レビュー指摘台帳、静的なタスク依存関係、制限付きの読み取り専用作業、出所を保持する記憶、反復A/Bベンチマークを追加します。リードがコントローラ操作に使うターンを減らし（オプション入力、ブリッジが出力するfinishコマンド、検証済みの簡単な作業のautopilot）、Windowsの監視が速くなりました。[復旧精算](references/reconciliation.md)、[作業計画](references/workflow-plan.md)、[記憶](references/memory.md)、[CHANGELOG](CHANGELOG.md)を参照してください。
-
 [English](README.md) | [한국어](README.ko.md) | 日本語
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.27.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.29.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
-## 未リリースのコントローラ改善
+## 最近の変更
 
-| 領域 | 入口と制限 |
-| --- | --- |
-| 停止理由・指標 (HF-I01) | 読み取り専用の `diagnose`、固定理由コード、観測時間・使用量。不明値は不明のままです。 |
-| 中断タスク (HF-I02) | 読み取り専用の `resume` と init で許可した明示的 `reconcile`。再起動や自動承認は行いません。 |
-| レビュー指摘 (HF-I03) | `findings`、`revision-packet`、`@findings`。表示をまとめても原証拠と必須レビューを維持します。 |
-| 静的依存関係 (HF-I04) | `project.mjs schedule`、固定計画、CLOSE・統合レシートとチェックポイント確認。実装は直列です。 |
-| 読み取り専用作業 (HF-I05) | 相談・レビューは最大2スロット。固定範囲と必須の共通証拠を維持します。 |
-| メモリ (HF-I07) | 出典・バージョンの絞り込み、制限付き検索、一括確認、取得と有用性の個別観測。 |
-| ワーカーのコーディング方針 | `coding_policy:"ponytail"`で実装指示に固定ルールを追加します。既定は無効、効果は未測定です（[設定](references/configuration.md#일꾼-코딩-정책-coding_policy)）。 |
+**0.29.0**
 
-案内: [再開・精算](references/reconciliation.md)、[指摘台帳](references/finding-ledger.md)、[作業計画](references/workflow-plan.md)、[読み取り専用作業](references/read-only-work.md)、[メモリ検索](references/memory-recall.md)、[反復ベンチマーク](references/benchmark-pilot.md)。
+- **レビュアーに結論を渡さない。** 委任レビュアーは、ワーカーの要約・テスト合格の報告・リスク評価や、以前のレビュアーの判定・理由を受け取りません。diff、ファイル、コントローラが自分で実行した受け入れ結果だけで判断します。→ [review（韓国語）](references/review-protocol.md)
+- **リードの指摘ごとの処分。** `lead-decision`で指摘ごとに`act`・`consider`・`noted`・`dismissed`・`contract_misread`と理由を残します。却下した指摘は次のワーカーに渡らず、指標がレビュアーごとの実効性（`actionable_rate`）を数えます。→ [review（韓国語）](references/review-protocol.md#지적별-처분-finding_dispositions-선택)
 
-新しい実行権限には明示的な許可が必要で、照会や指標は権限を与えません。並列実装(HF-I06)は基本改善から除外した別のドラフト実験です。実モデルの費用・時間削減は未測定で、プラットフォーム結果はPRの正確なコミットで確認します。詳細履歴は[CHANGELOG](CHANGELOG.md)を参照してください。
+**0.28.0**
+
+- **再レビュー用の`round-diff`。** 2ラウンド目から、今回のラウンドで変わった行だけを表示します。承認は引き続き累積diff全体が対象です。
+- **受け入れ失敗の抜粋。** 出力の末尾より前で最初に失敗した行とその後の数行を記録し、次ラウンドのフィードバックとリードの文脈に使います。
+- **リードガードがMCPツールも検査。** 読み取り専用と確認済みのツールと`HF_LEAD_MCP_ALLOW`に書いたツールだけが通ります。既存の導入では`npm run guard:settings`の`mcp__.*`項目をマージしてください。
+- **ワーカーのコーディング方針（オプトイン）。** `coding_policy:"ponytail"`で実装指示に固定ルールを追加します。既定は無効、効果は未測定です。→ [設定（韓国語）](references/configuration.md#일꾼-코딩-정책-coding_policy)
+- **実験ツール。** 読み取り専用の`evidence`・`evidence-search`（[設計と制約](references/evidence-retrieval-experiment.md)）と[コントローラのオーバーヘッド計測ツール](references/controller-overhead.md)。承認権限はありません。
+- **Node 24以上**が必要です。
 
 ## 作った理由
 
 1. **トークン節約。** 高価なモデル（Opus）がコードを書き、テストを回し、ログを読むのにトークンを使うのは無駄です。Opusは計画・差し戻し・最終検収だけを行い、実装とテストの反復はより安いモデルや別サブスクリプションのモデルが担当します。成功した作業あたりのOpusトークンを主要指標として計測し記録します。
 2. **相手にするのはリードだけ。** 複数のエージェントを一画面で管理するツールはすでにあります。このスキルは逆に、ユーザーが**Opus一人だけを相手にし、ワーカーの管理はOpusが行います。** ワーカーの「完了しました」は信用せず、空の差し戻しは許さず、具体的な指示書で詰め、同じミスを2回したら別のワーカーに交代させます。
-
-## AGYモデル系統とeffort (0.23.0)
-
-`executors.antigravity.model:"gemini-4-argon"`と`reasoning_effort:"high"`を別々に設定します。effortフラグを重複させず`gemini-4-argon-high`を選び、`-medium`で固定したモデルはmediumを維持します。明示的なeffortの矛盾は起動前に拒否します。任意の`models_by_difficulty`は実装の系統を選び、レビューは基本modelを使います。最終slugを`agy models`で確認し、利用できない組み合わせを別モデルに置き換えません。modelがなければeffortを渡さず記録もしません(agyはeffortをモデルIDから読みます)。modelなしで`reasoning_effort`だけを書くと`EFFORT_NEEDS_MODEL`です。既定値・アカウント設定は変更しません。`usage_by_model_effort`で選択した系統/強度を分け、未指定はnullです。→ [設定案内](references/configuration.md#agy-모델-계열과-effort-분리-argon)。実AGY推論・利用権限は未検証です。
-
-## Codexと送信ポリシーの改善 (0.22.0)
-
-CodexワーカーのJSONL thread・turn使用量を記録し、互換性のある`exec resume`フラグを確認できた場合だけ、タスク内の実装セッションを正確なIDで再開します。未対応版はstatelessのまま、レビューは新しい読み取り専用セッションです。cached inputはinputの一部なので加算しません。運用者専用のビルドキャッシュ・ネットワーク設定とClaude/Grokの難易度別ターン上限（既定40）は[Codex運用案内](references/codex-runtime.md)を参照してください。
-
-`allowed_vendors:["anthropic","openai"]`は実装・レビュー・相談をまとめて制限し、運用者の`HF_ALLOWED_VENDORS=anthropic,openai`はリポジトリ側で広げられない上限です。ブリッジも起動直前に再検査します。ファイアウォール・DLPや任意モデルoverrideのベンダー認証ではありません。built-inメタデータは`scripts/member-registry.mjs`に集約しましたが、新CLIには検証済みアダプターが必要です。classic lowコードの第一候補もLunaに合わせました。英語の[短い実行案内](references/executor-quickstart.md)を追加し、generic CLI/ACPと状態マシン全体の分割は未実装です。
-
-今後のローカルコミットはGitHubで確認したnoreplyアドレスをリポジトリ単位の`git config user.email`に設定します。既存の公開作成者情報は、明示的な履歴書き換え依頼なしでは削除しません。
-
-## 使用量の測定とインストール済みチーム (0.21.0)
-
-生成したフックがホストセッションを結び付け、Stop/SessionEnd/StopFailure時にローカルClaude Code transcriptのassistant使用量を自動収集します。実際のモデルごとにinput・output・cache read・cache creationを集計し、ストリーミングの重複メッセージや再開したセッションは一度だけ数えます。終了後最初のStopの最終報告まで含め、その後のプロンプトでは測定区間を延長しません。証拠がなければ未測定とし、明示的な`TASK_USAGE.json`の観測を優先します。クライアントの報告値であり、課金APIではありません。→ [指標ポリシー](references/metrics-policy.md)
-
-`node scripts/project.mjs draft REPO`（または`roster REPO --draft`）は、インストール済みチームと未導入メンバーの`excluded`理由を埋めた案を返します。構成案の提出・承認は未導入メンバーを拒否します。`setup-doctor.mjs`は設定変更や承認をせずプリセットを推薦します。Claude+Codexだけの環境の`claude-codex`プリセットはlowをLuna、medium/highの画像以外の作業をSonnetに割り当て、Sol/Sonnetが相互レビューします。プロジェクトのユーザー承認がコントローラによるSonnet実装grantを許可し、明示的な割り当ては維持されます。導入確認は認証や残量の検証ではありません。
-
-`node scripts/benchmark.mjs cases`は固定パイロット課題10件を表示します。`node scripts/benchmark.mjs compare BASELINE.json HYPERFUSION.json`は`case_id`、明示的な`success`、ホスト使用量とClaude合計トークンを含む実測のペア配列を比較します。失敗のコストも分子に入れ、ペア欠落・未測定・測定区間の不一致があれば削減率を出しません。モデル呼び出しは行いません。実モデルのパイロットは未実施なので、削減効果は主張しません。
-
 
 ## チーム
 
@@ -62,7 +39,7 @@ CodexワーカーのJSONL thread・turn使用量を記録し、互換性のあ�
 | Luna | gpt-6-luna（Codex） | 小規模な修正、機械的な大量編集、画像アセットの補助 |
 | Sol | gpt-6.1-sol（Codex） | 通常はレビュー・委員会相談。v0.3のAPEX承認ラウンドでのみ実装可能 |
 
-基本の配置は出発点です。プロジェクトごとにリードが変更し、種類・難易度別の実績に時間減衰と再探索を適用して配置を調整します。未インストールのワーカーは飛ばされます。実行前のCLI確認が一時的に失敗しても試行予算を消費せず再試行できます。担当ワーカーの実行ファイルがなくなった場合は別のワーカーに交代できます。
+基本の配置は出発点です。プロジェクトごとにリードが変更し、種類・難易度別の実績に時間減衰と再探索を適用して配置を調整します。未インストールのワーカーは飛ばされます。実行前のCLI確認が一時的に失敗しても試行予算を消費せず再試行でき、担当ワーカーの実行ファイルがなくなった場合は別のワーカーに交代できます。モデルIDは設定の既定値で、実際のCLI・アカウントでの利用可否は別途確認してください。
 
 ## 一つの作業の流れ
 
@@ -70,8 +47,8 @@ CodexワーカーのJSONL thread・turn使用量を記録し、互換性のあ�
 リード: 計画（brief＋受け入れコマンド）→ init → begin
 ワーカー: 単一writerとして実装 → 結果を報告
 コントローラ: finish（スナップショットdiff、受け入れテストの直接実行、プロセス停止の確認）
-レビュー: 実装していない別のモデルが読み取り専用で検討
-リード: 判定（pass / redo / alternative / decision / takeover）→ verify → CLOSE
+レビュー: 実装していない別のモデルが、ワーカーの主張なしに読み取り専用で検討
+リード: 指摘ごとの処分＋判定（pass / redo / alternative / decision / takeover）→ verify → CLOSE
 ```
 
 CLOSEまで到達して初めて成功です。どの段階でも、次に打つコマンドは`node scripts/fusion-state.mjs next <リポジトリ>`が教えてくれます。
@@ -80,35 +57,37 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 
 **配置とチーム**
 
-- **チーム編成 → 承認 → マイルストーン → チェックポイント。** 企画書を読んだリードが担当を決めたチームを報告し、承認前は作業が始まりません。マイルストーンが終わると報告し、確認を受けてから次へ進みます。→ [project](references/project.md)
-- **能力ベースの配置。** 名前ではなく能力（`caps`：code、ui、docs、image-gen…）で候補を絞り、自分のリポジトリでの実績（差し戻し率）で順番を決めます。既存アダプターのモデルID・能力は設定で変更できます。新しい提供元には別途アダプターの実装が必要です。実績のない新人にはときどき先に任せます。→ [routing](references/routing.md)
-- **契約スモーク。** `setup-doctor.mjs --smoke`がワーカーごとに一時リポジトリで小さな作業を実際に任せ、CLIフラグ・出力形式・結果契約が合っているか確かめます。CLI更新後に誰が壊れたかすぐ分かります。→ [operations](references/operations.md#doctor-계약-스모크)
+- **チーム編成 → 承認 → マイルストーン → チェックポイント。** 企画書を読んだリードが担当を決めたチームを報告し、承認前は作業が始まりません。`project.mjs draft`がインストール済みのメンバーで案を埋め、未導入のメンバーは拒否します。マイルストーンが終わると報告し、確認を受けてから次へ進みます。`project.mjs schedule`はタスクの依存関係を固定計画として管理します（実装は直列）。→ [project](references/project.md) · [作業計画](references/workflow-plan.md)
+- **能力ベースの配置。** 名前ではなく能力（`caps`：code、ui、docs、image-gen…）で候補を絞り、自分のリポジトリでの実績（差し戻し率）で順番を決めます。実績のない新人にはときどき先に任せます。既存アダプターのモデルID・能力は設定で変更でき、新しい提供元には別途アダプターの実装が必要です。→ [routing](references/routing.md)
+- **導入状況の点検と契約スモーク。** `setup-doctor.mjs`は設定を変えずに、インストール済みCLIに合うプリセットを推薦します。`--smoke`はワーカーごとに一時リポジトリで小さな作業を実際に任せ、CLIフラグ・出力形式・結果契約が合っているか確かめます。導入確認は認証や残量の検証ではありません。→ [operations](references/operations.md#doctor-계약-스모크)
 
 **ワーカーを信用せず確認する**
 
 - **ワーカーの言葉は信用しない。** 変更ファイルやテスト合格の主張は、スナップショットdiffとコントローラの再実行でのみ認めます。虚偽の申告は復旧段階に回されます。
 - **厳格な差し戻し。** 差し戻しには理由が必須で、再指示にはファイル・行単位の指示書が必須です。同じ受け入れ基準（AC1…）で2回差し戻されたらワーカーを交代します。ワーカーあたり3ラウンド、リードのtakeoverは全ワーカーが尽きた後の1回だけです。
 - **red-firstの受け入れテスト。** コントローラが受け入れコマンドを自分で実行します。開始時に手を付けていないツリーで失敗することを先に確かめ、最初から通ってしまう見せかけの関門を防ぎます。リファクタのように最初から通るのが正しい作業には**保存検証**（`verification:{kind:"preserve",protect:[...]}`）を使い、テストやフィクスチャが作業中に一度も変わっていないことをコントローラがスナップショットで証明します。
-- **AC追跡表とPR下書き。** `acceptance_map`で受け入れ基準（AC1…）とそれを証明するコマンドを結びます。完了時にAC別の判定表とPR説明の下書き（`pr-draft.md`）を残します。変更一覧は最初のワーカー開始時（`base-1`）からの最終的な累積差分です。途中で戻した変更は除き、ワーカーラウンドに帰属しないファイルは`unattributed_changes`として別に表示します。`verification.json`と`report`にも同じ一覧を記録します。コミット・プッシュは引き続きユーザーが指示します。
-- **レビュー委任。** ラウンドのレビューをSolなど別のモデルが読み取り専用で行い、判定を適用します。Opusがdiffを精読するトークンを節約できます。レビュアーにはdiff（最大100,000文字）とコントローラが自分で実行した受け入れテストの結果が渡され、シェルしかないCodexレビュアーも読み取り専用コマンドでファイルを開けます。実装したモデルは自分のレビューができません。→ [review](references/review-protocol.md)
-- **相談。** ワーカー1人（advisor）が先にdiffを検査するか、2人（committee）が繰り返す失敗の原因を分析します。読み取り専用で、相談前後のスナップショットで保証します。→ [consult](references/consult.md)
-- **ラウンド間の変更もレビュー。** 後続の`begin`は現在のツリーと直前の`post_digest`を比較します。スコープ内のファイルをBashで書いた場合も、不一致ならleaseや試行予算を消費する前に`RECOVERY_REQUIRED`で停止します。プリフライト中の変更も確認します。`recover`は確認済みのdigestを次の開始基準に更新し、累積レビューは復旧後に保持した変更も確認します。その変更をワーカーの実績としたり、自動承認したりはしません。最初の`begin`前にあったユーザー変更は保持します。→ [recovery](references/recovery-protocol.md)
+- **AC追跡表とPR下書き。** `acceptance_map`で受け入れ基準（AC1…）とそれを証明するコマンドを結びます。完了時にAC別の判定表とPR説明の下書き（`pr-draft.md`）を残します。変更一覧は最初のワーカー開始時（`base-1`）からの最終的な累積差分で、ワーカーラウンドに帰属しないファイルは`unattributed_changes`として別に表示します。コミット・プッシュはユーザーが指示します。
+- **独立したレビュー委任。** ラウンドのレビューをSolなど別のモデルが読み取り専用で行います。レビュアーには累積diff（最大100,000文字）とコントローラが実行した受け入れ結果が渡り、ワーカーの要約・テスト報告や以前のレビュアーの結論は渡りません。実装したモデルは自分のレビューができません。根拠（ファイル・行）のない差し戻しはそのまま適用されません。→ [review](references/review-protocol.md)
+- **指摘台帳とリードの処分。** レビューの指摘を原証拠とともに集め（`findings`）、リードが指摘ごとに処分と理由を残します。次のラウンドには`@findings`で受け入れた指摘だけを渡し、処分の記録はレビュアーごとの実効性の指標になります。表示をまとめても原証拠と必須レビューは維持されます。→ [指摘台帳](references/finding-ledger.md)
+- **相談。** ワーカー1人（advisor）が先にdiffを検査するか、2人（committee）が繰り返す失敗の原因を分析します。読み取り専用で、相談前後のスナップショットで保証します（同時に最大2スロット）。→ [consult](references/consult.md) · [読み取り専用作業](references/read-only-work.md)
+- **ラウンド間の変更もレビュー。** 後続の`begin`は現在のツリーと直前の`post_digest`を比較します。スコープ内のファイルをBashで書いた場合も、不一致ならleaseや試行予算を消費する前に`RECOVERY_REQUIRED`で停止します。復旧で保持した変更は累積レビューの対象になりますが、ワーカーの実績や自動承認とはしません。最初の`begin`前にあったユーザー変更は保持します。→ [recovery](references/recovery-protocol.md)
 
 **リードの負担を減らす**
 
 - **短い出力と`next`。** コマンドラインの出力は既定でcompact表示です（全体は`--full`）。`next`は今の段階で打つコマンド1行と、tokenやdigestのようにコントローラが知っている値をあらかじめ埋めた入力の雛形を返します。
-- **裁量権（オプトイン）。** リードがinitで作業単位に`delegation`を与えると、コントローラが条件をすべて確認できた場合にSTANDARDラウンドを承認し（`delegated-policy`として記録）、結果なしで一時障害により終わったワーカー実行を巻き戻して再試行し、終えられなかったレビュアーを別の会社のモデルに差し替えます。条件が一つでも足りなければリードゲートで止まります。裁量権のない作業はこれまで通り止まります。→ [universal-supervisor（韓国語）](references/universal-supervisor.md#위임-승인-재량권)
+- **診断と再開。** 読み取り専用の`diagnose`が停止理由を固定コードで、`resume`が中断した作業の次の手順を示します。精算（`reconcile`）はinitで許可した場合だけ明示的に実行します。→ [再開・精算](references/reconciliation.md)
+- **裁量権（オプトイン）。** リードがinitで作業単位に`delegation`を与えると、コントローラが条件をすべて確認できた場合にSTANDARDラウンドを承認し（`delegated-policy`として記録）、一時障害で結果なしに終わったワーカー実行を再試行し、終えられなかったレビュアーを別の会社のモデルに差し替えます。条件が一つでも足りなければリードゲートで止まります。→ [universal-supervisor（韓国語）](references/universal-supervisor.md#위임-승인-재량권)
 - **オートパイロット。** `autopilot`がラウンド実行と独立した委任レビューを自動で進めます（下の[インストールと使い方](#インストールと使い方)）。`report`の`lead_load`は、リードが自分で下した判定の数、コントローラが承認した数、リードが読む必要があったゲートの数、自動・手動の復旧の数を示します。
-- **要約の後も続けられる。** リードガードのSessionStartフックが、会話が要約されたときや新しいセッションの開始時に、進行中の作業と次のコマンドを一度だけ知らせます。作業がなければ何も入れません。
-- **作業状態の一行。** `fusion-state.mjs line`、UserPromptSubmitフック、プロンプト上のバンドモッド（`mods/hf-status`）が、同じ一行でフェーズ・ワーカーのラウンド・次の操作を表示します。リードに尋ねる必要はありません。[運用説明](references/operations.md#작업-상태-표시)
-- **内蔵の記憶層。** 試行錯誤（エラー、手順、経験）を外部サーバーなしでローカルに蓄積し、次のセッションや他のワーカーに引き継ぎます。書き込みも読み取りもリードの承認を通り、秘密値は保存しません。→ [memory](references/memory.md)
+- **要約の後も続けられる。** リードガードのSessionStartフックが、会話が要約されたときや新しいセッションの開始時に、進行中の作業と次のコマンドを一度だけ知らせます。
+- **作業状態の一行。** `fusion-state.mjs line`、UserPromptSubmitフック、プロンプト上のバンドモッド（`mods/hf-status`）が、同じ一行でフェーズ・ワーカーのラウンド・次の操作を表示します。→ [運用説明](references/operations.md#작업-상태-표시)
+- **内蔵の記憶層。** 試行錯誤（エラー、手順、経験）を外部サーバーなしでローカルに蓄積し、次のセッションや他のワーカーに引き継ぎます。書き込みも読み取りもリードの承認を通り、出典・バージョンで絞り込みます。秘密値は保存しません。→ [memory](references/memory.md) · [メモリ検索](references/memory-recall.md)
 - **通知。** `HF_NOTIFY_URL`（例：ntfy）で、ワーカーの完了やリードの判断が必要な時にスマホへプッシュ通知を受け取れます。本文は状態だけです。
 
 **安全と監査**
 
 - **単一writerと監査記録。** 同時に書くのは一人だけで、ラウンドごとにスナップショットと成果物が残ります。中断しても復旧手順で再開できます。自動のcommit・push・デプロイはありません。
-- **リードガードフック。** leaseが掛かっている間やワーカーの予算が残っている間はリードのEdit/Writeをブロックし（PreToolUse）、リードの番の作業を残したままターンを終えようとすると一度止めます（Stop）。このフックはBashの書き込みを止めず、スナップショットとラウンド間のdrift検査が変更を確認します。→ [operations（韓国語）](references/operations.md#리드-가드-훅)
-- **独立worktreeと作業上限。** 作業ごとに状態とwriter leaseを分離して並列実行し、報告された費用と経過時間に上限を設けます。結果は個別に検収してから統合します。→ [並列実行・上限（韓国語）](references/operations.md)
+- **リードガードフック。** leaseが掛かっている間やワーカーの予算が残っている間はリードのEdit/Writeと書き込み可能なMCPツールをブロックし（PreToolUse）、リードの番の作業を残したままターンを終えようとすると一度止めます（Stop）。Bashの書き込みはこのフックではなく、スナップショットとラウンド間のdrift検査が確認します。→ [operations（韓国語）](references/operations.md#리드-가드-훅)
+- **独立worktreeと作業上限。** 作業ごとに状態とwriter leaseを分離し、報告された費用と経過時間に上限を設けます。結果は個別に検収してから統合します。→ [並列実行・上限（韓国語）](references/operations.md)
 - **Linux・macOS・Windows対応。**
 
 ## v0.3: External-Firstと共通監視（オプトイン）
@@ -117,8 +96,9 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 
 - **External-First配置。** 自動実装はGrok・Antigravity・Lunaが担当します。Sonnet（重要/再割り当てラウンド）とSol（APEXラウンド）はラウンドごとのgrantがある場合のみ実装し、自動フォールバックや新人優遇はこの2つを選びません。
 - **作者別のレビュー。** 通常作業は独立レビュアー1名、重要・明示的な二重レビュー・リスクパスは下表のペアが独立・並列に検証します。実装者の自己レビューは禁止です。差し替えには理由が必要で、既存のNGは別のPASSで消えません。不一致・欠落はリード判断に残します。以前の割り当てと承認済みのGrokなしチームは従来の規則を維持します。
+- **最終リードゲート。** 結果は`LEAD_DECISION_REQUIRED`で止まります。`auto_apply`、レビュー採用、オートパイロットでは飛ばせず、作業単位の裁量権だけがポリシー承認を許可します。
 - **共通ローカル監視。** すべてのimplement/review/consult呼び出しを同じsupervisorが観測します（`status --monitor`、`monitor --once|--watch`）。無信号はQUIET警告にとどまり、進捗や成功を生成しません。監視でモデルは呼びません。
-- **使用量の計測とクォータ。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で記録します。運用者が直接書き込む（`record`）か、Codexが自分のセッション記録に残した`rate_limits`を読んでopenaiの残量を記録します（`collect-codex`、ネットワークもモデルも使いません）。記録は出所と有効期限が過ぎると「不明」として扱います。
+- **使用量の計測とクォータ。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で、運用者が直接書き込む（`record`）か、Codexのセッション記録の`rate_limits`を読んで記録します（`collect-codex`、ネットワークもモデルも使いません）。出所と有効期限が過ぎた記録は「不明」として扱います。
 - **既定の推論強度。** Sonnet high、Haiku max、Antigravity high、Grok medium、Luna xhigh、Sol medium。Grokの実装・通常の相談は明示設定がなければmedium、指定されたadaptiveペアレビュー席だけxhighです。`reasoning_effort:null`は通常フラグの省略で、必須レビュー役割の強度は解除しません。
 
 | 実装者 | 重要・二重・リスクパスのレビューペア |
@@ -128,15 +108,25 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 | AGY / Haiku / 承認済みSonnet | Sol medium + Grok xhigh |
 | 承認済みAPEX Sol | ペア委任ではなくリードの直接レビュー |
 
-リードはinitの承認済み指示書で重要度・戦略を決め、`review_preview`を確認します。根拠のある全員NGだけがinitで付与された`redo_delegation`で再作業に戻り、意見の不一致はリードが判断します。全員PASSも別途適格な承認委任がなければリードに報告します。[詳細](references/review-pairs.md)。
-- ホストが本当にOpusかは認証できないため、`authority.model_verified:false`として記録します。
+リードはinitの承認済み指示書で重要度・戦略を決め、`review_preview`を確認します。根拠のある全員NGだけがinitで付与された`redo_delegation`で再作業に戻り、意見の不一致はリードが判断します。全員PASSも別途適格な承認委任がなければリードに報告します。ホストが本当にOpusかは認証できないため、`authority.model_verified:false`として記録します。→ [詳細](references/review-pairs.md)
+
+## ベンダー・モデル設定
+
+- **AGYモデル系統とeffort。** `executors.antigravity.model:"gemini-4-argon"`と`reasoning_effort:"high"`を別々に設定すると`gemini-4-argon-high`を選びます。接尾辞で固定したモデルはその強度を維持し、矛盾するeffortは起動前に拒否します。最終slugを`agy models`で確認し、利用できない組み合わせを別モデルに置き換えません。→ [設定案内](references/configuration.md#agy-모델-계열과-effort-분리-argon)
+- **Codex。** JSONL thread・turn使用量を記録し、互換性のある`exec resume`フラグを確認できた場合だけ、タスク内の実装セッションを正確なIDで再開します。レビューは毎回新しい読み取り専用セッションです。運用者専用のビルドキャッシュ・ネットワーク設定とClaude/Grokのターン上限は[Codex運用案内](references/codex-runtime.md)を参照してください。
+- **ベンダー制限。** `allowed_vendors:["anthropic","openai"]`は実装・レビュー・相談をまとめて制限し、運用者の`HF_ALLOWED_VENDORS`はリポジトリ側で広げられない上限です。ブリッジも起動直前に再検査します。ファイアウォール・DLPやベンダー認証ではありません。新CLIには検証済みアダプターが必要です（`scripts/member-registry.mjs`）。
+
+## 測定
+
+- **リードの使用量。** 生成したフックがStop/SessionEnd/StopFailure時にローカルClaude Code transcriptから実際のモデルごとの使用量を収集します。証拠がなければ未測定とし、明示的な`TASK_USAGE.json`の観測を優先します。クライアントの報告値であり、課金APIではありません。→ [指標ポリシー](references/metrics-policy.md)
+- **ベンチマーク。** `benchmark.mjs cases`は固定パイロット課題を、`compare BASELINE.json HYPERFUSION.json`は実測のペア指標を比較します。失敗のコストも分子に入れ、ペア欠落・未測定があれば削減率を出しません。実モデルのパイロットは未実施なので、削減効果は主張しません。→ [反復ベンチマーク](references/benchmark-pilot.md)
 
 ## セキュリティ
 
 ワーカーがユーザーのファイルを勝手に触れないよう、何層かで防ぎます。ただしこれは**協調的な統制であり、OSのサンドボックスではありません。**
 
 - 制御ファイル（状態、brief、スナップショット）は作業フォルダの外`~/.hyperfusion/state/`に置きます（`HF_STATE_DIR`で変更）。ワーカーが自分で範囲を広げることはできません。
-- スナップショットは`.git`の設定・フック、リンクworktreeの専用`config.worktree`、`.env`、無視された`.gitignore`、`node_modules/.bin`、agyのworkspaceフォルダ(`.agents/`・`.agent/`・`_agents/`・`_agent/`。agyがラウンド中に実行するフックとスキル)まで見ます。コントローラのgitは呼び出し直前にinclude・条件付きinclude・worktreeを含む実際の適用設定を読み直し、実行可能なドライバーを無効化します。設定を読めなければ`GIT_CONFIG_UNREADABLE`で停止し、ドットを含むドライバー・条件付きinclude名も検査します。安全性のため設定照会プロセスは増えますが、HEADと両Gitフォルダは引き続き1回のrev-parseで取得します。
+- スナップショットは`.git`の設定・フック、リンクworktreeの専用`config.worktree`、`.env`、無視された`.gitignore`、`node_modules/.bin`、agyのworkspaceフォルダ(`.agents/`・`.agent/`・`_agents/`・`_agent/`)まで見ます。コントローラのgitは呼び出し直前にinclude・条件付きinclude・worktreeを含む実際の適用設定を読み直し、実行可能なドライバーを無効化します。設定を読めなければ`GIT_CONFIG_UNREADABLE`で停止します。
 - ブリッジは実行直前にリクエストを再生成して照合します。ワーカーには必要な環境変数だけを渡します。
 - Bashの許可ルールはテスト・lint・ビルドの形だけを受け付けます。サンドボックス解除などの緩和は、リポジトリ設定ではなくオペレーターの環境変数でのみ有効にします（[configuration](references/configuration.md#보안-관련-환경변수)）。
 - 読み取り専用の相談・レビューは、ツールのサンドボックスではなく前後のスナップショット比較で保証します（破った回答は捨てます）。Antigravityの`--sandbox`はターミナルだけを制限し、ファイル書き込みツールは止められません。
@@ -145,7 +135,7 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 
 ## インストールと使い方
 
-必要なもの：Node.js 24+、`git config --show-scope --includes`をサポートするGit、**初期コミットのあるGitリポジトリ**（リモートなしのローカル専用でも可）、インストール・認証済みの`claude`、`grok`、`agy`、`codex`のうち1つ以上。表のモデルIDは設定の既定値です。実際のCLI・アカウントでの利用可否を確認してください。
+必要なもの：Node.js 24+、`git config --show-scope --includes`をサポートするGit、**初期コミットのあるGitリポジトリ**（リモートなしのローカル専用でも可）、インストール・認証済みの`claude`、`grok`、`agy`、`codex`のうち1つ以上。
 
 ```sh
 # Linux / macOS
@@ -176,17 +166,18 @@ Claude CodeでOpus 5.5を選び：
 
 ## ドキュメント
 
-ドキュメントの本文は韓国語です。最初は[runtime](references/runtime.md)（コマンド）と[configuration](references/configuration.md)（設定）から読んでください。
+ドキュメントの本文は韓国語です。最初は[runtime](references/runtime.md)（コマンド）と[configuration](references/configuration.md)（設定）から読んでください。リード向けの英語の要約は[executor-quickstart](references/executor-quickstart.md)です。
 
 | テーマ | ドキュメント |
 |---|---|
 | 状態とコマンド | [runtime](references/runtime.md) · [state-actions](references/state-actions.md)（自動生成） · [state-schema](references/state-schema.json) · [operations](references/operations.md)（運用・オートパイロット・フック・受け入れテスト） |
-| 設定 | [configuration](references/configuration.md)（環境変数を含む） |
+| 設定 | [configuration](references/configuration.md)（環境変数を含む） · [codex-runtime](references/codex-runtime.md) |
 | ワーカー | [executor-runtime](references/executor-runtime.md)（Windows含む） · [routing](references/routing.md) |
 | 契約 | [delegation-protocol](references/delegation-protocol.md)（brief） · [result-protocol](references/result-protocol.md) |
-| 検収 | [review-protocol](references/review-protocol.md) · [consult](references/consult.md) · [universal-supervisor](references/universal-supervisor.md)（v0.3・裁量権） |
-| 失敗と復旧 | [failure-protocol](references/failure-protocol.md) · [recovery-protocol](references/recovery-protocol.md) |
-| プロジェクト・記憶・指標 | [project](references/project.md) · [memory](references/memory.md) · [metrics-policy](references/metrics-policy.md) |
+| 検収 | [review-protocol](references/review-protocol.md) · [review-pairs](references/review-pairs.md) · [finding-ledger](references/finding-ledger.md) · [consult](references/consult.md) · [read-only-work](references/read-only-work.md) · [universal-supervisor](references/universal-supervisor.md)（v0.3・裁量権） |
+| 失敗と復旧 | [failure-protocol](references/failure-protocol.md) · [recovery-protocol](references/recovery-protocol.md) · [reconciliation](references/reconciliation.md) |
+| プロジェクト・記憶・指標 | [project](references/project.md) · [workflow-plan](references/workflow-plan.md) · [memory](references/memory.md) · [memory-recall](references/memory-recall.md) · [metrics-policy](references/metrics-policy.md) · [benchmark-pilot](references/benchmark-pilot.md) |
+| 実験ツール | [evidence-retrieval-experiment](references/evidence-retrieval-experiment.md) · [controller-overhead](references/controller-overhead.md) |
 | 設計メモと過去の記録 | [app-handoff-design](references/app-handoff-design.md)（後続設計） · [archive](references/archive/README.md)（時点ごとの検証・監査記録） |
 
 ## テストと制約
@@ -195,9 +186,9 @@ Claude CodeでOpus 5.5を選び：
 npm test
 ```
 
-自動テストが、状態機械、ワーカーアダプタ、配置、レビュー委任、裁量権と自動復旧、記憶層、プロジェクトの流れ、セキュリティ、マスキングとオートパイロットを確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 24で実行する構成です。Windowsではテストファイルを順次実行し（他のOSは並列度2）、実際に孤児プロセスを作る回帰テストは並列テストの後に別途実行して、プロセス一覧の干渉を避けます。Windowsではプロセスの生成回数がそのまま時間になるため、`npm run spawns`がテスト（または指定したコマンド）の作る子プロセスをコマンド別・呼び出し箇所別に数えて表示します。
+自動テストが、状態機械、ワーカーアダプタ、配置、レビュー委任、裁量権と自動復旧、記憶層、プロジェクトの流れ、セキュリティ、マスキングとオートパイロットを確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 24で実行する構成です。Windowsではテストファイルを順次実行し（他のOSは並列度2）、実際に孤児プロセスを作る回帰テストは並列テストの後に別途実行します。`npm run spawns`がテスト（または指定したコマンド）の作る子プロセスをコマンド別・呼び出し箇所別に数えます。
 
-**テストの`grok`/`agy`/`claude`/`codex`は代役のCLIです。** 実際のモデル呼び出し、認証、画像生成は、このリポジトリのテストでは検証されていません。インストール済みCLIに必要なフラグがない場合は、実行前に`ADAPTER_UNAVAILABLE`で拒否します。CLIフラグは[Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)、[Antigravity CLI](https://antigravity.google/docs/cli/headless)、[Claude Code](https://code.claude.com/docs/en/headless)のドキュメントを基準にしています。裁量権の自動復旧が「やり直しても同じ失敗」を見分ける文言判定も代役CLIが基準なので、実際のCLIでは最初の数回、`recovery-*.json`の`reason`を確認することをおすすめします。
+**テストの`grok`/`agy`/`claude`/`codex`は代役のCLIです。** 実際のモデル呼び出し、認証、画像生成は、このリポジトリのテストでは検証されていません。インストール済みCLIに必要なフラグがない場合は、実行前に`ADAPTER_UNAVAILABLE`で拒否します。CLIフラグは[Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)、[Antigravity CLI](https://antigravity.google/docs/cli/headless)、[Claude Code](https://code.claude.com/docs/en/headless)のドキュメントを基準にしています。裁量権の自動復旧が「やり直しても同じ失敗」を見分ける文言判定も代役CLIが基準なので、実際のCLIでは最初の数回、`recovery-*.json`の`reason`を確認することをおすすめします。実モデルの費用・時間削減は未測定です。
 
 ライセンスは[MIT](LICENSE)。
 
@@ -206,3 +197,6 @@ npm test
 - [Orca](https://github.com/stablyai/orca)、[Paseo](https://github.com/getpaseo/paseo)：advisor/committee、行単位のフィードバック、通知。worktree競争は単一作業ツリーの原則と合わないため取り入れていません。
 - [AnchorMind](https://github.com/jinho-von-choi/memento-mcp)：記憶層の設計（重複統合、矛盾レビュー、減衰、出典表示）。接続はせず、設計だけを取り入れて自前で実装しました。
 - [cli-dispatch](https://github.com/rbinar/cli-dispatch)：他社のCLIに仕事を任せる似たプラグイン。agyのモデル名検証、コンパクション後の状態注入、Codex残量の読み取りを参考にしました。worktreeのパッチ方式は単一writerの原則と合わないため取り入れていません。
+- [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills)：doubt-driven developmentから「レビュアーに主張を渡さない」と指摘の分類（契約の誤読・対応・トレードオフ・ノイズ）を取り入れました。
+- [cursor/plugins pstack](https://github.com/cursor/plugins/tree/main/pstack)：interrogateのリード判断（Act on / Consider / Noted / Dismissed、却下理由の公開）を指摘ごとの処分に反映しました。
+- [mattpocock/skills](https://github.com/mattpocock/skills)：規約軸と仕様軸を分けたレビュー、依存グラフによる作業分解を検討しました。並列実装は単一writerの原則と合わないため取り入れていません。
