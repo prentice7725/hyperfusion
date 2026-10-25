@@ -53,6 +53,15 @@ test('failed, truncated, unquiet and tree-changing acceptance runs are all surfa
  assert.equal(packet.signals.find(s=>s.code==='OUTPUT_TRUNCATED').output_bytes,90000);
 });
 
+test('a failure excerpt from before the tail is pushed with the failed command, masked',t=>{
+ const f=setup(t);
+ put(f.dir,'acceptance-1-finish.json',{...passing,status:'fail',results:[{command:'node t.mjs',status:'fail',exit_code:1,output_bytes:90000,
+  output_tail:'ok 99 - fine',output_failure_line:12,output_failure_excerpt:'not ok 3 - token api_key=plain-head-secret\n  at a.js:1'}]});
+ const failed=evidencePacket(f.state,f.dir).signals.find(s=>s.code==='ACCEPTANCE_FAILED');
+ assert.equal(failed.first_failure,null);assert.equal(failed.head_failure.output_line,12);
+ assert.match(failed.head_failure.text,/^not ok 3 - token/);assert.doesNotMatch(JSON.stringify(failed),/plain-head-secret/);
+});
+
 test('worker environment failures, reported failures, open items and file mismatches are pushed',t=>{
  const f=setup(t);put(f.dir,'acceptance-1-finish.json',passing);
  put(f.dir,'raw-result-1.json',{status:'complete',files_changed:['a.txt','ghost.txt'],unresolved:['edge case'],risks:[],needs_lead_decision:false,

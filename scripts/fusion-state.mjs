@@ -1202,7 +1202,8 @@ function acceptanceContext(c,brief,known=null) {
     note:'The controller itself ran these commands on the worker\'s tree; they are not worker claims. current:true means the tree has not changed since. A pass proves only what the commands test: still check every success criterion in the code.',
     ...(record.reason?{reason:record.reason}:{}),
     results:(record.results??[]).map(r=>({command:r.command,status:r.status,exit_code:r.exit_code,timed_out:r.timed_out===true,
-      output_tail:String(r.output_tail??'').slice(-CONTEXT_OUTPUT_TAIL)}))};
+      output_tail:String(r.output_tail??'').slice(-CONTEXT_OUTPUT_TAIL),
+      ...(typeof r.output_failure_excerpt==='string'?{output_failure_line:r.output_failure_line??null,output_failure_excerpt:r.output_failure_excerpt.slice(0,CONTEXT_OUTPUT_TAIL)}:{})}))};
 }
 
 // 수용 테스트를 실행하고 기록한다. reference는 비교할 무시된 파일 목록(라운드 시작 또는 직전 실행 후).
