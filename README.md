@@ -4,6 +4,8 @@ v0.27.0 adds read-only diagnostics and resume packets, explicitly granted recove
 
 Evidence retrieval experiment (unreleased): read-only `evidence REPO` pushes controller-detected risk signals with raw artifact hashes, and `evidence-search REPO QUERY.json` runs a bounded, redacted keyword search over controller evidence. Neither participates in approval. See [experiment design and limits](references/evidence-retrieval-experiment.md).
 
+Optional [controller overhead tools](references/controller-overhead.md) measure local inspection time and statically check task briefs without launching models or acceptance commands.
+
 English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.

@@ -1,0 +1,31 @@
+{
+  "task_id": "HF-example-bugfix",
+  "objective": "Fix empty-input handling in the parser using the existing regression contract.",
+  "scope": {
+    "paths": [
+      "src/parser.mjs"
+    ]
+  },
+  "constraints": [
+    "Preserve public API and existing user edits",
+    "Keep tests/parser.contract.test.mjs unchanged"
+  ],
+  "success_criteria": [
+    "AC1: empty input returns a controlled validation error"
+  ],
+  "allowed_actions": [
+    "read",
+    "edit",
+    "test"
+  ],
+  "task_kind": "code",
+  "difficulty": "low",
+  "acceptance_commands": [
+    "node --test tests/parser.contract.test.mjs"
+  ],
+  "acceptance_map": {
+    "AC1": [
+      "node --test tests/parser.contract.test.mjs"
+    ]
+  }
+}

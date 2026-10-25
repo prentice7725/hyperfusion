@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 지적 원장은 호출마다 디렉터리를 한 번만 읽어 해결 주석을 색인한다. 원본 해시·현재 라운드·수용/리뷰 근거는 여전히 매번 검증한다. 선택적 `tools/profile-controller.mjs`는 snapshot·ignoredManifest·원장 로컬 시간을 실측하고, 작업 유형별 brief 예시와 `tools/preflight-brief.mjs`는 기존 계약을 정적으로 검사한다. 모델 시간 절감·실행 자격·승인을 주장하거나 새 권한을 만들지 않는다.
+
 - 지원 Node를 24 이상으로 올렸다. `engines`, setup doctor 검사, CI 매트릭스(Ubuntu·Windows × Node 24)와 문서를 맞췄다. Node 20은 더 이상 검사하지 않는다.
 - 증거 회수 실험 도구: 읽기 전용 `evidence`는 수용 실패·출력 잘림·환경 실패·변경 파일 불일치·리뷰 판정 불일치·단독 차단 지적 등 위험 신호를 원본 산출물 해시와 함께 항상 올린다. `evidence-search`는 컨트롤러 증거를 매 호출 메모리 BM25로 검색하며 마스킹·바이트 예산·생략 포인터를 적용한다. 반복 A/B 비교에 `buried_defect_detected` 집계를 추가했다. 승인 권한·상태 변경은 없고 실모델 절감 효과는 미측정이다.
 
