@@ -100,6 +100,7 @@ export function runCommands(root,commands,{timeout_ms=600000,deadline_ms=null}={
 export function failureFeedback(results) {
  return results.filter(r=>r.status!=='pass').map(r=>{
   const why=r.timed_out?'timed out':r.error?`could not start (${r.error})`:`exited with ${r.exit_code}${r.signal?' / '+r.signal:''}`;
-  return `Acceptance command \`${r.command}\` ${why}. Make it pass. Output tail:\n${r.output_tail.trim()||'(no output)'}`;
+  const first=r.output_failure_excerpt?`First failure before the tail (output line ${r.output_failure_line}):\n${r.output_failure_excerpt.trim()}\n`:'';
+  return `Acceptance command \`${r.command}\` ${why}. Make it pass. ${first}Output tail:\n${r.output_tail.trim()||'(no output)'}`;
  });
 }

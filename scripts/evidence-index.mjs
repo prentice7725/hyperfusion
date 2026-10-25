@@ -7,6 +7,7 @@ import {hash} from './artifact.mjs';
 import {environmentFailure} from './contracts.mjs';
 import {findingLedger} from './finding-ledger.mjs';
 import {redactText,isSecretField} from './redaction.mjs';
+import {FAILURE} from './output-excerpt.mjs';
 
 const MAX_FILE=4*1024*1024,MAX_TOTAL=32*1024*1024,SIGNAL_LIMIT=20,MAX_DEPTH=64,MAX_FILE_CHUNKS=5000,MAX_CHUNKS=20000;
 const mask=s=>redactText(String(s??''),{},{preserveLines:true});
@@ -19,7 +20,6 @@ function display(value,key='',depth=0) {
  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,display(v,k,depth+1)]));
  return value;
 }
-const FAILURE=/\b(?:not ok|fail(?:ed|ure|ures|ing)?|errors?|assert(?:ion)?(?:error)?|exception|panic(?:ked)?|traceback)\b/i;
 
 // Bounded, symlink-free JSON read that also returns the raw SHA-256 for pointers.
 function artifact(dir,name) {
@@ -60,9 +60,10 @@ export function evidencePacket(state,dir) {
   if(Array.isArray(acc.tree_changed)&&acc.tree_changed.length)add('ACCEPTANCE_TREE_CHANGED',{paths:acc.tree_changed.slice(0,10).map(p=>clip(p,200)),count:acc.tree_changed.length},accA);
   for(const [index,r] of (Array.isArray(acc.results)?acc.results:[]).entries()){
    const tail=String(r?.output_tail??'');
-   // The controller keeps only an output tail; a failure before it is not recoverable here.
+   // The controller keeps an output tail plus the first failure excerpt before it; other earlier lines are not recoverable here.
    if(Number.isSafeInteger(r?.output_bytes)&&r.output_bytes>Buffer.byteLength(tail))add('OUTPUT_TRUNCATED',{command:clip(r.command,200),result_index:index,output_bytes:r.output_bytes,tail_bytes:Buffer.byteLength(tail),output_sha256:r.output_sha256??null},accA);
-   if(r?.status!=='pass')add('ACCEPTANCE_FAILED',{command:clip(r?.command,200),result_index:index,status:r?.status??null,exit_code:r?.exit_code??null,timed_out:r?.timed_out===true,first_failure:firstFailure(tail)},accA);
+   if(r?.status!=='pass')add('ACCEPTANCE_FAILED',{command:clip(r?.command,200),result_index:index,status:r?.status??null,exit_code:r?.exit_code??null,timed_out:r?.timed_out===true,first_failure:firstFailure(tail),
+    ...(typeof r?.output_failure_excerpt==='string'?{head_failure:{output_line:Number.isSafeInteger(r.output_failure_line)?r.output_failure_line:null,text:clip(redactText(r.output_failure_excerpt.split('\n')[0]))}}:{})},accA);
   }
  }
 

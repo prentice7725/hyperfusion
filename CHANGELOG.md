@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- 실패한 수용 명령은 저장되는 출력 꼬리(마지막 4000자)보다 앞에서 처음 나온 실패 줄과 그 뒤 최대 19줄(2000자 이내)을 `output_failure_line`/`output_failure_excerpt`로 함께 기록한다. 다음 라운드 수용 피드백, 리드 리뷰 문맥, `evidence`의 `ACCEPTANCE_FAILED.head_failure`, `evidence-search`가 이를 쓴다. 판정에는 쓰지 않는 보조 증거이며 통과한 명령의 기록 형태는 그대로다.
 - 지적 원장은 호출마다 디렉터리를 한 번만 읽어 해결 주석을 색인한다. 원본 해시·현재 라운드·수용/리뷰 근거는 여전히 매번 검증한다. 선택적 `tools/profile-controller.mjs`는 snapshot·ignoredManifest·원장 로컬 시간을 실측하고, 작업 유형별 brief 예시와 `tools/preflight-brief.mjs`는 기존 계약을 정적으로 검사한다. 모델 시간 절감·실행 자격·승인을 주장하거나 새 권한을 만들지 않는다.
 
 - 지원 Node를 24 이상으로 올렸다. `engines`, setup doctor 검사, CI 매트릭스(Ubuntu·Windows × Node 24)와 문서를 맞췄다. Node 20은 더 이상 검사하지 않는다.
