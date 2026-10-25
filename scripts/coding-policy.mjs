@@ -15,8 +15,9 @@ export function validCodingPolicy(id) {
  return id;
 }
 
+// Windows 체크아웃은 줄바꿈을 CRLF로 바꿀 수 있다. 해시가 OS마다 달라지지 않게 LF로 맞춘다.
 export function codingPolicy(id) {
  validCodingPolicy(id);
- const meta=CODING_POLICIES[id],text=fs.readFileSync(fileURLToPath(new URL(`../assets/coding-policies/${meta.file}`,import.meta.url)),'utf8').trim();
+ const meta=CODING_POLICIES[id],text=fs.readFileSync(fileURLToPath(new URL(`../assets/coding-policies/${meta.file}`,import.meta.url)),'utf8').replaceAll('\r\n','\n').trim();
  return {id,source:meta.source,license:meta.license,sha256:hash(text),text};
 }

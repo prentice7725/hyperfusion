@@ -16,8 +16,8 @@ const withConfig=(t,body)=>{
 test('the ponytail policy is pinned, licensed and free of rules that conflict with JSON results',()=>{
  const p=codingPolicy('ponytail');
  assert.match(p.source,/ponytail\/blob\/[0-9a-f]{40}\/AGENTS\.md$/);assert.match(p.sha256,/^[0-9a-f]{64}$/);
- assert.match(fs.readFileSync(new URL('../assets/coding-policies/ponytail.LICENSE',import.meta.url),'utf8'),/^MIT License\n\nCopyright \(c\) 2026 DietrichGebert/);
- assert.match(p.text,/Never cut: validation at trust boundaries/);
+ assert.match(fs.readFileSync(new URL('../assets/coding-policies/ponytail.LICENSE',import.meta.url),'utf8').replaceAll('\r\n','\n'),/^MIT License\n\nCopyright \(c\) 2026 DietrichGebert/);
+ assert.match(p.text,/Never cut: validation at trust boundaries/);assert.equal(p.text.includes('\r'),false,'the hash does not depend on checkout line endings');
  assert.doesNotMatch(p.text,/End your reply|shortcut:/,'prose endings and comment markers would break result JSON or add noise');
  assert.throws(()=>codingPolicy('caveman'),/coding_policy must be one of ponytail/);
  assert.deepEqual(Object.keys(CODING_POLICIES),['ponytail']);
