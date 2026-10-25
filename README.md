@@ -1,6 +1,6 @@
 # HyperFusion
 
-v0.27.0 adds read-only diagnostics and resume packets, explicitly granted recovery reconciliation, a review-finding ledger, static task dependencies, bounded read-only work, provenance-aware memory and repeated A/B benchmarks. The lead spends fewer turns on controller plumbing (flag inputs, a bridge-printed finish command, autopilot for proven low tasks), and Windows supervision is faster. See [reconciliation](references/reconciliation.md), [workflow plans](references/workflow-plan.md), [memory](references/memory.md), and [CHANGELOG](CHANGELOG.md).
+v0.28.0 adds tools that cut the lead's context use without hiding defects. The lead guard now checks MCP tools and lets only read-only ones (Serena, GitHub, Context7 and Google Drive lookups) through during active work; the read-only `evidence` packet and `evidence-search` push risk signals with raw artifact hashes. Failed acceptance commands keep the first failure before the output tail, `round-diff` shows only what a redo round changed, and the optional `coding_policy:"ponytail"` appends pinned rules to worker implementation prompts. Node 24 or later is required. Real-model savings are unmeasured. See [agent guards](references/agent-guards.md), [evidence retrieval](references/evidence-retrieval-experiment.md), [configuration](references/configuration.md#일꾼-코딩-정책-coding_policy) and [CHANGELOG](CHANGELOG.md).
 
 Evidence retrieval experiment (unreleased): read-only `evidence REPO` pushes controller-detected risk signals with raw artifact hashes, and `evidence-search REPO QUERY.json` runs a bounded, redacted keyword search over controller evidence. Neither participates in approval. See [experiment design and limits](references/evidence-retrieval-experiment.md).
 
@@ -10,7 +10,7 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.27.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
+> **Versions.** The package release is `0.28.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
 
 ## Unreleased controller improvements
 
