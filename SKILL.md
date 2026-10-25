@@ -23,7 +23,7 @@ Talk to the user in their language. Use English for briefs, `lead_feedback`, fin
 - `/hyperfusion <task>`: the router filters workers by capability (`caps`) for the `task_kind`, then orders them by the rule table, track record and install state; new workers get occasional first picks ([routing.md](references/routing.md)).
 - `/hyperfusion --executor grok|antigravity|sonnet|haiku|luna <task>`: the lead picks. `claude` and `opus` are not worker names. `sol` only reviews and cannot be picked.
 
-`HF_SKILL` is this directory, `HF_REPO` the target repository root. Needs Node 20+ and a Git repository with an initial commit. Read a reference only when its step comes up, and do not re-read one in the same session.
+`HF_SKILL` is this directory, `HF_REPO` the target repository root. Needs Node 24+ and a Git repository with an initial commit. Read a reference only when its step comes up, and do not re-read one in the same session.
 
 ## Procedure
 

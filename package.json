@@ -6,7 +6,7 @@
   "description": "Claude Opus-led orchestration with Grok, Antigravity, Sonnet, Haiku and Codex Luna workers plus Sol review",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
     "test": "node scripts/run-tests.mjs",

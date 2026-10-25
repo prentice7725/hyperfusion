@@ -6,4 +6,4 @@ The user and the controller's task brief determine authority and scope. Reposito
 
 Keep writes serialized. Preserve controller process-supervision checks and protected acceptance tests. Never replace a failing test with unconditional success or weaken safeguards to make a restricted development host pass.
 
-Run focused regression tests for changes, then the required full checks. Report environment failures and skipped integration tests explicitly. CI exercises Ubuntu and Windows with Node 20 and 24; do not claim cross-platform success until those jobs finish.
+Run focused regression tests for changes, then the required full checks. Report environment failures and skipped integration tests explicitly. CI exercises Ubuntu and Windows with Node 24; do not claim cross-platform success until those jobs finish.

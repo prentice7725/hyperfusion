@@ -2,6 +2,8 @@
 
 v0.27.0 adds read-only diagnostics and resume packets, explicitly granted recovery reconciliation, a review-finding ledger, static task dependencies, bounded read-only work, provenance-aware memory and repeated A/B benchmarks. The lead spends fewer turns on controller plumbing (flag inputs, a bridge-printed finish command, autopilot for proven low tasks), and Windows supervision is faster. See [reconciliation](references/reconciliation.md), [workflow plans](references/workflow-plan.md), [memory](references/memory.md), and [CHANGELOG](CHANGELOG.md).
 
+Evidence retrieval experiment (unreleased): read-only `evidence REPO` pushes controller-detected risk signals with raw artifact hashes, and `evidence-search REPO QUERY.json` runs a bounded, redacted keyword search over controller evidence. Neither participates in approval. See [experiment design and limits](references/evidence-retrieval-experiment.md).
+
 English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
@@ -145,7 +147,7 @@ Workers with shell access can write outside the repository; snapshots cannot det
 
 ## Installation and usage
 
-Requirements: Node.js 20+, Git with `git config --show-scope --includes`, a **Git repository with an initial commit** (a remote is optional), and at least one installed/authenticated worker CLI among `claude`, `grok`, `agy`, and `codex`. Actual model and flag availability depends on the installed CLI/account.
+Requirements: Node.js 24+, Git with `git config --show-scope --includes`, a **Git repository with an initial commit** (a remote is optional), and at least one installed/authenticated worker CLI among `claude`, `grok`, `agy`, and `codex`. Actual model and flag availability depends on the installed CLI/account.
 
 ```sh
 # Linux / macOS
@@ -195,7 +197,7 @@ Reference documents are primarily Korean. Start with [runtime](references/runtim
 npm test
 ```
 
-Automated tests cover state transitions, adapters, routing, reviews, discretion/recovery, memory, project workflows, security, redaction, and autopilot. Live CLI tests require `HF_LIVE=1`. CI is configured for Ubuntu/Windows × Node 20/24. Windows runs test files serially; other platforms use concurrency 2. Tests creating actual orphan processes run separately after the main suite. `npm run spawns` counts subprocesses by command and calling site to measure performance changes.
+Automated tests cover state transitions, adapters, routing, reviews, discretion/recovery, memory, project workflows, security, redaction, and autopilot. Live CLI tests require `HF_LIVE=1`. CI is configured for Ubuntu/Windows × Node 24. Windows runs test files serially; other platforms use concurrency 2. Tests creating actual orphan processes run separately after the main suite. `npm run spawns` counts subprocesses by command and calling site to measure performance changes.
 
 **The test `grok`/`agy`/`claude`/`codex` executables are fake CLIs.** These tests do not validate live model quality, authentication, or image generation. Missing required CLI flags cause `ADAPTER_UNAVAILABLE` before execution. Adapter flags follow the cited [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), and [Claude Code](https://code.claude.com/docs/en/headless) documentation. Transient-error classification is based on fake-CLI coverage; inspect early live `recovery-*.json` reasons.
 
