@@ -102,6 +102,19 @@ brief에 `acceptance_map`을 넣으면 수용 기준 ID와 그 기준을 증명�
 
 프로세스 관측은 OS 격리가 아니다. 새 고아 프로세스가 다른 작업에서 생겼어도 출처를 확인할 수 없으면 멈추며, 관측 사이에 다른 기존 프로세스로 재연결된 자손까지 완전히 추적하지는 못한다. 협조적 테스트를 전제로 하며 악성 저장소 코드에는 별도 OS 격리가 필요하다.
 
+## 재검수 라운드 diff
+
+REDO 뒤 리드가 같은 누적 diff를 처음부터 다시 읽지 않도록, 2라운드부터 이번 라운드가 바꾼 줄만 보는 읽기 전용 보기가 있다.
+
+```sh
+node scripts/fusion-state.mjs round-diff REPO
+```
+
+- begin은 라운드를 시작할 때 HEAD와 다른 파일(수정·삭제·추적되지 않은 파일)의 내용을 제어 폴더의 `round-base-N.json`에 남긴다. 텍스트 파일만, 파일당 512KiB·합계 4MiB까지 저장하고 나머지(바이너리, 크기 초과, 심볼릭 링크)는 `omitted`로 기록한다. 기록에 실패해도 라운드는 막지 않는다.
+- `round-diff`는 라운드 시작 스냅샷(`base-N.json`)과 지금 트리를 비교해, 바뀐 파일마다 저장한 내용(없으면 HEAD)과의 unified diff를 낸다. 라운드 중에 생긴 파일은 `added`, 바이너리는 `binary`, 기준이 없거나 편집량·줄 수 상한을 넘으면 `unavailable`과 사유를 낸다. 출력 크기는 기본 60,000자이며 넘친 파일은 경로만 `omitted`에 남는다(`{"char_budget":N}`로 조정).
+- 1라운드, 기준 기록이 없는 작업(이전 버전에서 시작), 기록과 라운드 스냅샷이 맞지 않는 경우는 `available:false`와 사유(`FIRST_ROUND`, `ROUND_BASE_NOT_RECORDED`, `ROUND_BASE_MISMATCH`)만 낸다.
+- 결과는 `authoritative:false`다. 승인·CLOSE는 여전히 누적 diff(`git diff HEAD`)와 모든 성공 기준을 대상으로 하며, 이 보기는 어디를 다시 읽을지 고르는 데만 쓴다. 파일 쓰기·모델 호출·상태 변경은 하지 않는다.
+
 ## 비용·시간 상한
 
 설정의 `limits` 또는 init brief의 `limits`:
