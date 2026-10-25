@@ -1,58 +1,26 @@
 # HyperFusion
 
-v0.27.0 adds read-only diagnostics and resume packets, explicitly granted recovery reconciliation, a review-finding ledger, static task dependencies, bounded read-only work, provenance-aware memory and repeated A/B benchmarks. The lead spends fewer turns on controller plumbing (flag inputs, a bridge-printed finish command, autopilot for proven low tasks), and Windows supervision is faster. See [reconciliation](references/reconciliation.md), [workflow plans](references/workflow-plan.md), [memory](references/memory.md), and [CHANGELOG](CHANGELOG.md).
-
-Evidence retrieval experiment (unreleased): read-only `evidence REPO` pushes controller-detected risk signals with raw artifact hashes, and `evidence-search REPO QUERY.json` runs a bounded, redacted keyword search over controller evidence. Neither participates in approval. See [experiment design and limits](references/evidence-retrieval-experiment.md).
-
-Optional [controller overhead tools](references/controller-overhead.md) measure local inspection time and statically check task briefs without launching models or acceptance commands.
-
 English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.27.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md).
+> **Versions.** The package release is `0.28.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
 
-## Unreleased controller improvements
+## What changed in 0.28.0
 
-| Area | Entry point and limits |
-| --- | --- |
-| Stops and metrics (HF-I01) | Read-only `diagnose`, stable reason codes and observed timing/usage; unknown values remain unknown. |
-| Interrupted tasks (HF-I02) | Read-only `resume` and init-granted explicit `reconcile`; no worker relaunch or automatic approval. |
-| Review findings (HF-I03) | `findings`, `revision-packet` and `@findings`; grouping never removes raw evidence or mandatory review. |
-| Static dependencies (HF-I04) | `project.mjs schedule`, frozen plans, CLOSE/integration receipts and checkpoint acknowledgment. Implementation stays serial. |
-| Read-only work (HF-I05) | At most two consultation/review slots with frozen scopes and complete mandatory coverage. |
-| Memory (HF-I07) | Source/version filters, bounded recall, candidate batch review and separate retrieval/usefulness observations. |
-| Worker coding policy | `coding_policy:"ponytail"` appends pinned rules to implementation prompts. Off by default; effect unmeasured ([configuration](references/configuration.md#일꾼-코딩-정책-coding_policy)). |
-
-Usage: [reconciliation](references/reconciliation.md), [findings](references/finding-ledger.md), [workflow plans](references/workflow-plan.md), [read-only work](references/read-only-work.md), [memory recall](references/memory-recall.md), [repeated benchmark](references/benchmark-pilot.md).
-
-New execution authority requires explicit grants; diagnostics and metrics do not grant it. Parallel implementation (HF-I06) is excluded from this core change and remains a separate draft experiment. Real-model cost/time savings are unmeasured; platform results must be checked on the exact PR head. Detailed history is in [CHANGELOG](CHANGELOG.md).
+- **Reviewers get no conclusions.** Delegated reviewers no longer see the worker's summary, test claims or risk notes, nor earlier reviewers' verdicts and reasons. They judge from the diff, the files and controller-run acceptance results. See [review](references/review-protocol.md).
+- **Per-finding lead dispositions.** `lead-decision` can classify each finding as `act`, `consider`, `noted`, `dismissed` or `contract_misread` with a reason. Dismissed findings are not forwarded to the next worker, and metrics score each reviewer (`actionable_rate`). See [review](references/review-protocol.md#지적별-처분-finding_dispositions-선택).
+- **`round-diff` for re-review.** From round 2, shows only the lines changed in the current round. Approval still covers the full cumulative diff.
+- **Acceptance failure excerpts.** The first failing line before the stored output tail, plus a few lines after it, feed the next round's feedback and the lead's review context.
+- **Lead guard covers MCP tools.** Only verified read-only tools and names listed in `HF_LEAD_MCP_ALLOW` pass. Existing installs must merge the `mcp__.*` entry from `npm run guard:settings`.
+- **Worker coding policy (opt-in).** `coding_policy:"ponytail"` appends pinned rules to implementation prompts. Off by default; effect unmeasured. See [configuration](references/configuration.md#일꾼-코딩-정책-coding_policy).
+- **Experimental tools.** Read-only `evidence` and `evidence-search` ([design and limits](references/evidence-retrieval-experiment.md)) and [controller overhead tools](references/controller-overhead.md). Neither grants approval.
+- **Node 24 or newer** is required.
 
 ## Why HyperFusion
 
 1. **Reduce lead-model token use.** Opus owns planning, rejection, and final review. Workers handle implementation and test loops. The project records lead tokens per successful task; unmeasured usage stays unknown.
 2. **One point of contact.** The user works with the lead, which assigns workers, checks their claims, sends concrete revision orders, and changes workers after repeated failures.
-
-## AGY model family and effort (0.23.0)
-
-Configure `executors.antigravity.model:"gemini-4-argon"` and `reasoning_effort:"high"` separately. The adapter selects `gemini-4-argon-high` without a duplicate effort flag. A pinned `-medium` suffix retains medium; conflicting explicit effort fails before launch. Optional `models_by_difficulty` selects implementation families; reviews use the base model. Resolved slugs are checked against `agy models`, and unavailable variants are not substituted. Without a model no effort is sent or recorded (agy reads effort from the model id); an operator `reasoning_effort` with no model fails with `EFFORT_NEEDS_MODEL`. Defaults and account settings are unchanged. `usage_by_model_effort` separates dispatch-selected family/effort with unknown fields kept null. See [configuration](references/configuration.md#agy-모델-계열과-effort-분리-argon). Live AGY inference/access has not been tested here.
-
-## Codex and egress improvements (0.22.0)
-
-Codex workers now collect JSONL thread/turn usage and resume an exact task-scoped implementation thread when compatible `exec resume` flags are confirmed; unsupported versions stay stateless. Reviews remain fresh and read-only. Cached input is a subset of input, not an extra token charge. [Codex runtime](references/codex-runtime.md) covers operator-only build cache/network options and configurable Claude/Grok turn ceilings (default 40).
-
-Set `allowed_vendors:["anthropic","openai"]` to narrow implementation, review and consultation together. Operator `HF_ALLOWED_VENDORS=anthropic,openai` is an upper bound that repository configuration cannot widen. The bridge checks again before spawning; this cooperative dispatch policy is not a firewall/DLP or vendor attestation for arbitrary model overrides. Built-in metadata is centralized in `scripts/member-registry.mjs`; new CLIs still require audited adapters. Classic low-code routing now starts with Luna. A short English [executor map](references/executor-quickstart.md) reduces reference loading; generic CLI/ACP and full state-machine extraction remain unimplemented.
-
-For future local commits, use your verified GitHub noreply address with repository-local `git config user.email`. Existing public author metadata is not removed without an explicit history-rewrite request.
-
-## Usage measurement and installed teams (0.21.0)
-
-The generated hooks now bind the host session and collect assistant usage from the local Claude Code transcript on Stop/SessionEnd/StopFailure. Input, output, cache read and cache creation tokens are counted by actual model, with streamed message duplicates and resumed sessions handled once. The first terminal Stop includes the closing summary; later prompts do not extend that task. Missing evidence stays unknown. Explicit `TASK_USAGE.json` observations take precedence. This is client-reported usage, not a billing API. See [metrics policy](references/metrics-policy.md).
-
-`node scripts/project.mjs draft REPO` (or `roster REPO --draft`) proposes an installed team and pre-fills missing members in `excluded`. Proposal and approval reject unavailable team members. `setup-doctor.mjs` recommends a preset without changing configuration or approving it. When only Claude and Codex are installed, the proposed `claude-codex` preset uses Luna for low difficulty and Sonnet for medium/high non-image tasks, with Sol/Sonnet cross review. User approval of the project authorizes these controller-issued Sonnet grants; explicit assignments remain authoritative. Installation checks do not verify authentication or quota.
-
-`node scripts/benchmark.mjs cases` lists ten fixed pilot cases. `node scripts/benchmark.mjs compare BASELINE.json HYPERFUSION.json` compares arrays of actual paired metrics with `case_id`, explicit `success`, host usage and total Claude tokens. Failed tasks remain in cost numerators. Missing pairs, unknown usage or incompatible measurement scopes suppress savings claims. The tool makes no model calls. The pilot has not been run with live models, so no token savings are claimed.
-
 
 ## Team
 
@@ -74,8 +42,8 @@ These assignments are starting points. Routing filters by capabilities and task 
 Lead: plan (brief + acceptance commands) → init → begin
 Worker: implement under a single writer lease → report results
 Controller: finish (snapshot diff, acceptance execution, process shutdown proof)
-Review: independent read-only inspection
-Lead: pass / redo / alternative / decision / takeover → verify → CLOSE
+Review: independent read-only inspection, without the worker's claims
+Lead: per-finding dispositions + pass / redo / alternative / decision / takeover → verify → CLOSE
 ```
 
 Only `CLOSE` means success. Run `node scripts/fusion-state.mjs next <repository>` to get the next command and an input template with controller-known values.
@@ -84,34 +52,36 @@ Only `CLOSE` means success. Run `node scripts/fusion-state.mjs next <repository>
 
 **Assignment and teams**
 
-- **Team → approval → milestones → checkpoints.** A project plan records responsibilities before implementation. Milestones stop at checkpoints for acknowledgment. See [project](references/project.md).
+- **Team → approval → milestones → checkpoints.** A project plan records responsibilities before implementation. `project.mjs draft` pre-fills installed members and rejects unavailable ones. Milestones stop at checkpoints for acknowledgment. `project.mjs schedule` manages task dependencies as a frozen plan; implementation stays serial. See [project](references/project.md) and [workflow plans](references/workflow-plan.md).
 - **Capability-based routing.** Capabilities such as `code`, `ui`, `docs`, and `image-gen` determine eligibility. Local rejection history affects order; new workers get occasional exploration attempts. Configure existing adapters' models and capabilities in `executors`; a new provider requires an adapter implementation. See [routing](references/routing.md).
-- **Contract smoke checks.** `setup-doctor.mjs --smoke` runs a small actual task per installed worker in a temporary repository to check flags, output, and the result contract after CLI updates. See [operations](references/operations.md#doctor-계약-스모크).
+- **Setup checks and contract smoke.** `setup-doctor.mjs` recommends a preset for the installed CLIs without changing configuration. `--smoke` runs a small actual task per installed worker in a temporary repository to check flags, output, and the result contract after CLI updates. Installation checks do not verify authentication or quota. See [operations](references/operations.md#doctor-계약-스모크).
 
 **Evidence and review**
 
 - **Check worker claims.** Reported files and outcomes are checked against snapshot diffs and controller-run acceptance commands. Invalid claims require recovery.
 - **Concrete rejections.** Rejections need reasons and acceptance IDs; retries need file/line instructions. Two rejections for the same AC trigger reassignment. Ordinary workers have three rounds each; lead takeover is limited to one after available workers are exhausted.
 - **Red-first acceptance.** Acceptance commands must fail on the untouched baseline. Refactors that should already pass can use preserve verification, `verification:{kind:"preserve",protect:[...]}`, to prove protected tests/fixtures remain unchanged.
-- **AC trace and PR draft.** `acceptance_map` connects AC IDs to acceptance commands. `verification.json`, `report`, and `pr-draft.md` use the final net changes since the first worker baseline (`base-1`). Reverted intermediate edits are omitted. Files not attributable to validated worker rounds appear separately as `unattributed_changes`. Commit and push remain user-directed.
-- **Delegated cumulative review.** Reviewers receive every net task change, controller acceptance results, and a diff of up to 100,000 characters; adapters may apply smaller limits. `changed_files` is cumulative, while `round_changed_files` identifies the current round. Truncated or untracked content must be read directly. The implementer cannot review its own round. See [review](references/review-protocol.md).
-- **Advice and committees.** One advisor can inspect a diff, or two committee members can investigate repeated failures. Before/after snapshots enforce the read-only contract. See [consult](references/consult.md).
-- **Inter-round drift checks.** A subsequent `begin` compares the tree with the previous `post_digest`, including writes to scoped files through Bash. A mismatch stops at `RECOVERY_REQUIRED` before acquiring a lease or consuming an attempt. Preflight writes are checked too. Recovery refreshes the expected digest, but retained writes still enter cumulative review and cannot receive policy approval as worker contributions. User edits present before the first `begin` are preserved. See [recovery](references/recovery-protocol.md).
+- **AC trace and PR draft.** `acceptance_map` connects AC IDs to acceptance commands. `verification.json`, `report`, and `pr-draft.md` use the final net changes since the first worker baseline (`base-1`). Files not attributable to validated worker rounds appear separately as `unattributed_changes`. Commit and push remain user-directed.
+- **Independent delegated review.** Reviewers receive every net task change (diff up to 100,000 characters) and controller acceptance results, but not the worker's summary/test claims or earlier reviewers' conclusions. The implementer cannot review its own round. A rejection without a file/line finding is not applied as-is. See [review](references/review-protocol.md).
+- **Finding ledger and lead dispositions.** Review findings are collected with their raw evidence (`findings`), and the lead records a disposition and reason per finding. `@findings` forwards only accepted findings, and the dispositions become per-reviewer metrics. Grouping never removes raw evidence or mandatory review. See [findings](references/finding-ledger.md).
+- **Advice and committees.** One advisor can inspect a diff, or two committee members can investigate repeated failures. Before/after snapshots enforce the read-only contract; at most two slots run at once. See [consult](references/consult.md) and [read-only work](references/read-only-work.md).
+- **Inter-round drift checks.** A subsequent `begin` compares the tree with the previous `post_digest`, including writes to scoped files through Bash. A mismatch stops at `RECOVERY_REQUIRED` before acquiring a lease or consuming an attempt. Retained writes enter cumulative review but cannot count as worker contributions or receive policy approval. User edits present before the first `begin` are preserved. See [recovery](references/recovery-protocol.md).
 
 **Less work for the lead**
 
 - **Compact output and `next`.** CLI output defaults to a compact view; `--full` exposes all fields. `next` supplies the current command and known tokens/digests.
+- **Diagnose and resume.** Read-only `diagnose` reports why a task stopped with stable reason codes, and `resume` gives the next step for an interrupted task. `reconcile` runs only when granted at init. See [reconciliation](references/reconciliation.md).
 - **Optional discretion.** A task-level `delegation` grant at init lets the controller approve an eligible STANDARD round as `delegated-policy`, retry certain transient failures, and substitute unavailable reviewers from another company. Every condition must pass; otherwise the lead gate remains. See [supervisor](references/universal-supervisor.md#위임-승인-재량권).
 - **Autopilot.** Round execution and independent delegated review can run automatically within the recorded gates and budgets. `report.lead_load` distinguishes lead decisions, policy decisions, lead packets, and recovery counts.
 - **Resume after compaction.** A SessionStart hook injects the active task and next action once after a new session or compaction.
 - **Status line.** `fusion-state.mjs line`, the UserPromptSubmit hook, and `mods/hf-status` expose the same phase/worker/next-action line. See [operations](references/operations.md#작업-상태-표시).
-- **Local memory.** Approved lessons from errors, procedures, and episodes can be reused across sessions and workers without an external server. Writes and recalls require lead approval; secret-shaped content is rejected. See [memory](references/memory.md).
+- **Local memory.** Approved lessons from errors, procedures, and episodes can be reused across sessions and workers without an external server. Writes and recalls require lead approval and are filtered by source and version; secret-shaped content is rejected. See [memory](references/memory.md) and [memory recall](references/memory-recall.md).
 - **Notifications.** `HF_NOTIFY_URL`, for example an ntfy endpoint, sends status-only completion and decision notifications.
 
 **Control and audit**
 
 - **Single writer.** One worker writes at a time, with round snapshots and artifacts. Interruptions enter recovery. There is no automatic commit, push, or deployment.
-- **Lead guard hooks.** PreToolUse blocks lead Edit/Write while a worker owns the lease or worker budget remains; Stop reminds the lead about pending work. Bash writes are not blocked by the Edit/Write hook and are checked by snapshots and inter-round drift detection. See [operations](references/operations.md#리드-가드-훅).
+- **Lead guard hooks.** PreToolUse blocks lead Edit/Write and non-read-only MCP tools while a worker owns the lease or worker budget remains; Stop reminds the lead about pending work. Bash writes are checked by snapshots and inter-round drift detection instead. See [operations](references/operations.md#리드-가드-훅).
 - **Worktree isolation and budgets.** Independent tasks can run in separate worktrees with isolated state and leases, reported cost limits, and time limits. Reviewed results are integrated separately. See [operations](references/operations.md).
 - **Linux, macOS, and Windows support.** CI currently covers Ubuntu and Windows.
 
@@ -133,15 +103,25 @@ Copy `hyperfusion.v03.config.example.json` to the target repository as `hyperfus
 | AGY / Haiku / authorized Sonnet | Sol medium + Grok xhigh |
 | Authorized APEX Sol | Direct lead review, not a delegated pair |
 
-The lead sets criticality/strategy in the approved brief at init and checks `review_preview`. Unanimous evidence-backed NG can use an init-granted `redo_delegation`; disagreement cannot. A unanimous PASS goes to the lead unless a separate eligible approval policy was granted. See [review-pairs](references/review-pairs.md).
-- Host model identity is not authenticated: `authority.model_verified:false` records this limitation.
+The lead sets criticality/strategy in the approved brief at init and checks `review_preview`. Unanimous evidence-backed NG can use an init-granted `redo_delegation`; disagreement cannot. A unanimous PASS goes to the lead unless a separate eligible approval policy was granted. Host model identity is not authenticated: `authority.model_verified:false` records this limitation. See [review-pairs](references/review-pairs.md).
+
+## Vendors and models
+
+- **AGY model family and effort.** Configure `executors.antigravity.model:"gemini-4-argon"` and `reasoning_effort:"high"` separately to select `gemini-4-argon-high`. A suffixed model keeps its effort; conflicting effort fails before launch. Resolved slugs are checked against `agy models`, and unavailable variants are not substituted. See [configuration](references/configuration.md#agy-모델-계열과-effort-분리-argon).
+- **Codex.** JSONL thread/turn usage is recorded, and a task-scoped implementation thread is resumed by exact ID only when compatible `exec resume` flags are confirmed. Reviews are always fresh and read-only. Operator-only build cache/network options and Claude/Grok turn ceilings are in [Codex runtime](references/codex-runtime.md).
+- **Vendor limits.** `allowed_vendors:["anthropic","openai"]` narrows implementation, review and consultation together; operator `HF_ALLOWED_VENDORS` is an upper bound repository configuration cannot widen. The bridge checks again before spawning. This is not a firewall/DLP or vendor attestation. New CLIs need audited adapters (`scripts/member-registry.mjs`).
+
+## Measurement
+
+- **Lead usage.** Generated hooks collect actual per-model usage from the local Claude Code transcript on Stop/SessionEnd/StopFailure. Missing evidence stays unknown; explicit `TASK_USAGE.json` observations take precedence. This is client-reported usage, not a billing API. See [metrics policy](references/metrics-policy.md).
+- **Benchmarks.** `benchmark.mjs cases` lists fixed pilot cases; `compare BASELINE.json HYPERFUSION.json` compares actual paired metrics. Failed tasks stay in cost numerators, and missing pairs or unknown usage suppress savings claims. The pilot has not been run with live models, so no savings are claimed. See [repeated benchmark](references/benchmark-pilot.md).
 
 ## Security
 
 These are **cooperative controls, not an OS sandbox**.
 
 - Control state, briefs, and snapshots live outside the workspace at `~/.hyperfusion/state/` (`HF_STATE_DIR` overrides it).
-- Snapshots watch Git settings/hooks, linked worktree `config.worktree`, `.env`, self-ignored `.gitignore`, `node_modules/.bin`, and the agy workspace folders (`.agents/`, `.agent/`, `_agents/`, `_agent/`: hooks and skills agy runs during a round). Before each controller Git call, effective configuration includes conditional includes and worktree settings; runnable drivers are neutralized. Unreadable configuration stops with `GIT_CONFIG_UNREADABLE`. Dotted driver/include names are checked too. Fresh configuration queries add subprocess overhead; HEAD and both Git directories still use one rev-parse call.
+- Snapshots watch Git settings/hooks, linked worktree `config.worktree`, `.env`, self-ignored `.gitignore`, `node_modules/.bin`, and the agy workspace folders (`.agents/`, `.agent/`, `_agents/`, `_agent/`). Before each controller Git call, effective configuration including conditional includes and worktree settings is re-read and runnable drivers are neutralized. Unreadable configuration stops with `GIT_CONFIG_UNREADABLE`.
 - The bridge reconstructs and validates dispatch requests before launch and passes only required worker environment variables.
 - Bash rules accept narrow test/lint/build command shapes. Relaxations such as disabling an implementation sandbox require operator environment variables. See [configuration](references/configuration.md#보안-관련-환경변수).
 - Read-only reviews and consultations are checked through before/after snapshots. AGY's `--sandbox` restricts its terminal, not its file-write tools.
@@ -150,7 +130,7 @@ Workers with shell access can write outside the repository; snapshots cannot det
 
 ## Installation and usage
 
-Requirements: Node.js 24+, Git with `git config --show-scope --includes`, a **Git repository with an initial commit** (a remote is optional), and at least one installed/authenticated worker CLI among `claude`, `grok`, `agy`, and `codex`. Actual model and flag availability depends on the installed CLI/account.
+Requirements: Node.js 24+, Git with `git config --show-scope --includes`, a **Git repository with an initial commit** (a remote is optional), and at least one installed/authenticated worker CLI among `claude`, `grok`, `agy`, and `codex`.
 
 ```sh
 # Linux / macOS
@@ -181,17 +161,18 @@ Outgoing brief/diff/prior-result text masks email, IP, key, and password pattern
 
 ## Documentation
 
-Reference documents are primarily Korean. Start with [runtime](references/runtime.md) and [configuration](references/configuration.md).
+Reference documents are primarily Korean. Start with [runtime](references/runtime.md) and [configuration](references/configuration.md); the English [executor quickstart](references/executor-quickstart.md) is a short map for the lead.
 
 | Topic | References |
 |---|---|
 | State and commands | [runtime](references/runtime.md), [state-actions](references/state-actions.md), [state-schema](references/state-schema.json), [operations](references/operations.md) |
-| Configuration | [configuration](references/configuration.md) |
+| Configuration | [configuration](references/configuration.md), [codex-runtime](references/codex-runtime.md) |
 | Workers and routing | [executor-runtime](references/executor-runtime.md), [routing](references/routing.md) |
 | Contracts | [delegation-protocol](references/delegation-protocol.md), [result-protocol](references/result-protocol.md) |
-| Review | [review-protocol](references/review-protocol.md), [consult](references/consult.md), [universal-supervisor](references/universal-supervisor.md) |
-| Failure and recovery | [failure-protocol](references/failure-protocol.md), [recovery-protocol](references/recovery-protocol.md) |
-| Projects, memory, metrics | [project](references/project.md), [memory](references/memory.md), [metrics-policy](references/metrics-policy.md) |
+| Review | [review-protocol](references/review-protocol.md), [review-pairs](references/review-pairs.md), [finding-ledger](references/finding-ledger.md), [consult](references/consult.md), [read-only-work](references/read-only-work.md), [universal-supervisor](references/universal-supervisor.md) |
+| Failure and recovery | [failure-protocol](references/failure-protocol.md), [recovery-protocol](references/recovery-protocol.md), [reconciliation](references/reconciliation.md) |
+| Projects, memory, metrics | [project](references/project.md), [workflow-plan](references/workflow-plan.md), [memory](references/memory.md), [memory-recall](references/memory-recall.md), [metrics-policy](references/metrics-policy.md), [benchmark-pilot](references/benchmark-pilot.md) |
+| Experimental tools | [evidence-retrieval-experiment](references/evidence-retrieval-experiment.md), [controller-overhead](references/controller-overhead.md) |
 | Design and historical records | [app-handoff-design](references/app-handoff-design.md), [archive](references/archive/README.md) |
 
 ## Tests and limitations
@@ -200,9 +181,9 @@ Reference documents are primarily Korean. Start with [runtime](references/runtim
 npm test
 ```
 
-Automated tests cover state transitions, adapters, routing, reviews, discretion/recovery, memory, project workflows, security, redaction, and autopilot. Live CLI tests require `HF_LIVE=1`. CI is configured for Ubuntu/Windows × Node 24. Windows runs test files serially; other platforms use concurrency 2. Tests creating actual orphan processes run separately after the main suite. `npm run spawns` counts subprocesses by command and calling site to measure performance changes.
+Automated tests cover state transitions, adapters, routing, reviews, discretion/recovery, memory, project workflows, security, redaction, and autopilot. Live CLI tests require `HF_LIVE=1`. CI is configured for Ubuntu/Windows × Node 24. Windows runs test files serially; other platforms use concurrency 2. Tests creating actual orphan processes run separately after the main suite. `npm run spawns` counts subprocesses by command and calling site.
 
-**The test `grok`/`agy`/`claude`/`codex` executables are fake CLIs.** These tests do not validate live model quality, authentication, or image generation. Missing required CLI flags cause `ADAPTER_UNAVAILABLE` before execution. Adapter flags follow the cited [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), and [Claude Code](https://code.claude.com/docs/en/headless) documentation. Transient-error classification is based on fake-CLI coverage; inspect early live `recovery-*.json` reasons.
+**The test `grok`/`agy`/`claude`/`codex` executables are fake CLIs.** These tests do not validate live model quality, authentication, or image generation. Missing required CLI flags cause `ADAPTER_UNAVAILABLE` before execution. Adapter flags follow the cited [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), and [Claude Code](https://code.claude.com/docs/en/headless) documentation. Transient-error classification is based on fake-CLI coverage; inspect early live `recovery-*.json` reasons. Real-model cost/time savings are unmeasured.
 
 Licensed under [MIT](LICENSE).
 
@@ -211,3 +192,6 @@ Licensed under [MIT](LICENSE).
 - [Orca](https://github.com/stablyai/orca), [Paseo](https://github.com/getpaseo/paseo): advisors/committees, located feedback, notifications. Their worktree competition model was not adopted.
 - [AnchorMind](https://github.com/jinho-von-choi/memento-mcp): memory ideas including duplicate merging, contradiction review, decay, and provenance; implemented locally rather than integrated as a service.
 - [cli-dispatch](https://github.com/rbinar/cli-dispatch): AGY model-name checks, post-compaction context, and local Codex quota reading. Its patch/worktree approach was not adopted.
+- [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills): from doubt-driven development, "do not hand the reviewer your claim" and its finding classes (contract misread, actionable, trade-off, noise).
+- [cursor/plugins pstack](https://github.com/cursor/plugins/tree/main/pstack): interrogate's lead judgment (Act on / Consider / Noted / Dismissed, with visible dismissal reasons) shaped per-finding dispositions.
+- [mattpocock/skills](https://github.com/mattpocock/skills): standards-vs-spec review axes and dependency-graph task breakdown were reviewed. Parallel implementation was not adopted because of the single-writer rule.
