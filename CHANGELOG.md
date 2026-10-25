@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- 범용화 1단계 준비: 모델 레지스트리(`model-registry.mjs`)와 팀 구성 함수(`team-composer.mjs`)를 추가했다. 계열(family)은 모델을 만든 회사로 판정하고, 레지스트리에 없는 모델·`"auto"`는 `unknown`(누구와도 독립이 아님)이다. `compose`는 리드 계열을 기준으로 역할을 나누고, 리드를 포함해 계열이 둘 미만이면 `TEAM_SINGLE_FAMILY`로 거절한다. `familyReviewPlan`(`family-rules-v1`)은 작성자와 독립인 계열 수로 리뷰 자리 수를 정한다. Opus 리드에서 `cross-vendor-pairs-v1`의 리뷰어·강도와 같은 결과를 내는지 표 기반 테스트로 확인했다. `legacy-v1`은 AGY만 있고 Grok이 없는 팀에서 Luna·Haiku·Sonnet의 중요 작업이 한 자리라 일반 규칙과 다르므로, 기존 정책은 계속 `review-plan.mjs`가 계산한다. 아직 컨트롤러에 연결하지 않았으며 동작 변화는 없다.
 - 선택적 일꾼 코딩 정책: 설정 `coding_policy:"ponytail"`이면 구현 라운드 지시문에 고정된 Ponytail 규칙(MIT, 커밋 고정, 결과 JSON과 충돌하는 문장 제거)을 덧붙이고 정책 id·해시를 프롬프트에, `coding_policy`를 지표에 남긴다. 생략·위험은 `risks`로 보고하게 한다. 기본은 꺼짐이며 리뷰·상담에는 붙이지 않는다. 효과는 미측정이다.
 - 재검수용 `round-diff`: 2라운드부터 begin이 HEAD와 다른 텍스트 파일의 내용(파일당 512KiB, 합계 4MiB 이내)을 `round-base-N.json`에 남기고, 읽기 전용 `fusion-state.mjs round-diff REPO`가 이번 라운드 시작 이후 바뀐 줄만 unified diff로 보여 준다. 기준 기록이 없거나 라운드 스냅샷과 맞지 않으면 알리고 diff를 내지 않는다. 리뷰 단계의 `next`가 명령을 안내한다. 판정·승인 근거가 아니며 승인은 여전히 누적 diff 전체를 대상으로 한다.
 - 실패한 수용 명령은 저장되는 출력 꼬리(마지막 4000자)보다 앞에서 처음 나온 실패 줄과 그 뒤 최대 19줄(2000자 이내)을 `output_failure_line`/`output_failure_excerpt`로 함께 기록한다. 다음 라운드 수용 피드백, 리드 리뷰 문맥, `evidence`의 `ACCEPTANCE_FAILED.head_failure`, `evidence-search`가 이를 쓴다. 판정에는 쓰지 않는 보조 증거이며 통과한 명령의 기록 형태는 그대로다.
