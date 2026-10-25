@@ -3,6 +3,7 @@ import {spawn} from 'node:child_process';
 import {hash} from './artifact.mjs';
 import {isMain,isWin,killTree} from './platform.mjs';
 import {processTable,watchProcessTree} from './process-proof.mjs';
+import {failureExcerpt,TAIL_CHARS} from './output-excerpt.mjs';
 
 const MAX_OUTPUT=64*1024*1024;
 const empty=(command,code)=>({command,status:'not_run',code,exit_code:null,signal:null,timed_out:false,
@@ -43,9 +44,12 @@ async function execute(root,command,timeout_ms,deadline_ms,readTable) {
  const out=Buffer.concat(chunks),text=out.toString('utf8');
  const budget_exceeded=deadline_ms!==null&&Date.now()>=deadline_ms;
  const code=!quiescence.quiescent?'ACCEPTANCE_NOT_QUIESCENT':budget_exceeded?'BUDGET_EXCEEDED':overflow?'OUTPUT_LIMIT':null;
+ const status=outcome.exit_code===0&&!error&&!timed_out&&!overflow&&!code?'pass':'fail';
+ const excerpt=status==='fail'?failureExcerpt(text,TAIL_CHARS):null;
  return {command,exit_code:outcome.exit_code,signal:outcome.signal,timed_out,error,code,quiescence,
-  status:outcome.exit_code===0&&!error&&!timed_out&&!overflow&&!code?'pass':'fail',duration_ms:Date.now()-started,
-  output_sha256:hash(out),output_bytes:bytes,output_tail:text.slice(-4000)};
+  status,duration_ms:Date.now()-started,
+  output_sha256:hash(out),output_bytes:bytes,output_tail:text.slice(-TAIL_CHARS),
+  ...(excerpt?{output_failure_line:excerpt.line,output_failure_excerpt:excerpt.text}:{})};
 }
 
 export async function supervisedCommands(root,commands,{timeout_ms=600000,deadline_ms=null,readTable=processTable}={}) {

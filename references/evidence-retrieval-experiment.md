@@ -171,10 +171,16 @@ only `query` is required. Limits are 1–50 hits and 512–200000 bytes.
 
 Known limitation found while building this: acceptance records keep only the
 last 4000 characters of each command's output (`output_tail`) plus its byte
-count and hash. A failure printed before that tail is not recoverable from
-controller artifacts, so neither packet nor search can surface it.
-`OUTPUT_TRUNCATED` makes the gap visible. Retaining full acceptance output is a
-separate storage decision and is not part of this tooling.
+count and hash. For a failed command, the runner now also keeps the first
+failure-looking line before that tail and up to 19 following lines (at most
+2000 characters) as `output_failure_line` and `output_failure_excerpt`.
+`ACCEPTANCE_FAILED` shows its first line as `head_failure`, the next-round
+acceptance feedback and the lead's `controller_acceptance` context include it,
+and `evidence-search` indexes it. The excerpt uses the same text pattern as
+`first_failure`; it is supporting evidence, never a verdict. Other lines
+before the tail are still not recoverable, and `OUTPUT_TRUNCATED` keeps that
+gap visible. Retaining full acceptance output remains a separate storage
+decision.
 
 ## Context Mode (separate research track)
 
