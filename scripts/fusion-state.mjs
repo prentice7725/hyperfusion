@@ -36,7 +36,7 @@ import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex,ope
 import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
 import {readStatusLine} from './status-line.mjs';
 import {takeReconciliation,reconciliationPlan,publicPlan,operationName,revalidateProcesses,assertReconciliationGrant} from './reconciliation.mjs';
-import {captureFindings,recordFindingMap,findingLedger,findingSummary,safeFindingSummary,revisionPacket,resolveFinding} from './finding-ledger.mjs';
+import {captureFindings,recordFindingMap,findingLedger,findingSummary,safeFindingSummary,revisionPacket,resolveFinding,findingDispositions} from './finding-ledger.mjs';
 import {evidencePacket,evidenceSearch} from './evidence-index.mjs';
 import {gateCollector} from './gate-diagnostics.mjs';
 import {resumePacket,inspectionControl} from './resume-packet.mjs';
@@ -417,6 +417,14 @@ function roundRisk(c) {
 
 // ── 상담(advisor / committee)과 위임 리뷰 ────────────────────────────
 
+// 리뷰어가 보는 일꾼 결과. 사실(상태, 바꾼 파일)과 일꾼이 스스로 인정한 미해결 항목만 남기고 나머지 주장은 뺀다.
+const REVIEW_SUBJECT_KEYS=['status','files_changed','unresolved','needs_lead_decision'];
+function reviewSubject(raw) {
+  if(!raw)return null;
+  const kept=Object.fromEntries(REVIEW_SUBJECT_KEYS.filter(k=>k in raw).map(k=>[k,raw[k]]));
+  return {...kept,claims_withheld:Object.keys(raw).filter(k=>!REVIEW_SUBJECT_KEYS.includes(k)&&!['task_id','round'].includes(k)).sort()};
+}
+
 function consult(c,input) {
   const s=c.s;
   const mode=input.mode;
@@ -522,11 +530,16 @@ function consult(c,input) {
   const changed=cumulative.changed;
   // 읽기 전용 위원(Sonnet은 Bash도 없다)이 diff를 볼 수 있게 직접 넣어 준다. 새 파일은 목록만 있으므로 직접 읽어야 한다.
   const diff=changed.length?git(c.root,['diff',...SAFE_DIFF,'HEAD','--',...changed]):'';
+  // 리뷰어에게는 작성자의 주장(요약, 테스트 통과 보고, 위험 평가)과 이전 리뷰어의 판정·사유를 주지 않는다.
+  // 결론을 건네면 결론의 승인이 돌아온다. 테스트 결과는 컨트롤러가 직접 돌린 controller_acceptance로 본다.
+  // 상담(advisor, committee)은 원인 분석에 작업 경과가 필요하므로 그대로 준다.
+  const raw=n?c.optional(`raw-result-${n}.json`):null;
   const context={
-    round:n,last_worker:s.owner,last_result:n?c.optional(`raw-result-${n}.json`):null,changed_files:changed,
+    round:n,last_worker:s.owner,last_result:mode==='review'?reviewSubject(raw):raw,changed_files:changed,
     round_changed_files:n?(c.optional(`validation-${n}.json`)?.changed??[]):[],unattributed_changes:cumulative.unattributed_changes,
     ...(n?{controller_acceptance:acceptanceContext(c,latest,consultBase)}:{}),
-    recent_reviews:s.reviews.slice(-3).map(r=>({owner:r.owner,round:r.round,verdict:r.verdict,blocking_criteria:r.blocking_criteria,rationale:r.rationale}))
+    recent_reviews:s.reviews.slice(-3).map(r=>mode==='review'?{owner:r.owner,round:r.round,blocking_criteria:r.blocking_criteria}
+      :{owner:r.owner,round:r.round,verdict:r.verdict,blocking_criteria:r.blocking_criteria,rationale:r.rationale})
   };
 
   // 모든 위원의 dispatch를 먼저 만든다. 하나라도 실패하면(예: Windows 명령줄 길이) 상태를 바꾸지 않는다.
@@ -1541,6 +1554,10 @@ function leadDecision(c,input) {
     c.save();
     throw Error('Tree drift before lead decision');
   }
+  const dispositions=input.finding_dispositions===undefined?null:findingDispositions(s,c.taskdir(),input.finding_dispositions);
+  // act는 이번 작업에서 고쳐야 한다는 판단이다. 그런 지적을 남긴 채 승인하는 것은 모순이다.
+  const acted=(dispositions??[]).filter(d=>d.bucket==='act').map(d=>d.finding_id);
+  if(normalized==='APPROVE'&&acted.length)throw Error(`LEAD_DECISION: APPROVE is refused while findings are marked act (${acted.join(', ')}); choose REDO or reclassify them`);
   const plan=planReview(s.owner,s.assignment,{risk:roundRisk(c)});
   const direct=plan.reviewers.length===1&&plan.reviewers[0]==='lead';
   const records=s.review_results?.[s.iteration]??[];
@@ -1630,7 +1647,8 @@ function leadDecision(c,input) {
     ...(grant?{implement_grant_revision:grant.revision}:{}),
     ...(lead_filled?{lead_filled_seats:lead_filled}:{}),
     ...(keep_owner?{keep_owner_reason:keep_owner}:{}),
-    ...(overruled?{overruled_reviews:overruled}:{})
+    ...(overruled?{overruled_reviews:overruled}:{}),
+    ...(dispositions?{finding_dispositions:dispositions}:{})
   };
   const file=`lead-decision-${s.iteration}.json`;
   if(grant){

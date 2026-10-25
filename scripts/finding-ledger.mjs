@@ -194,13 +194,46 @@ export function safeFindingSummary(state,dir) {
  catch{return {authoritative:false,total:null,unresolved:null,displayed:[],warnings:[{code:'FINDING_LEDGER_UNAVAILABLE'}]};}
 }
 
+// 리드의 지적별 처분. act는 이번 작업에서 고칠 것, consider는 고칠지 다음 일꾼이 판단할 것, noted는 기록만, dismissed는 기각,
+// contract_misread는 리뷰어 잘못이 아니라 브리프·수용 기준이 모호했다는 뜻이다. 승인 근거가 아닌 관찰 기록이다.
+export const FINDING_BUCKETS=['act','consider','noted','dismissed','contract_misread'];
+const FORWARDED_BUCKETS=['act','consider','contract_misread'];
+export function findingDispositions(state,dir,list) {
+ const fail=reason=>{throw Error('LEAD_DECISION: finding_dispositions '+reason);};
+ if(!Array.isArray(list)||!list.length||list.length>64)fail('must be a non-empty array of at most 64 entries');
+ const issues=findingLedger(state,dir).issues,seen=new Set();
+ return list.map(d=>{
+  if(!d||typeof d!=='object'||Array.isArray(d)||Object.keys(d).some(k=>!['finding_id','bucket','reason'].includes(k)))fail('entries take only finding_id, bucket and reason');
+  if(typeof d.finding_id!=='string'||!/^F-[a-f0-9]{24}$/.test(d.finding_id))fail('need a finding_id from the finding summary (F-…)');
+  if(!FINDING_BUCKETS.includes(d.bucket))fail('bucket must be one of '+FINDING_BUCKETS.join(', '));
+  const reason=typeof d.reason==='string'?d.reason.trim():'';
+  if(!reason||reason.length>1000)fail(`need a reason of at most 1000 characters for ${d.finding_id}`);
+  if(seen.has(d.finding_id))fail(`repeat ${d.finding_id}`);
+  seen.add(d.finding_id);
+  // 이번 라운드 digest에서 끝난 리뷰의 지적만 처분한다. 이전 라운드 지적은 현재 리뷰가 다시 봐야 한다.
+  const current=issues.find(g=>g.id===d.finding_id)?.observations.filter(r=>r.round===state.iteration&&r.digest===state.post_digest&&!r.pending)??[];
+  if(!current.length)fail(`${d.finding_id} is not a finding reviewed on this round's digest`);
+  return {finding_id:d.finding_id,bucket:d.bucket,reason,reviewers:[...new Set(current.map(r=>r.reviewer))].sort(),
+   severities:[...new Set(current.map(r=>r.severity))].sort()};
+ });
+}
+
 export function revisionPacket(state,dir) {
  const ledger=findingLedger(state,dir),view=findingSummary(ledger,16),last=state.reviews?.at(-1);
  const feedback=[];
- for(const issue of ledger.issues.filter(g=>g.disposition!=='fixed').slice(0,16)){
+ // 리드가 이번 라운드에 기각하거나 기록만 한 지적은 다음 일꾼에게 넘기지 않는다. 반려 사유(Unmet)는 그대로 넘긴다.
+ const decided=optional(dir,`lead-decision-${state.iteration}.json`);
+ const disposed=new Map((decided?.baseline_digest===state.post_digest?decided.finding_dispositions??[]:[]).map(d=>[d.finding_id,d]));
+ const withheld=[];
+ for(const issue of ledger.issues.filter(g=>g.disposition!=='fixed').filter(g=>{
+  const d=disposed.get(g.id);
+  if(d&&!FORWARDED_BUCKETS.includes(d.bucket)){withheld.push({finding_id:g.id,bucket:d.bucket});return false;}
+  return true;
+ }).slice(0,16)){
   const row=issue.observations.at(-1),location=row.current_location;
   const line=['original','unchanged','mapped'].includes(location.status)?location.line:null;
-  const comment=clip(`${issue.id} ${issue.ac_ids.join(' ')}: ${issue.issue}${row.suggestion?' → '+row.suggestion:''}${issue.disagreement?' [review disagreement: inspect all sources]':''}`,800);
+  const d=disposed.get(issue.id),note=d?` [lead: ${d.bucket} — ${clip(d.reason,200)}]`:'';
+  const comment=clip(`${issue.id} ${issue.ac_ids.join(' ')}: ${issue.issue}${row.suggestion?' → '+row.suggestion:''}${issue.disagreement?' [review disagreement: inspect all sources]':''}${note}`,800);
   if(issue.file&&line)feedback.push({file:issue.file,line,comment});
   else feedback.push(`${comment} [historical location ${issue.file??'unknown'}:${issue.line??'?'}; re-locate before editing]`);
  }
@@ -209,7 +242,8 @@ export function revisionPacket(state,dir) {
  if(!feedback.length)throw Error('REVISION_PACKET_EMPTY: no unresolved findings or rejection to forward');
  feedback.push('This packet is non-authoritative. Preserve the original scope, unresolved rejection history and required cumulative review. Missing/truncated evidence requires lead inspection.');
  return {revision:1,task_id:state.task_id,round:state.iteration,digest:state.post_digest??null,scope:optional(dir,`brief-${state.iteration}.json`)?.scope??null,
-  finding_summary:view,blocking_criteria:(last?.blocking_criteria??[]).slice(0,12),omitted_blockers:Math.max(0,(last?.blocking_criteria?.length??0)-12),feedback};
+  finding_summary:view,blocking_criteria:(last?.blocking_criteria??[]).slice(0,12),omitted_blockers:Math.max(0,(last?.blocking_criteria?.length??0)-12),
+  ...(withheld.length?{withheld_by_lead:withheld}:{}),feedback};
 }
 
 export function resolveFinding(c,input) {
