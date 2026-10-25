@@ -11,12 +11,27 @@ import {readStatusLine} from './status-line.mjs';
 // Claude Code 훅. SKILL.md의 리드 규칙을 지시가 아니라 차단으로 강제한다.
 //   PreToolUse 1) lease가 걸린 동안 리드는 트리를 수정하지 않는다(일꾼이 writer다).
 //   PreToolUse 2) 일꾼 예산이 남아 있으면 리드는 코드를 쓰지 않는다(takeover로 lease를 받은 경우만 예외).
+//   PreToolUse 2-1) MCP 도구도 같은 규칙을 따른다. 이름만으로는 쓰기 여부를 알 수 없으므로 읽기 전용 허용 목록 밖은 막는다.
 //   Stop       3) 리드가 처리할 단계(리뷰, 검증, 재지시 등)에 작업을 둔 채 턴을 끝내지 않는다.
 //   UserPromptSubmit  4) 프롬프트를 보낼 때 작업 상태 한 줄을 사용자 화면에만 보여 준다(차단 없음, 모델 컨텍스트에 넣지 않음).
 // 진행 중인 작업이 없는 저장소, Git 저장소 밖의 파일은 건드리지 않는다.
 // 일꾼 Sonnet은 --safe-mode로 떠서 사용자 훅이 꺼지므로 이 훅에 막히지 않는다.
 
 export const GUARDED_TOOLS=['Edit','Write','MultiEdit','NotebookEdit'];
+export const MCP_MATCHER='mcp__.*';
+// Serena(https://github.com/oraios/serena)의 읽기 도구. 편집·셸·메모리 쓰기 도구는 넣지 않는다.
+// 서버 이름은 직접 등록(serena)과 플러그인 등록(plugin_serena_serena)을 모두 받는다.
+export const MCP_READ_ONLY={serena:['find_symbol','find_referencing_symbols','get_symbols_overview','search_for_pattern','find_file','list_dir','read_file']};
+// 운영자가 읽기 전용임을 확인한 도구를 정확한 전체 이름(mcp__server__tool)으로 더한다. 와일드카드는 받지 않는다.
+export const MCP_ALLOW_ENV='HF_LEAD_MCP_ALLOW';
+
+export function mcpReadOnly(name,env=process.env) {
+ if(typeof name!=='string'||!name.startsWith('mcp__'))return false;
+ if(String(env[MCP_ALLOW_ENV]??'').split(',').map(v=>v.trim()).includes(name))return true;
+ const cut=name.lastIndexOf('__');if(cut<='mcp_'.length)return false;
+ const server=name.slice('mcp__'.length,cut),tool=name.slice(cut+2);
+ return Object.entries(MCP_READ_ONLY).some(([id,tools])=>(server===id||server===`plugin_${id}_${id}`)&&tools.includes(tool));
+}
 
 // 파일이 아직 없을 수도 있으니 부모로 올라가며 .git(폴더 또는 worktree의 파일)을 찾는다.
 function repoRootOf(file) {
@@ -31,22 +46,34 @@ const deny=reason=>({hookSpecificOutput:{hookEventName:'PreToolUse',permissionDe
 // 허용이면 null, 차단이면 Claude Code가 읽는 훅 출력.
 export function decide(input) {
  if(input?.tool_name==='Bash')return decideBash(input);
+ if(input?.tool_name?.startsWith?.('mcp__'))return decideMcp(input);
  if(!GUARDED_TOOLS.includes(input?.tool_name))return null;
  const target=input.tool_input?.file_path??input.tool_input?.notebook_path;
  if(typeof target!=='string'||!target)return null;
  const root=repoRootOf(path.resolve(input.cwd??process.cwd(),target));
- if(!root)return null;
- if(fs.existsSync(controlPath(root,'locks/acceptance.json')))return deny('HyperFusion: acceptance process shutdown is unproven. Stop remaining processes and record recovery before editing the tree.');
+ return root?treeLock(root):null;
+}
+
+// MCP 도구는 대상 파일을 일정한 필드로 받지 않으므로 Bash처럼 cwd의 저장소를 기준으로 판단한다.
+// 허용 목록 밖의 도구는 쓰기·코드 실행이 가능하다고 보고 Edit/Write와 같은 조건에서 막는다.
+export function decideMcp(input) {
+ if(mcpReadOnly(input?.tool_name))return null;
+ const root=repoRootOf(path.join(path.resolve(input?.cwd??process.cwd()),'.hf-mcp'));
+ return root?treeLock(root,` Blocked: ${input.tool_name} is not a recognized read-only MCP tool; operators may list verified read-only tools in ${MCP_ALLOW_ENV}.`):null;
+}
+
+function treeLock(root,note='') {
+ if(fs.existsSync(controlPath(root,'locks/acceptance.json')))return deny(`HyperFusion: acceptance process shutdown is unproven. Stop remaining processes and record recovery before editing the tree.${note}`);
  const stateFile=controlPath(root,'state.json'),writerFile=controlPath(root,'locks/writer.json');
  if(!fs.existsSync(stateFile)&&!fs.existsSync(writerFile))return null;
  // 상태가 있는데 읽지 못하면 막는다. 규칙을 확인할 수 없을 때 열어 두면 강제가 아니다.
  let s,lease;
  try{s=fs.existsSync(stateFile)?read(stateFile):null;lease=fs.existsSync(writerFile)?read(writerFile):null;}
- catch(e){return deny(`HyperFusion: state is unreadable (${e.message}); lead edits are blocked. Inspect status.`);}
+ catch(e){return deny(`HyperFusion: state is unreadable (${e.message}); lead edits are blocked. Inspect status.${note}`);}
  if(lease)return lease.owner==='lead'?null
-  :deny(`HyperFusion: ${lease.owner} holds the writer lease (task ${lease.task_id}, round ${lease.round}). The lead must not edit the tree; execute the bridge, finish after quiescence, then review.`);
+  :deny(`HyperFusion: ${lease.owner} holds the writer lease (task ${lease.task_id}, round ${lease.round}). The lead must not edit the tree; execute the bridge, finish after quiescence, then review.${note}`);
  if(!s||TERMINAL_PHASES.includes(s.phase))return null;
- return deny(`HyperFusion: task ${s.task_id} is in ${s.phase}. The lead cannot edit while worker budget remains. Next: ${nextAction(s.phase,!!s.open_consult)}. Record takeover and acquire the lead lease before implementation.`);
+ return deny(`HyperFusion: task ${s.task_id} is in ${s.phase}. The lead cannot edit while worker budget remains. Next: ${nextAction(s.phase,!!s.open_consult)}. Record takeover and acquire the lead lease before implementation.${note}`);
 }
 
 // Task-local restrictions expire at CLOSE/BLOCKED. User-authorized publication
@@ -124,7 +151,7 @@ export function settingsSnippet() {
  const command=[{type:'command',command:`node "${script}"`}];
  const usage=fileURLToPath(new URL('./lead-usage.mjs',import.meta.url)).replaceAll('\\','/');
  const collect=[{type:'command',command:`node "${usage}" --hook`,timeout:10}];
- return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command},{matcher:'Bash',hooks:[...command,...collect]}],
+ return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command},{matcher:MCP_MATCHER,hooks:command},{matcher:'Bash',hooks:[...command,...collect]}],
   Stop:[{hooks:[...command,...collect]}],SessionStart:[{matcher:'startup|resume|compact',hooks:[...command,...collect]}],
   UserPromptSubmit:[{hooks:[...command,...collect]}],SessionEnd:[{hooks:collect}],StopFailure:[{hooks:collect}]}};
 }

@@ -6,7 +6,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
-import {decide,decideStop,decideSessionStart,settingsSnippet} from '../scripts/lead-guard.mjs';
+import {decide,decideStop,decideSessionStart,settingsSnippet,mcpReadOnly,MCP_ALLOW_ENV} from '../scripts/lead-guard.mjs';
 
 const SCRIPT=fileURLToPath(new URL('../scripts/lead-guard.mjs',import.meta.url));
 const edit=(f,file='a.txt',tool='Edit')=>decide({tool_name:tool,cwd:f.root,tool_input:{file_path:file}});
@@ -64,6 +64,34 @@ test('lead guard fails closed on unreadable state and works as a hook process',t
  const hook=settingsSnippet().hooks.PreToolUse[0];
  assert.equal(hook.matcher,'Edit|Write|MultiEdit|NotebookEdit');assert.match(hook.hooks[0].command,/lead-guard\.mjs"$/);
  assert.equal(settingsSnippet().hooks.Stop[0].hooks[0].command,hook.hooks[0].command);
+});
+
+const mcp=(f,tool,cwd=f.root)=>decide({tool_name:tool,cwd,tool_input:{relative_path:'a.txt'}});
+test('lead guard blocks MCP tools that are not known read-only while a task or lease is active',t=>{
+ const f=fixture(t,{initialize:false});
+ assert.equal(mcp(f,'mcp__serena__replace_symbol_body'),null,'no active task');
+ run(f.root,'init',{...f.brief,executor:'grok'});
+ for(const tool of ['mcp__serena__replace_symbol_body','mcp__serena__execute_shell_command','mcp__plugin_serena_serena__rename_symbol','mcp__context-mode__ctx_execute','mcp__fs__write_file']){
+  const out=mcp(f,tool);assert.ok(denied(out),tool);assert.match(out.hookSpecificOutput.permissionDecisionReason,new RegExp(`PLAN.*${tool}.*${MCP_ALLOW_ENV}`));
+ }
+ for(const tool of ['mcp__serena__find_symbol','mcp__serena__find_referencing_symbols','mcp__plugin_serena_serena__get_symbols_overview'])assert.equal(mcp(f,tool),null,tool);
+ assert.equal(mcp(f,'mcp__fs__write_file',f.temp),null,'outside the repository is not guarded');
+ f.begin();
+ assert.match(mcp(f,'mcp__serena__insert_after_symbol').hookSpecificOutput.permissionDecisionReason,/grok.*writer lease/);
+ f.finish();f.review('pass');run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'npm test',status:'pass'}]});
+ assert.equal(mcp(f,'mcp__serena__replace_symbol_body'),null,'a closed task releases the guard');
+});
+
+test('MCP read-only recognition needs an exact server and tool or an exact operator entry',()=>{
+ assert.equal(mcpReadOnly('mcp__serena__find_symbol'),true);
+ assert.equal(mcpReadOnly('mcp__notserena__find_symbol',{}),false,'a server name that merely ends in serena text is not Serena');
+ assert.equal(mcpReadOnly('mcp__other__find_symbol',{}),false);assert.equal(mcpReadOnly('mcp__x_serena__find_symbol',{}),false);
+ assert.equal(mcpReadOnly('mcp__serena__write_memory',{}),false);
+ assert.equal(mcpReadOnly('mcp__serena',{}),false);assert.equal(mcpReadOnly('Read',{}),false);
+ const env={[MCP_ALLOW_ENV]:' mcp__github__get_file_contents ,mcp__docs__*'};
+ assert.equal(mcpReadOnly('mcp__github__get_file_contents',env),true);
+ assert.equal(mcpReadOnly('mcp__docs__anything',env),false,'wildcards are not accepted');
+ assert.ok(settingsSnippet().hooks.PreToolUse.some(h=>h.matcher==='mcp__.*'&&/lead-guard\.mjs"$/.test(h.hooks[0].command)));
 });
 
 const stop=(f,extra={})=>decideStop({hook_event_name:'Stop',cwd:f.root,stop_hook_active:false,...extra});

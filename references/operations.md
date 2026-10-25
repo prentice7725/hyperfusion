@@ -26,6 +26,12 @@ CLI 실패의 stderr는 `{code, message, next_action}` JSON이다. doctor는 체
 
 훅은 `Edit`, `Write`, `MultiEdit`, `NotebookEdit`의 대상 파일이 속한 Git 저장소의 제어 폴더를 읽는다.
 
+MCP 도구(`mcp__*`)도 같은 표로 판정한다. MCP 도구는 이름만으로 쓰기·코드 실행 여부를 알 수 없어서, 아래 허용 목록에 있는 읽기 전용 도구만 항상 통과하고 나머지는 작업 중에 막는다. 대상 파일 필드가 일정하지 않으므로 Bash 가드처럼 cwd의 저장소를 기준으로 본다.
+
+- 기본 허용: Serena(`mcp__serena__*` 또는 플러그인 등록 `mcp__plugin_serena_serena__*`)의 `find_symbol`, `find_referencing_symbols`, `get_symbols_overview`, `search_for_pattern`, `find_file`, `list_dir`, `read_file`. 편집·셸·메모리 쓰기 도구는 넣지 않았다.
+- 운영자 추가: 읽기 전용임을 직접 확인한 도구를 `HF_LEAD_MCP_ALLOW=mcp__server__tool,...`처럼 정확한 전체 이름으로 적는다. 와일드카드는 받지 않는다.
+- 이 검사는 도구 이름 기준의 협조적 가드다. 허용된 도구가 실제로 읽기만 하는지, MCP 서버가 cwd 밖의 다른 저장소를 다루는지는 확인하지 않는다.
+
 | 상태 | 판정 |
 |---|---|
 | 상태 없음, 또는 CLOSE·BLOCKED·ARCHIVED | 허용 |
