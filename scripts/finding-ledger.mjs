@@ -73,9 +73,9 @@ export function captureFindings(root,state,dir,source,post) {
  }catch{return {status:'unavailable',source_file:source.file};}
 }
 
-function sources(state,dir,warnings) {
+function sources(state,dir,warnings,names) {
  const out=[];
- for(const file of fs.readdirSync(dir).sort()){
+ for(const file of names){
   const consult=/^consult-result-(c\d+)-(m\d+)\.json$/.exec(file),manual=/^review-(\d+)(?:-verify)?\.json$/.exec(file);
   if(!consult&&!manual)continue;
   try{
@@ -107,9 +107,17 @@ function sources(state,dir,warnings) {
 }
 
 export function findingLedger(state,dir) {
- const warnings=[],groups=new Map(),rows=[];
+ const warnings=[],groups=new Map(),rows=[],names=fs.readdirSync(dir).sort(),resolutionFiles=new Map();
+ // One fresh directory inventory per call. Index annotations once rather than
+ // scanning the same names again for every issue; their evidence is still read
+ // and validated below on every inspection, with no cached approval result.
+ for(const file of names){
+  const match=/^finding-resolution-(F-[a-f0-9]{24})-/.exec(file);
+  if(!match||!file.endsWith('.json'))continue;
+  const files=resolutionFiles.get(match[1])??[];files.push(file);resolutionFiles.set(match[1],files);
+ }
  const map=optional(dir,`finding-map-${state.iteration}.json`);
- for(const source of sources(state,dir,warnings)){
+ for(const source of sources(state,dir,warnings,names)){
   const post=optional(dir,`post-${source.round}.json`);
   const cached=optional(dir,observationName(source.file));
   const cacheValid=cached?.revision===1&&cached.task_id===state.task_id&&cached.source_sha256===source.sha256;
@@ -134,7 +142,7 @@ export function findingLedger(state,dir) {
  for(const group of groups.values()){
   group.disagreement=new Set(group.observations.map(r=>r.verdict)).size>1||new Set(group.observations.map(r=>r.severity)).size>1;
   group.requires_current_review=group.observations.some(r=>r.digest!==state.post_digest);
-  const resolutions=fs.readdirSync(dir).filter(f=>f.startsWith(`finding-resolution-${group.id}-`)&&f.endsWith('.json')).sort();
+  const resolutions=resolutionFiles.get(group.id)??[];
   group.resolution_records=resolutions;
   for(const file of resolutions){
    const r=optional(dir,file);

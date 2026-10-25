@@ -1,0 +1,31 @@
+{
+  "task_id": "HF-example-feature",
+  "objective": "Add CSV export to the existing exporter using the prepared contract tests.",
+  "scope": {
+    "paths": [
+      "src/exporter.mjs"
+    ]
+  },
+  "constraints": [
+    "Preserve existing export formats and user edits",
+    "Keep tests/exporter.contract.test.mjs unchanged"
+  ],
+  "success_criteria": [
+    "AC1: CSV exports quote commas, quotes and newlines correctly"
+  ],
+  "allowed_actions": [
+    "read",
+    "edit",
+    "test"
+  ],
+  "task_kind": "code",
+  "difficulty": "medium",
+  "acceptance_commands": [
+    "node --test tests/exporter.contract.test.mjs"
+  ],
+  "acceptance_map": {
+    "AC1": [
+      "node --test tests/exporter.contract.test.mjs"
+    ]
+  }
+}

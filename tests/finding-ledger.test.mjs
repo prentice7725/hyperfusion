@@ -115,6 +115,46 @@ test('corrupt context/resolution caches cannot hide or rewrite raw rejection evi
  assert.equal(JSON.parse(fs.readFileSync(path.join(f.dir,source))).recommended_verdict,'redo');
 });
 
+test('ledger inventories the directory once and preserves sorted resolution records without caching evidence',t=>{
+ const f=setup(t);review(f,{findings:Array.from({length:40},(_,i)=>({...finding,issue:`AC1: defect ${i}`}))});
+ const baseline=findingLedger(f.state,f.dir),ids=baseline.issues.map(g=>g.id);
+ for(const id of ids){
+  put(f.dir,`finding-resolution-${id}-z.json`,{});
+  fs.writeFileSync(path.join(f.dir,`finding-resolution-${id}-a.json`),'broken JSON');
+ }
+ put(f.dir,'finding-resolution-F-000000000000000000000000-unused.json',{});
+ const original=fs.readdirSync;let inventories=0,ledger;
+ try{
+  fs.readdirSync=function(dir,...args){if(path.resolve(dir)===path.resolve(f.dir))inventories++;return original.call(this,dir,...args);};
+  ledger=findingLedger(f.state,f.dir);
+ }finally{fs.readdirSync=original;}
+ assert.equal(inventories,1);assert.equal(ledger.issues.length,40);assert.equal(ledger.observation_count,40);
+ for(const g of ledger.issues){
+  assert.deepEqual(g.resolution_records,[`finding-resolution-${g.id}-a.json`,`finding-resolution-${g.id}-z.json`]);
+  assert.equal(g.disposition,'unresolved');
+ }
+ assert.equal(ledger.warnings.filter(w=>w.code==='RESOLUTION_STALE_OR_INVALID').length,80);
+ const added=`finding-resolution-${ids[0]}-b.json`;put(f.dir,added,{});
+ assert.deepEqual(findingLedger(f.state,f.dir).issues[0].resolution_records,[`finding-resolution-${ids[0]}-a.json`,added,`finding-resolution-${ids[0]}-z.json`]);
+ assert.deepEqual(ledger.issues.map(g=>g.observations),baseline.issues.map(g=>g.observations));
+});
+
+test('indexed annotations still validate fresh hashes, round and every source before showing fixed',t=>{
+ const f=setup(t);review(f);const issue=findingLedger(f.state,f.dir).issues[0];
+ f.state.iteration=2;f.state.post_digest='digest-2';
+ const acceptance='acceptance-2-finish.json',reviewFile='review-2.json';
+ const record={tree_digest:'digest-2',round:2,status:'pass',quiescent:true,results:[{status:'pass',quiescence:{quiescent:true}}]};
+ put(f.dir,acceptance,record);put(f.dir,reviewFile,{verdict:'pass',reviewed_digest:'digest-2',round:2,findings:[]});
+ const annotation={revision:1,finding_id:issue.id,digest:'digest-2',round:2,reason:'current evidence',source_ids:issue.observations.map(o=>o.source_id),acceptance_file:acceptance,acceptance_sha256:hash(fs.readFileSync(path.join(f.dir,acceptance))),review_file:reviewFile,review_sha256:hash(fs.readFileSync(path.join(f.dir,reviewFile)))};
+ for(const suffix of ['z','a'])put(f.dir,`finding-resolution-${issue.id}-${suffix}.json`,annotation);
+ let current=findingLedger(f.state,f.dir).issues[0];
+ assert.equal(current.disposition,'fixed');assert.equal(current.resolution.file,`finding-resolution-${issue.id}-z.json`);
+ put(f.dir,acceptance,{...record,status:'fail'});
+ current=findingLedger(f.state,f.dir).issues[0];assert.equal(current.disposition,'unresolved');
+ put(f.dir,acceptance,record);f.state.iteration=3;
+ assert.equal(findingLedger(f.state,f.dir).issues[0].disposition,'unresolved');
+});
+
 test('summaries are bounded and keep explicit pointers to omitted sources and blockers',t=>{
  const f=setup(t);review(f,{findings:Array.from({length:25},(_,i)=>({...finding,issue:'AC1: issue '+i}))});
  const view=findingSummary(findingLedger(f.state,f.dir));assert.equal(view.displayed.length,12);assert.equal(view.omitted,13);

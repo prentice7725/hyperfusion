@@ -1,0 +1,38 @@
+{
+  "task_id": "HF-example-preserve",
+  "objective": "Simplify parser internals while preserving every existing contract.",
+  "scope": {
+    "paths": [
+      "src/parser.mjs"
+    ]
+  },
+  "constraints": [
+    "Preserve public API and existing user edits",
+    "Keep tests/parser.contract.test.mjs unchanged"
+  ],
+  "success_criteria": [
+    "AC1: existing parser behavior remains unchanged"
+  ],
+  "allowed_actions": [
+    "read",
+    "edit",
+    "test"
+  ],
+  "task_kind": "refactor",
+  "difficulty": "medium",
+  "acceptance_commands": [
+    "node --test tests/parser.contract.test.mjs"
+  ],
+  "acceptance_map": {
+    "AC1": [
+      "node --test tests/parser.contract.test.mjs"
+    ]
+  },
+  "acceptance_baseline_green": "Existing parser contract passes before this behavior-preserving refactor.",
+  "verification": {
+    "kind": "preserve",
+    "protect": [
+      "tests/**"
+    ]
+  }
+}
