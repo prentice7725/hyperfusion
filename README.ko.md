@@ -165,7 +165,7 @@ Claude Code에서 Opus 5.5를 고르고:
 
 리드가 [SKILL.md](SKILL.md)에 따라 컨트롤러와 브리지를 호출한다. 먼저 `node scripts/setup-doctor.mjs <저장소>`로 설치 상태를 점검한다. 설정은 대상 저장소의 `hyperfusion.config.json`(예시: `hyperfusion.config.example.json`).
 
-**리드 가드 훅 설치(권장).** `npm run guard:settings`가 이 PC의 절대 경로로 된 훅 설정(PreToolUse, Stop, SessionStart, UserPromptSubmit, SessionEnd, StopFailure)을 출력한다. 그 `hooks` 항목을 `~/.claude/settings.json`(또는 대상 저장소의 `.claude/settings.json`)에 합친다. 기존 설치도 각 이벤트의 새 사용량 수집 명령을 합쳐야 한다. 다른 훅은 보존하고 기존 명령은 중복 추가하지 않는다.
+**리드 가드 훅 설치(권장).** `npm run guard:settings`가 이 PC의 절대 경로로 된 훅 설정(PreToolUse, Stop, SessionStart, UserPromptSubmit, SessionEnd, StopFailure)을 출력한다. 그 `hooks` 항목을 `~/.claude/settings.json`(또는 대상 저장소의 `.claude/settings.json`)에 합친다. 기존 설치도 각 이벤트의 새 사용량 수집 명령과 MCP 도구 가드(`mcp__.*`) 항목을 합쳐야 한다. 다른 훅은 보존하고 기존 명령은 중복 추가하지 않는다.
 
 **오토파일럿.** 초기화된 작업은 `node scripts/fusion-state.mjs autopilot <저장소>`로 라운드 실행과 독립 위임 리뷰를 자동 진행할 수 있다. 리드가 정한 `acceptance_commands`가 있어야 하고, 기준 트리에서 실패가 확인된(red) 명령이어야 한다(보존 검증 작업은 반대로 이미 통과가 확인돼야 한다). classic 리뷰에서는 `review.auto_apply:true`도 필요하다(`lead-gated-adaptive`는 어차피 리드 게이트에서 멈추므로 요구하지 않는다). VERIFY·설계 결정·BLOCKED·takeover에서 리드에게 제어를 돌려주며, 정지·스냅샷·예산·검증 확인에 실패하면 멈춘다. 리드가 재량권을 준 작업은 컨트롤러가 승인한 라운드의 verify까지 이어 간다([운영 설명](references/operations.md#오토파일럿)).
 

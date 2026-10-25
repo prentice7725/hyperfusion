@@ -5,6 +5,7 @@
 ## Unreleased
 
 - 재검수용 `round-diff`: 2라운드부터 begin이 HEAD와 다른 텍스트 파일의 내용(파일당 512KiB, 합계 4MiB 이내)을 `round-base-N.json`에 남기고, 읽기 전용 `fusion-state.mjs round-diff REPO`가 이번 라운드 시작 이후 바뀐 줄만 unified diff로 보여 준다. 기준 기록이 없거나 라운드 스냅샷과 맞지 않으면 알리고 diff를 내지 않는다. 리뷰 단계의 `next`가 명령을 안내한다. 판정·승인 근거가 아니며 승인은 여전히 누적 diff 전체를 대상으로 한다.
+- 리드 가드가 MCP 도구(`mcp__*`)도 검사한다. 진행 중인 작업이나 일꾼 lease가 있는 동안 읽기 전용으로 확인된 도구(Serena의 심볼 조회·검색·파일 읽기, GitHub MCP의 저장소·이슈·PR·CI 조회, Context7 문서 조회, Google Drive 검색·읽기)와 운영자가 `HF_LEAD_MCP_ALLOW`에 정확한 이름으로 적은 도구만 통과시키고, 나머지는 Edit/Write와 같은 조건에서 막는다. `npm run guard:settings`에 `mcp__.*` PreToolUse 항목이 추가됐으므로 기존 설치도 병합해야 한다. 판단 기준 저장소는 Bash 가드처럼 cwd이며, MCP 서버가 다른 경로를 다루는지는 확인하지 않는다.
 - 지적 원장은 호출마다 디렉터리를 한 번만 읽어 해결 주석을 색인한다. 원본 해시·현재 라운드·수용/리뷰 근거는 여전히 매번 검증한다. 선택적 `tools/profile-controller.mjs`는 snapshot·ignoredManifest·원장 로컬 시간을 실측하고, 작업 유형별 brief 예시와 `tools/preflight-brief.mjs`는 기존 계약을 정적으로 검사한다. 모델 시간 절감·실행 자격·승인을 주장하거나 새 권한을 만들지 않는다.
 
 - 지원 Node를 24 이상으로 올렸다. `engines`, setup doctor 검사, CI 매트릭스(Ubuntu·Windows × Node 24)와 문서를 맞췄다. Node 20은 더 이상 검사하지 않는다.
