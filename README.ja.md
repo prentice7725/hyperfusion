@@ -1,12 +1,12 @@
 # HyperFusion
 
-v0.27.0では読み取り専用の診断・再開パケット、明示的に許可された復旧精算、レビュー指摘台帳、静的なタスク依存関係、制限付きの読み取り専用作業、出所を保持する記憶、反復A/Bベンチマークを追加します。リードがコントローラ操作に使うターンを減らし（オプション入力、ブリッジが出力するfinishコマンド、検証済みの簡単な作業のautopilot）、Windowsの監視が速くなりました。[復旧精算](references/reconciliation.md)、[作業計画](references/workflow-plan.md)、[記憶](references/memory.md)、[CHANGELOG](CHANGELOG.md)を参照してください。
+v0.28.0では、リードのコンテキスト消費を減らしつつ欠陥を見落とさないためのツールを追加します。リードガードがMCPツールも検査し、作業中は読み取り専用ツール（Serena・GitHub・Context7・Google Driveの参照）だけを通します。読み取り専用の`evidence`パケットと`evidence-search`がリスク信号を元成果物のハッシュとともに提示します。失敗した受け入れコマンドは出力末尾より前の最初の失敗を別に残し、REDO後は`round-diff`でそのラウンドの変更行だけを確認でき、任意の`coding_policy:"ponytail"`がワーカーの実装指示に固定ルールを追加します。Node 24以上が必要です。実モデルでの削減効果は未測定です。[エージェント保護](references/agent-guards.md)、[証拠回収実験](references/evidence-retrieval-experiment.md)、[設定](references/configuration.md#일꾼-코딩-정책-coding_policy)、[CHANGELOG](CHANGELOG.md)を参照してください。
 
 [English](README.md) | [한국어](README.ko.md) | 日本語
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.27.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.28.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 未リリースのコントローラ改善
 

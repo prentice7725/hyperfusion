@@ -1,12 +1,12 @@
 # HyperFusion
 
-v0.27.0은 읽기 전용 진단·재개 패킷, 명시적으로 허가된 복구 정산, 리뷰 지적 원장, 정적 작업 의존성, 제한된 읽기 전용 작업, 출처를 보존하는 기억, 반복 A/B 벤치마크를 추가합니다. 리드가 컨트롤러 조작에 쓰는 턴을 줄였고(옵션 입력, 브리지가 출력하는 finish 명령, 검증된 쉬운 작업의 autopilot), Windows 감시가 빨라졌습니다. [복구 정산](references/reconciliation.md), [작업 계획](references/workflow-plan.md), [기억](references/memory.md), [CHANGELOG](CHANGELOG.md)를 참고하세요.
+v0.28.0은 리드가 컨텍스트를 덜 쓰면서도 결함을 놓치지 않게 하는 도구를 추가합니다. 리드 가드가 MCP 도구도 검사해 작업 중에는 읽기 전용 도구(Serena·GitHub·Context7·Google Drive 조회)만 통과시키고, 읽기 전용 `evidence` 패킷과 `evidence-search`가 위험 신호를 원본 해시와 함께 올립니다. 실패한 수용 명령은 출력 꼬리 앞의 첫 실패를 따로 남기고, REDO 뒤에는 `round-diff`로 이번 라운드가 바꾼 줄만 볼 수 있으며, 선택적 `coding_policy:"ponytail"`이 일꾼 구현 지시문에 고정 규칙을 덧붙입니다. 지원 Node는 24 이상입니다. 실모델 절감 효과는 미측정입니다. [에이전트 보호](references/agent-guards.md), [증거 회수 실험](references/evidence-retrieval-experiment.md), [설정](references/configuration.md#일꾼-코딩-정책-coding_policy), [CHANGELOG](CHANGELOG.md)를 참고하세요.
 
 [English](README.md) | 한국어 | [日本語](README.ja.md)
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.27.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.28.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 미출시 컨트롤러 개선
 
