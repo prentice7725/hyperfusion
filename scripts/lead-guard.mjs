@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isMain} from './platform.mjs';
-import {read} from './artifact.mjs';
+import {read,atomic,hash} from './artifact.mjs';
 import {controlPath} from './control-dir.mjs';
 import {TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {dangerousBash,bashDirectories} from './lead-bash-guard.mjs';
@@ -60,8 +60,18 @@ function repoRootOf(file) {
 
 const deny=reason=>({hookSpecificOutput:{hookEventName:'PreToolUse',permissionDecision:'deny',permissionDecisionReason:reason}});
 
-// 허용이면 null, 차단이면 Claude Code가 읽는 훅 출력.
-export function decide(input) {
+// 컨트롤러가 띄운 일꾼 프로세스인지. 브리지가 lease 토큰의 해시나 상담 ID를 환경변수로 넘긴다.
+// 호스트 훅을 끌 수 없는 일꾼(Codex 관리형 훅, agy)이 리드용 가드에 막히지 않게 하고, 리드 세션은 이 값을 갖지 않는다.
+export function workerProcess(lease,state,env=process.env) {
+ if(lease&&lease.owner!=='lead'&&typeof env.HF_WORKER_LEASE==='string'&&env.HF_WORKER_LEASE===hash(String(lease.token)))return true;
+ return !!(state?.open_consult&&typeof env.HF_WORKER_CONSULT==='string'&&env.HF_WORKER_CONSULT===String(state.open_consult.id));
+}
+
+export const HOSTS=['claude-code','codex','antigravity'];
+
+// 허용이면 null, 차단이면 호스트가 읽는 훅 출력(Claude Code와 Codex는 같은 deny 형식이다).
+export function decide(input,{host='claude-code'}={}) {
+ if(host==='codex')return decideCodex(input);
  if(input?.tool_name==='Bash')return decideBash(input);
  if(input?.tool_name?.startsWith?.('mcp__'))return decideMcp(input);
  if(!GUARDED_TOOLS.includes(input?.tool_name))return null;
@@ -79,6 +89,34 @@ export function decideMcp(input) {
  return root?treeLock(root,` Blocked: ${input.tool_name} is not a recognized read-only MCP tool; operators may list verified read-only tools in ${MCP_ALLOW_ENV}.`):null;
 }
 
+// Codex 리드. 파일 수정은 apply_patch(Edit·Write로도 맞는다)이고 대상 경로는 패치 본문에 있다.
+// write_stdin은 이미 허용된 셸에 입력을 넣을 때 PreToolUse를 다시 거치지 않고, spawn_agent는 컨트롤러를 거치지 않는 위임이다.
+// 둘 다, 그리고 이름을 모르는 도구는 작업 중에 쓰기로 보고 막는다.
+export const CODEX_READ_TOOLS=['update_plan','view_image'];
+export const CODEX_BYPASS_TOOLS=['write_stdin','spawn_agent','Agent'];
+export function patchPaths(text) {
+ if(typeof text!=='string')return [];
+ return [...text.matchAll(/^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm)].map(m=>m[1].trim()).filter(Boolean);
+}
+export function decideCodex(input) {
+ const tool=input?.tool_name,cwd=path.resolve(input?.cwd??process.cwd());
+ if(tool==='Bash')return decideBash(input);
+ if(typeof tool==='string'&&tool.startsWith('mcp__'))return decideMcp(input);
+ if(CODEX_READ_TOOLS.includes(tool))return null;
+ if(['apply_patch','Edit','Write'].includes(tool)){
+  const targets=patchPaths(input.tool_input?.command);
+  // 경로를 읽지 못한 패치는 작업 폴더의 저장소를 기준으로 막는다(열어 두면 강제가 아니다).
+  for(const target of targets.length?targets:['.hf-patch']){
+   const root=repoRootOf(path.resolve(cwd,target));
+   const out=root?treeLock(root):null;if(out)return out;
+  }
+  return null;
+ }
+ const root=repoRootOf(path.join(cwd,'.hf-tool'));
+ const why=CODEX_BYPASS_TOOLS.includes(tool)?`${tool} bypasses the per-call guard or the controller`:`${tool} is not a recognized read-only Codex tool`;
+ return root?treeLock(root,` Blocked: ${why}.`):null;
+}
+
 function treeLock(root,note='') {
  if(fs.existsSync(controlPath(root,'locks/acceptance.json')))return deny(`HyperFusion: acceptance process shutdown is unproven. Stop remaining processes and record recovery before editing the tree.${note}`);
  const stateFile=controlPath(root,'state.json'),writerFile=controlPath(root,'locks/writer.json');
@@ -87,6 +125,8 @@ function treeLock(root,note='') {
  let s,lease;
  try{s=fs.existsSync(stateFile)?read(stateFile):null;lease=fs.existsSync(writerFile)?read(writerFile):null;}
  catch(e){return deny(`HyperFusion: state is unreadable (${e.message}); lead edits are blocked. Inspect status.${note}`);}
+ // lease를 쥔 일꾼 자신의 쓰기는 막지 않는다(훅을 끌 수 없는 호스트의 일꾼).
+ if(workerProcess(lease,s))return null;
  if(lease)return lease.owner==='lead'?null
   :deny(`HyperFusion: ${lease.owner} holds the writer lease (task ${lease.task_id}, round ${lease.round}). The lead must not edit the tree; execute the bridge, finish after quiescence, then review.${note}`);
  if(!s||TERMINAL_PHASES.includes(s.phase))return null;
@@ -122,7 +162,8 @@ export const LEAD_TURN=['PLAN','REVIEW','VERIFY','REDO','ALTERNATIVE_REQUIRED','
 
 // Stop 훅: 리드 차례인 작업을 남기고 턴을 끝내려 하면 한 번 막고 다음 동작을 알려 준다.
 // 이미 한 번 막혀 이어 가는 중(stop_hook_active)이면 통과시킨다. 사용자에게 보고하고 멈추는 것도 리드의 판단이다.
-export function decideStop(input) {
+// Codex는 stop_hook_active를 주지 않는다. 같은 턴(turn_id)에서 한 번 막았으면 다음에는 통과시켜 끝없이 이어지지 않게 한다.
+export function decideStop(input,{host='claude-code'}={}) {
  if(input?.stop_hook_active===true)return null;
  const root=repoRootOf(path.join(path.resolve(input?.cwd??process.cwd()),'.hf-stop'));
  if(!root)return null;
@@ -131,8 +172,13 @@ export function decideStop(input) {
  // 상태를 읽지 못하면 막지 않는다. Stop을 막는 쪽으로 실패하면 세션이 끝나지 않는다.
  let s;
  try{s=read(stateFile);}catch{return null;}
+ if(workerProcess(null,s))return null;
  const consult=!!s.open_consult;
  if(!consult&&!LEAD_TURN.includes(s.phase))return null;
+ if(host!=='claude-code'){
+  const key=hash(String(input?.turn_id??input?.session_id??'')),file=controlPath(root,'stop-guard.json');
+  try{if(fs.existsSync(file)&&read(file).key===key)return null;atomic(file,{key,at:new Date().toISOString()});}catch{return null;}
+ }
  return {decision:'block',reason:`HyperFusion: task ${s.task_id} remains in ${s.phase}. Next: ${nextAction(s.phase,consult)}. If user input is required, report the reason before stopping.`};
 }
 
@@ -184,13 +230,23 @@ export function decideUserPrompt(input) {
  return line?{systemMessage:line}:null;
 }
 
+// Codex 사용자 훅(~/.codex/hooks.json)에 넣을 항목. 사용자 훅도 /hooks에서 신뢰해야 돈다. 상태 줄(UserPromptSubmit systemMessage)은 넣지 않는다.
+function codexSnippet(script,usage) {
+ const guard={type:'command',command:`node "${script}" --host codex`,timeout:30,statusMessage:'HyperFusion lead guard'};
+ const collect={type:'command',command:`node "${usage}" --hook --host codex`,timeout:10};
+ return {hooks:{PreToolUse:[{matcher:'.*',hooks:[guard]},{matcher:'^Bash$',hooks:[collect]}],
+  SessionStart:[{matcher:'startup|resume|compact',hooks:[guard,collect]}],UserPromptSubmit:[{hooks:[collect]}],Stop:[{hooks:[guard]}]}};
+}
+
 // 사용자 설정(~/.claude/settings.json 등)에 넣을 훅 항목. 이 파일의 절대 경로를 쓴다.
-export function settingsSnippet() {
+export function settingsSnippet({host='claude-code'}={}) {
+ if(!HOSTS.includes(host))throw Error('guard settings host must be one of '+HOSTS.join(', '));
  const script=fileURLToPath(import.meta.url).replaceAll('\\','/');
  const command=[{type:'command',command:`node "${script}"`}];
  // 차단하는 가드는 실패해도 막는다. 상태 표시·문맥 주입·사용량 수집은 실패해도 진행한다.
  const gate=[{...command[0],onFailure:'block'}];
  const usage=fileURLToPath(new URL('./lead-usage.mjs',import.meta.url)).replaceAll('\\','/');
+ if(host==='codex')return codexSnippet(script,usage);
  const collect=[{type:'command',command:`node "${usage}" --hook`,timeout:10}];
  return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:gate},{matcher:MCP_MATCHER,hooks:gate},{matcher:'Bash',hooks:[...gate,...collect]}],
   Stop:[{hooks:[...command,...collect]}],SessionStart:[{matcher:'startup|resume|compact',hooks:[...command,...collect]}],
@@ -199,12 +255,13 @@ export function settingsSnippet() {
 }
 
 if(isMain(import.meta.url)) {
- if(process.argv[2]==='--print-settings'){console.log(JSON.stringify(settingsSnippet(),null,2));process.exit(0);}
+ const at=process.argv.indexOf('--host'),host=at>=0?process.argv[at+1]:'claude-code';
+ if(process.argv[2]==='--print-settings'){console.log(JSON.stringify(settingsSnippet({host}),null,2));process.exit(0);}
  let input;
  try{input=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));}
  catch(e){console.error('lead-guard: invalid hook input: '+e.message);process.exit(0);}
  const event=input?.hook_event_name;
- const out=event==='Stop'?decideStop(input):event==='SessionStart'?decideSessionStart(input):event==='UserPromptSubmit'?decideUserPrompt(input)
-  :event==='PreModelSwitch'?decideModelSwitch(input):decide(input);
+ const out=event==='Stop'?decideStop(input,{host}):event==='SessionStart'?decideSessionStart(input):event==='UserPromptSubmit'?decideUserPrompt(input)
+  :event==='PreModelSwitch'?decideModelSwitch(input):decide(input,{host});
  if(out)console.log(JSON.stringify(out));
 }

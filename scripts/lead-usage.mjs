@@ -215,6 +215,8 @@ export function usageHook(input) {
   if(['SessionStart','UserPromptSubmit','PreToolUse','PostModelSwitch'].includes(input.hook_event_name)){
    rememberHost(root,input);return {status:'bound'};
   }
+  // transcript 형식을 확인한 호스트는 Claude Code뿐이다. 다른 호스트의 리드 사용량은 미측정(unknown)으로 남긴다.
+  if(input.hook_host&&input.hook_host!=='claude-code')return {status:'unsupported-host',host:input.hook_host};
   return collectHostUsage(root,input);
  }finally{unlock();}
 }
@@ -222,6 +224,8 @@ export function usageHook(input) {
 if(isMain(import.meta.url)){
  try{
   const input=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));
+  const at=process.argv.indexOf('--host');
+  if(at>=0)input.hook_host=process.argv[at+1];
   const result=usageHook(input);
   if(process.argv[2]!=='--hook')console.log(JSON.stringify(result));
  }catch(e){
