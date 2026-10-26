@@ -6,6 +6,7 @@ import {fixture} from './support.mjs';
 import {run} from '../scripts/fusion-state.mjs';
 import {codingPolicy,CODING_POLICIES} from '../scripts/coding-policy.mjs';
 import {prompt} from '../scripts/adapters/common.mjs';
+import {execute} from '../scripts/executor-bridge.mjs';
 
 const withConfig=(t,body)=>{
  const f=fixture(t,{initialize:false});
@@ -21,6 +22,15 @@ test('the ponytail policy is pinned, licensed and free of rules that conflict wi
  assert.doesNotMatch(p.text,/End your reply|shortcut:/,'prose endings and comment markers would break result JSON or add noise');
  assert.throws(()=>codingPolicy('caveman'),/coding_policy must be one of ponytail/);
  assert.deepEqual(Object.keys(CODING_POLICIES),['ponytail']);
+});
+
+// 브리지는 dispatch를 다시 만들어 비교한다. 정책이 붙은 지시문을 같은 값으로 다시 만들어야 일꾼이 뜬다(실측에서 DISPATCH_TAMPERED로 막혔다).
+test('the bridge runs a worker whose prompt carries the coding policy',async t=>{
+ const f=withConfig(t,{coding_policy:'ponytail'});
+ run(f.root,'init',f.brief);
+ f.begin();
+ const out=await execute(f.root);
+ assert.equal(out.status,'RESULT_READY');
 });
 
 test('a configured coding policy reaches implementation prompts only, with its hash',t=>{
