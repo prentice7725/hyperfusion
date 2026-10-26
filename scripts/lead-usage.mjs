@@ -21,12 +21,17 @@ export function hookRoot(cwd) {
 }
 
 // Context contains identifiers/timestamps only, never the prompt or transcript.
+// 리드 모델은 호스트가 알려 준 값만 적는다(Claude Code SessionStart의 model, 모델 전환 뒤의 to_model,
+// 다른 호스트 어댑터가 넣는 model). 같은 세션이면 이전 값을 이어 쓰고, 세션이 바뀌면 지운다.
+const reportedModel=input=>[input.model,input.hook_event_name==='PostModelSwitch'?input.to_model:undefined].find(v=>typeof v==='string'&&v.trim()&&v.length<=120)??null;
 export function rememberHost(root,input,at=Date.now()) {
  if(typeof input.session_id!=='string'||!input.session_id)return;
  const file=controlPath(root,'host-session.json'),prior=optional(file);
  const session=hash(input.session_id);
  const fresh=input.hook_event_name==='UserPromptSubmit'||prior?.session!==session;
- atomic(file,{session,turn_started_at:fresh?new Date(at).toISOString():prior.turn_started_at,observed_at:new Date(at).toISOString(),hook_event_name:input.hook_event_name,tool_name:input.tool_name??null});
+ const host=typeof input.hook_host==='string'?input.hook_host:'claude-code';
+ const lead_model=reportedModel(input)??(prior?.session===session?prior.lead_model??null:null);
+ atomic(file,{session,turn_started_at:fresh?new Date(at).toISOString():prior.turn_started_at,observed_at:new Date(at).toISOString(),hook_event_name:input.hook_event_name,tool_name:input.tool_name??null,host,lead_model});
  const tasks=controlPath(root,'tasks');
  if(fs.existsSync(tasks))for(const item of fs.readdirSync(tasks,{withFileTypes:true})){
   if(!item.isDirectory())continue;const w=optional(windowFile(root,item.name));
@@ -207,7 +212,7 @@ export function usageHook(input) {
  ensureControl(root);
  const unlock=acquireLock(controlPath(root,'locks/control.lock'));
  try{
-  if(['SessionStart','UserPromptSubmit','PreToolUse'].includes(input.hook_event_name)){
+  if(['SessionStart','UserPromptSubmit','PreToolUse','PostModelSwitch'].includes(input.hook_event_name)){
    rememberHost(root,input);return {status:'bound'};
   }
   return collectHostUsage(root,input);

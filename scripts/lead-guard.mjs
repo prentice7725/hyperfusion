@@ -7,6 +7,7 @@ import {controlPath} from './control-dir.mjs';
 import {TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {dangerousBash,bashDirectories} from './lead-bash-guard.mjs';
 import {readStatusLine} from './status-line.mjs';
+import {familyOf,UNKNOWN} from './model-registry.mjs';
 
 // Claude Code 훅. SKILL.md의 리드 규칙을 지시가 아니라 차단으로 강제한다.
 //   PreToolUse 1) lease가 걸린 동안 리드는 트리를 수정하지 않는다(일꾼이 writer다).
@@ -14,6 +15,9 @@ import {readStatusLine} from './status-line.mjs';
 //   PreToolUse 2-1) MCP 도구도 같은 규칙을 따른다. 이름만으로는 쓰기 여부를 알 수 없으므로 읽기 전용 허용 목록 밖은 막는다.
 //   Stop       3) 리드가 처리할 단계(리뷰, 검증, 재지시 등)에 작업을 둔 채 턴을 끝내지 않는다.
 //   UserPromptSubmit  4) 프롬프트를 보낼 때 작업 상태 한 줄을 사용자 화면에만 보여 준다(차단 없음, 모델 컨텍스트에 넣지 않음).
+//   PreModelSwitch    5) 진행 중인 작업이 있으면 리드를 다른 계열 모델로 바꾸지 못한다(R7). 같은 계열 안의 전환은 허용한다.
+//   PreToolUse(Bash)  6) 리드는 완화 환경변수(HF_ALLOW_*, HF_LEAD_*, HF_ALLOWED_VENDORS)를 설정하지 못한다. 완화는 운영자가 호스트를 띄우기 전에 정한다.
+// 가드 명령은 onFailure:"block"으로 등록한다. 가드가 죽거나 시간을 넘기면 도구 호출이 막힌다(Claude Code v2.1.295 이상).
 // 진행 중인 작업이 없는 저장소, Git 저장소 밖의 파일은 건드리지 않는다.
 // 일꾼 Sonnet은 --safe-mode로 떠서 사용자 훅이 꺼지므로 이 훅에 막히지 않는다.
 
@@ -89,9 +93,14 @@ function treeLock(root,note='') {
  return deny(`HyperFusion: task ${s.task_id} is in ${s.phase}. The lead cannot edit while worker budget remains. Next: ${nextAction(s.phase,!!s.open_consult)}. Record takeover and acquire the lead lease before implementation.${note}`);
 }
 
+// 리드가 셸에서 완화 환경변수를 붙이면 운영자가 준 완화와 구분할 수 없다. 작업 여부와 상관없이 막는다.
+const RELAXATION=/(?:^|[\s;&|(`])(?:export\s+|set\s+|\$env:)?HF_(?:ALLOW_[A-Z0-9_]*|LEAD_[A-Z0-9_]*|ALLOWED_VENDORS)\s*=|\bsetx\s+HF_(?:ALLOW_|LEAD_|ALLOWED_VENDORS)/i;
+export const relaxationEnv=command=>typeof command==='string'&&RELAXATION.test(command);
+
 // Task-local restrictions expire at CLOSE/BLOCKED. User-authorized publication
 // takes place after task shutdown, so it needs no additional approval prompt.
 export function decideBash(input) {
+ if(relaxationEnv(input?.tool_input?.command))return deny('HyperFusion: the lead cannot set HF_ALLOW_*, HF_LEAD_* or HF_ALLOWED_VENDORS. Relaxations come from the operator before the host starts.');
  const danger=dangerousBash(input?.tool_input?.command);if(!danger)return null;
  const cwd=path.resolve(input?.cwd??process.cwd());
  for(const dir of bashDirectories(input.tool_input.command,cwd)){
@@ -125,6 +134,23 @@ export function decideStop(input) {
  const consult=!!s.open_consult;
  if(!consult&&!LEAD_TURN.includes(s.phase))return null;
  return {decision:'block',reason:`HyperFusion: task ${s.task_id} remains in ${s.phase}. Next: ${nextAction(s.phase,consult)}. If user input is required, report the reason before stopping.`};
+}
+
+// PreModelSwitch 훅: 진행 중인 작업이 있으면 init 때의 리드 계열과 다른 모델로 바꾸지 못한다.
+// 모르는 모델(unknown)로의 전환도 막는다. 진행 중인 작업이 없으면 관여하지 않는다.
+export function decideModelSwitch(input) {
+ const root=repoRootOf(path.join(path.resolve(input?.cwd??process.cwd()),'.hf-model'));
+ if(!root)return null;
+ const stateFile=controlPath(root,'state.json');
+ if(!fs.existsSync(stateFile))return null;
+ const refuse=reason=>({hookSpecificOutput:{hookEventName:'PreModelSwitch',permissionDecision:'deny',permissionDecisionReason:reason}});
+ let s;
+ try{s=read(stateFile);}catch{return refuse('HyperFusion: state is unreadable; the lead model cannot change during an active task.');}
+ if(!s||TERMINAL_PHASES.includes(s.phase))return null;
+ const family=s.lead_identity?.family??familyOf(s.configuration?.lead_model);
+ const target=familyOf(input?.to_model);
+ if(target!==UNKNOWN&&target===family)return null;
+ return refuse(`HyperFusion: task ${s.task_id} runs with a ${family} lead; switching to ${input?.to_model??'an unknown model'} (${target}) would change who may review. Finish or archive the task first.`);
 }
 
 // SessionStart 훅: 대화가 요약(compact)되거나 새 세션이 같은 저장소에서 시작될 때, 진행 중인 작업이 있으면
@@ -162,11 +188,14 @@ export function decideUserPrompt(input) {
 export function settingsSnippet() {
  const script=fileURLToPath(import.meta.url).replaceAll('\\','/');
  const command=[{type:'command',command:`node "${script}"`}];
+ // 차단하는 가드는 실패해도 막는다. 상태 표시·문맥 주입·사용량 수집은 실패해도 진행한다.
+ const gate=[{...command[0],onFailure:'block'}];
  const usage=fileURLToPath(new URL('./lead-usage.mjs',import.meta.url)).replaceAll('\\','/');
  const collect=[{type:'command',command:`node "${usage}" --hook`,timeout:10}];
- return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:command},{matcher:MCP_MATCHER,hooks:command},{matcher:'Bash',hooks:[...command,...collect]}],
+ return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:gate},{matcher:MCP_MATCHER,hooks:gate},{matcher:'Bash',hooks:[...gate,...collect]}],
   Stop:[{hooks:[...command,...collect]}],SessionStart:[{matcher:'startup|resume|compact',hooks:[...command,...collect]}],
-  UserPromptSubmit:[{hooks:[...command,...collect]}],SessionEnd:[{hooks:collect}],StopFailure:[{hooks:collect}]}};
+  UserPromptSubmit:[{hooks:[...command,...collect]}],PreModelSwitch:[{hooks:gate}],PostModelSwitch:[{hooks:collect}],
+  SessionEnd:[{hooks:collect}],StopFailure:[{hooks:collect}]}};
 }
 
 if(isMain(import.meta.url)) {
@@ -175,6 +204,7 @@ if(isMain(import.meta.url)) {
  try{input=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));}
  catch(e){console.error('lead-guard: invalid hook input: '+e.message);process.exit(0);}
  const event=input?.hook_event_name;
- const out=event==='Stop'?decideStop(input):event==='SessionStart'?decideSessionStart(input):event==='UserPromptSubmit'?decideUserPrompt(input):decide(input);
+ const out=event==='Stop'?decideStop(input):event==='SessionStart'?decideSessionStart(input):event==='UserPromptSubmit'?decideUserPrompt(input)
+  :event==='PreModelSwitch'?decideModelSwitch(input):decide(input);
  if(out)console.log(JSON.stringify(out));
 }
