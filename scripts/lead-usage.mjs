@@ -5,6 +5,7 @@ import {isMain} from './platform.mjs';
 import {read,atomic,hash} from './artifact.mjs';
 import {controlPath,ensureControl,acquireLock} from './control-dir.mjs';
 import {refreshHostUsage} from './metrics.mjs';
+import {normalizeAgy} from './lead-guard.mjs';
 
 const MAX_BYTES=64*1024*1024;
 const numeric=v=>Number.isSafeInteger(v)&&v>=0;
@@ -223,9 +224,13 @@ export function usageHook(input) {
 
 if(isMain(import.meta.url)){
  try{
-  const input=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));
-  const at=process.argv.indexOf('--host');
-  if(at>=0)input.hook_host=process.argv[at+1];
+  const raw=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));
+  const at=process.argv.indexOf('--host'),host=at>=0?process.argv[at+1]:null;
+  // agy 입력은 이벤트 이름이 없고 camelCase다. 가드와 같은 정규화를 거친다. agy PreToolUse는 결정을 출력해야 진행한다.
+  const event=host==='antigravity'?process.argv[process.argv.indexOf('--event')+1]:null;
+  if(host==='antigravity')process.on('exit',()=>{if(event==='PreToolUse')process.stdout.write(JSON.stringify({decision:'allow'})+'\n');});
+  const input=host==='antigravity'?normalizeAgy(raw,event):raw;
+  if(host)input.hook_host=host;
   const result=usageHook(input);
   if(process.argv[2]!=='--hook')console.log(JSON.stringify(result));
  }catch(e){

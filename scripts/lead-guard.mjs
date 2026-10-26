@@ -176,7 +176,9 @@ export function decideStop(input,{host='claude-code'}={}) {
  const consult=!!s.open_consult;
  if(!consult&&!LEAD_TURN.includes(s.phase))return null;
  if(host!=='claude-code'){
-  const key=hash(String(input?.turn_id??input?.session_id??'')),file=controlPath(root,'stop-guard.json');
+  // Codex는 턴(turn_id)마다, Antigravity는 대화·단계·라운드마다 한 번만 막는다(agy의 executionNum은 이어 갈 때마다 바뀐다).
+  const key=hash(host==='codex'?String(input?.turn_id??input?.session_id??''):[input?.session_id,s.task_id,s.phase,s.iteration,!!s.open_consult].join(':'));
+  const file=controlPath(root,'stop-guard.json');
   try{if(fs.existsSync(file)&&read(file).key===key)return null;atomic(file,{key,at:new Date().toISOString()});}catch{return null;}
  }
  return {decision:'block',reason:`HyperFusion: task ${s.task_id} remains in ${s.phase}. Next: ${nextAction(s.phase,consult)}. If user input is required, report the reason before stopping.`};
@@ -230,6 +232,93 @@ export function decideUserPrompt(input) {
  return line?{systemMessage:line}:null;
 }
 
+// ── Antigravity(agy) ────────────────────────────────────────────────
+// agy 훅은 입력이 camelCase이고 이벤트 이름이 없으며(--event로 받는다), cwd가 저장소가 아니라 hooks.json 폴더다.
+// 입력을 Claude Code 형식으로 바꿔 같은 판정을 쓰고, 결과를 agy 형식({decision})으로 되돌린다.
+// 도구 이름은 문서와 다른 에이전트의 실측 보고를 따른 것이다. 모르는 이름은 작업 중에 쓰기로 보고 막는다.
+export const AGY_WRITE_TOOLS=['write_to_file','replace_file_content','multi_replace_file_content','write_file','edit_file'];
+export const AGY_READ_TOOLS=['view_file','view_file_outline','view_code_item','list_dir','grep_search','find_by_name','codebase_search','read_url_content','search_web','read_resource','list_resources'];
+export const AGY_BYPASS_TOOLS=['invoke_subagent','define_subagent','send_message'];
+const AGY_PATH_KEYS=['Path','TargetFile','AbsolutePath','FilePath','File'];
+const AGY_STOP_REASONS=['model_stop','no_tool_call'];
+const firstString=(...values)=>values.find(v=>typeof v==='string'&&v.trim())??null;
+
+// agy MCP 이름을 mcp__server__tool로 바꾼다. 지연 로드(call_mcp_tool)는 인자에서, 즉시 로드(mcp_<server>_<tool>)는 아는 서버 이름으로 자른다.
+export function agyMcpName(name,args={}) {
+ if(name==='call_mcp_tool'){const server=firstString(args.ServerName),tool=firstString(args.ToolName);return server&&tool?`mcp__${server}__${tool}`:'mcp__unknown__unknown';}
+ if(typeof name!=='string'||!name.startsWith('mcp_'))return null;
+ const servers=[...Object.keys(MCP_READ_ONLY),...Object.values(MCP_SERVER_ALIASES).flat()];
+ const server=servers.find(id=>name.startsWith(`mcp_${id}_`));
+ return server?`mcp__${server}__${name.slice(`mcp_${server}_`.length)}`:`mcp__unknown__${name.slice(4)}`;
+}
+
+export function normalizeAgy(input,event) {
+ const call=input?.toolCall??{},args=call.args??{};
+ const workspace=firstString(...(Array.isArray(input?.workspacePaths)?input.workspacePaths:[]));
+ const target=firstString(...AGY_PATH_KEYS.map(k=>args[k]));
+ const base={hook_event_name:event,session_id:firstString(input?.conversationId),model:firstString(input?.modelName),hook_host:'antigravity',
+  turn_id:null,stop_hook_active:false,cwd:workspace??(target&&path.isAbsolute(target)?path.dirname(target):null)};
+ if(event!=='PreToolUse')return {...base,termination_reason:input?.terminationReason??null,fully_idle:input?.fullyIdle===true};
+ const name=call.name;
+ if(name==='run_command')return {...base,tool_name:'Bash',tool_input:{command:String(args.CommandLine??'')},cwd:firstString(args.Cwd)??base.cwd,bypass_sandbox:args.BypassSandbox===true};
+ if(AGY_WRITE_TOOLS.includes(name))return {...base,tool_name:'Write',tool_input:{file_path:target??'.hf-agy-write'}};
+ const mcp=agyMcpName(name,args);
+ if(mcp)return {...base,tool_name:mcp,tool_input:args};
+ if(AGY_READ_TOOLS.includes(name))return {...base,tool_name:'Read',tool_input:args};
+ if(name==='manage_task'&&!['send_input','kill'].includes(args.Action??args.action))return {...base,tool_name:'Read',tool_input:args};
+ return {...base,tool_name:name,tool_input:args,agy_unknown:true};
+}
+
+// 샌드박스를 벗어나는 run_command는 이 스킬의 컨트롤러 명령(브리지·오토파일럿·스모크·상태)만 허용한다.
+function controllerCommand(command) {
+ const scripts=path.dirname(fileURLToPath(import.meta.url)).replaceAll('\\','/');
+ const words=command.trim().replaceAll('\\','/').split(/\s+/);
+ const file=(words[1]??'').replace(/^"|"$/g,'');
+ return ['node','node.exe'].includes(words[0])&&words.length>1&&/^(?:executor-bridge|autopilot|smoke|fusion-state)\.mjs$/.test(path.basename(file))&&path.dirname(path.resolve(file))===path.resolve(scripts);
+}
+
+export function decideAgy(raw,event) {
+ const input=normalizeAgy(raw,event);
+ if(event==='Stop'){
+  const reason=String(input.termination_reason??'').toLowerCase();
+  // 오류·취소·한도 종료는 막지 않는다. 정상 종료로 확인된 값이고 모든 작업이 끝났을 때만 한 번 이어 가게 한다.
+  if(!input.fully_idle||!AGY_STOP_REASONS.includes(reason))return {decision:'stop'};
+  const out=decideStop(input,{host:'antigravity'});
+  return out?{decision:'continue',reason:out.reason}:{decision:'stop'};
+ }
+ if(event==='SessionStart'){
+  const out=decideSessionStart(input);
+  return out?{injectSteps:[{systemMessage:{systemMessage:out.hookSpecificOutput.additionalContext}}]}:{};
+ }
+ if(event!=='PreToolUse')return {};
+ if(!input.cwd)return {decision:'allow'};
+ let out;
+ if(input.tool_name==='Bash'){
+  out=decideBash(input);
+  if(!out&&input.bypass_sandbox&&!controllerCommand(input.tool_input.command)){
+   const root=repoRootOf(path.join(path.resolve(input.cwd),'.hf-bypass'));
+   out=root?treeLock(root,' Blocked: only HyperFusion controller commands may bypass the agy sandbox during a task.'):null;
+  }
+ }
+ else if(input.tool_name==='Write')out=decide({...input,tool_name:'Write'});
+ else if(input.tool_name.startsWith('mcp__'))out=decideMcp(input);
+ else if(input.tool_name==='Read')out=null;
+ else{
+  const root=repoRootOf(path.join(path.resolve(input.cwd),'.hf-tool'));
+  const why=AGY_BYPASS_TOOLS.includes(input.tool_name)||input.tool_name==='manage_task'?`${input.tool_name} bypasses the controller or an allowed shell`:`${input.tool_name} is not a recognized read-only Antigravity tool`;
+  out=root?treeLock(root,` Blocked: ${why}.`):null;
+ }
+ return out?{decision:'deny',reason:out.hookSpecificOutput.permissionDecisionReason}:{decision:'allow'};
+}
+
+// agy hooks.json 항목. 최상위 키는 훅 이름이고 Stop·SessionStart는 matcher 없이 핸들러 배열이다.
+function agySnippet(script,usage) {
+ const guard=event=>({type:'command',command:`node "${script}" --host antigravity --event ${event}`,timeout:30});
+ const collect=event=>({type:'command',command:`node "${usage}" --hook --host antigravity --event ${event}`,timeout:10});
+ return {'hyperfusion-guard':{enabled:true,PreToolUse:[{matcher:'*',hooks:[guard('PreToolUse')]}],Stop:[guard('Stop')],SessionStart:[guard('SessionStart')]},
+  'hyperfusion-usage':{enabled:true,PreToolUse:[{matcher:'run_command',hooks:[collect('PreToolUse')]}],SessionStart:[collect('SessionStart')]}};
+}
+
 // Codex 사용자 훅(~/.codex/hooks.json)에 넣을 항목. 사용자 훅도 /hooks에서 신뢰해야 돈다. 상태 줄(UserPromptSubmit systemMessage)은 넣지 않는다.
 function codexSnippet(script,usage) {
  const guard={type:'command',command:`node "${script}" --host codex`,timeout:30,statusMessage:'HyperFusion lead guard'};
@@ -247,6 +336,7 @@ export function settingsSnippet({host='claude-code'}={}) {
  const gate=[{...command[0],onFailure:'block'}];
  const usage=fileURLToPath(new URL('./lead-usage.mjs',import.meta.url)).replaceAll('\\','/');
  if(host==='codex')return codexSnippet(script,usage);
+ if(host==='antigravity')return agySnippet(script,usage);
  const collect=[{type:'command',command:`node "${usage}" --hook`,timeout:10}];
  return {hooks:{PreToolUse:[{matcher:GUARDED_TOOLS.join('|'),hooks:gate},{matcher:MCP_MATCHER,hooks:gate},{matcher:'Bash',hooks:[...gate,...collect]}],
   Stop:[{hooks:[...command,...collect]}],SessionStart:[{matcher:'startup|resume|compact',hooks:[...command,...collect]}],
@@ -257,6 +347,13 @@ export function settingsSnippet({host='claude-code'}={}) {
 if(isMain(import.meta.url)) {
  const at=process.argv.indexOf('--host'),host=at>=0?process.argv[at+1]:'claude-code';
  if(process.argv[2]==='--print-settings'){console.log(JSON.stringify(settingsSnippet({host}),null,2));process.exit(0);}
+ if(host==='antigravity'){
+  // agy는 출력이 있어야 판정한다. 입력을 못 읽으면 작업 여부를 알 수 없으므로 도구 호출을 막는다.
+  const ev=process.argv[process.argv.indexOf('--event')+1];
+  let raw;try{raw=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));}
+  catch{console.log(JSON.stringify(ev==='PreToolUse'?{decision:'deny',reason:'HyperFusion: hook input unreadable'}:ev==='Stop'?{decision:'stop'}:{}));process.exit(0);}
+  console.log(JSON.stringify(decideAgy(raw,ev)));process.exit(0);
+ }
  let input;
  try{input=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));}
  catch(e){console.error('lead-guard: invalid hook input: '+e.message);process.exit(0);}
