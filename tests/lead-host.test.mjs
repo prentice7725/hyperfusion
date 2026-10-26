@@ -38,12 +38,12 @@ test('the lead comes from the host, then the operator, never from a repository c
  const f=fixture(t,{initialize:false});
  const c=config(f.root);
  assert.equal(c.lead_model_source,'default');
- const plain=leadIdentity(f.root,c,{env:{}});
+ const plain=leadIdentity(f.root,c,{env:{CLAUDECODE:'1'}});
  assert.deepEqual([plain.model,plain.source,plain.enforced],['claude-opus-5-5','config',false]);
  const astra=leadIdentity(f.root,c,{env:{[LEAD_MODEL_ENV]:'gpt-6.1-astra'}});
  assert.deepEqual([astra.model,astra.family,astra.source,astra.grade,astra.enforced],['gpt-6.1-astra','openai','operator-env','C',true]);
  assert.equal(leadIdentity(f.root,c,{env:{[LEAD_MODEL_ENV]:'gpt-6.1-astra',[LEAD_GRADE_ENV]:'B'}}).grade,'B');
- assert.throws(()=>leadIdentity(f.root,c,{env:{[LEAD_GRADE_ENV]:'S'}}),/must be A, B or C/);
+ assert.throws(()=>leadIdentity(f.root,c,{env:{CLAUDECODE:'1',[LEAD_GRADE_ENV]:'S'}}),/must be A, B or C/);
  // 저장소 설정이 Opus를 적었는데 리드가 다른 계열이면 거절한다.
  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({lead_model:'claude-opus-5-5'}));
  assert.throws(()=>leadIdentity(f.root,config(f.root),{env:{[LEAD_MODEL_ENV]:'gpt-6.1-astra'}}),/cannot choose the lead family/);
@@ -54,6 +54,19 @@ test('the lead comes from the host, then the operator, never from a repository c
  const hooked=leadIdentity(f.root,config(f.root),{env:{}});
  assert.deepEqual([hooked.model,hooked.source,hooked.host,hooked.grade],['claude-opus-5-5','host-hook','claude-code','A']);
  assert.throws(()=>leadIdentity(f.root,config(f.root),{env:{[LEAD_MODEL_ENV]:'gemini-4-argon'}}),/LEAD_IDENTITY_CONFLICT/);
+});
+
+test('the default Opus lead needs evidence that the host is Claude Code',t=>{
+ const f=fixture(t,{initialize:false});
+ // 훅 관측도 운영자 값도 없고 Claude Code 셸도 아니면(예: 훅을 신뢰하지 않은 Codex) Opus로 가정하지 않는다.
+ assert.throws(()=>leadIdentity(f.root,config(f.root),{env:{}}),/LEAD_MODEL_UNKNOWN: no host hook reported the lead model/);
+ assert.equal(leadIdentity(f.root,config(f.root),{env:{[LEAD_MODEL_ENV]:'gpt-6.1-astra'}}).family,'openai');
+ // 다른 호스트의 훅이 돌았지만 모델을 보고하지 않았으면 Claude Code 셸 표시가 있어도 거절한다.
+ hostEvent(f.root,{hook_event_name:'PreToolUse',tool_name:'Bash',hook_host:'codex'});
+ assert.throws(()=>leadIdentity(f.root,config(f.root),{env:{CLAUDECODE:'1'}}),/LEAD_MODEL_UNKNOWN: the codex host hook reported no lead model/);
+ // Claude Code 훅이 관측되면 모델 보고가 없어도 기본 Opus를 쓴다(지금 동작 유지).
+ hostEvent(f.root,{hook_event_name:'PreToolUse',tool_name:'Bash',hook_host:'claude-code'});
+ assert.equal(leadIdentity(f.root,config(f.root),{env:{}}).model,'claude-opus-5-5');
 });
 
 test('a lead family change between rounds is refused; a same-family change is only recorded',t=>{
