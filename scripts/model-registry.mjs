@@ -46,7 +46,16 @@ export function modelBase(reported) {
  return Object.keys(MODELS).find(k=>MODELS[k].aliases?.includes(display))??null;
 }
 
-export const familyOf=reported=>MODELS[modelBase(reported)]?.family??UNKNOWN;
+// 회사가 자기 이름으로 내는 모델 id 접두사. 등급은 모르므로 계열만 정한다(이전·다음 버전 Opus 등).
+// gpt-oss처럼 가중치를 공개해 다른 회사가 서빙하는 모델은 넣지 않는다.
+export const FAMILY_PREFIXES=[[/^claude-/,'anthropic'],[/^gpt-\d/,'openai'],[/^gemini-/,'google'],[/^grok-/,'xai']];
+
+export function familyOf(reported) {
+ const base=modelBase(reported);
+ if(base)return MODELS[base].family;
+ if(typeof reported!=='string'||HOST_CHOSEN.includes(reported.trim().toLowerCase()))return UNKNOWN;
+ return FAMILY_PREFIXES.find(([re])=>re.test(reported.trim()))?.[1]??UNKNOWN;
+}
 export const tierOf=reported=>MODELS[modelBase(reported)]?.tier??null;
 
 // 일꾼의 계열과 등급. model은 운영자가 지정한 모델(없으면 프로필 기본값).

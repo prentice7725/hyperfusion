@@ -7,8 +7,9 @@ import {MEMBERS} from './member-registry.mjs';
 import {validateVendors,assertVendor,vendorAllowed} from './vendor-policy.mjs';
 import {modelEffort,supportedAgyEfforts,selectAgyModel} from './adapters/agy-model.mjs';
 import {validCodingPolicy} from './coding-policy.mjs';
+import {grantOnlyMembers,reservedMembers,excludedMembers} from './team-roles.mjs';
 
-// 리드는 Claude Opus 5.5 하나로 고정. 구현 일꾼은 Grok, Antigravity, Sonnet·Haiku(Claude Code), Luna(Codex).
+// 구현 일꾼 명단(Grok, Antigravity, Sonnet·Haiku, Luna). 누가 grant 없이 자동 구현하는지는 리드 계열에 따른 역할(team-roles)이 정한다.
 export const EXECUTORS=Object.keys(MEMBERS).filter(n=>MEMBERS[n].implement);
 // 리뷰·상담까지 포함한 명단. Sol은 이 구현 명단에 넣지 않는다. APEX 구현은 라운드 승인으로만 연다.
 export const REVIEWERS=['sol',...EXECUTORS];
@@ -61,7 +62,8 @@ export const EXTERNAL_FIRST_RULES=[
 ];
 export const ROUTING_POLICIES=['classic','external-first'];
 // 승인 없이는 자동 구현자가 될 수 없는 일꾼. 승인은 lead-gated-adaptive의 컨트롤러 grant뿐이다.
-export const GRANT_ONLY=['sonnet','sol'];
+// 리드 계열 frontier와 외부 frontier가 여기에 든다(Opus 리드면 Sonnet·Sol).
+export const grantOnly=c=>grantOnlyMembers(c);
 // 난이도별 시작 강도(작업지시서 v0.3 §5). 운영자가 reasoning_effort를 직접 적은 일꾼에는 적용하지 않는다.
 // Grok stays at medium across difficulties; stronger reasoning is operator opt-in.
 export const DIFFICULTY_EFFORT={grok:{low:'medium',medium:'medium',high:'medium'},antigravity:{low:'low',medium:'medium',high:'high'}};
@@ -78,14 +80,15 @@ export function taskExecutorOptions(configuration,owner,difficulty) {
 // 설정에 policy가 없으면 adaptive 리뷰 전략일 때만 External-First다. 둘 다 없으면 이전 동작 그대로.
 export const routingPolicy=c=>c?.routing?.policy??(c?.review?.strategy==='lead-gated-adaptive'?'external-first':'classic');
 export const externalFirst=c=>routingPolicy(c)==='external-first';
-// External-First에서 claude_reserve는 기본 true: Haiku를 자동으로 고르지 않는다(명시 지정은 허용, 기록됨).
+// External-First에서 claude_reserve는 기본 true: 리드 계열의 일반 일꾼(Opus 리드면 Haiku)을 자동으로 고르지 않는다(명시 지정은 허용, 기록됨).
 export const claudeReserve=c=>externalFirst(c)&&c?.routing?.claude_reserve!==false;
 // The same eligibility applies before routing, fallback and lease acquisition.
 export function automaticImplementer(c,name) {
  if(!vendorAllowed(c,name))return false;
  if(!EXECUTORS.includes(name))return false;
- if((externalFirst(c)||c?.review?.strategy==='lead-gated-adaptive')&&GRANT_ONLY.includes(name))return false;
- return !(claudeReserve(c)&&name==='haiku');
+ if(excludedMembers(c).includes(name))return false;
+ if((externalFirst(c)||c?.review?.strategy==='lead-gated-adaptive')&&grantOnly(c).includes(name))return false;
+ return !(claudeReserve(c)&&reservedMembers(c).includes(name));
 }
 // 바뀌면 리드가 직접 확인해야 하는 경로. 라운드의 변경 파일이 하나라도 맞으면 그 라운드는 중요 작업처럼 리뷰한다.
 // 설정 review.risk_paths로 바꾸고, []이면 끈다.

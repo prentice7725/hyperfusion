@@ -1,4 +1,6 @@
 // Model family and reasoning effort are independent configuration dimensions.
+// 여기의 model_family는 강도 접미사를 뗀 모델 기본 이름(예: gemini-4-argon)이다. 사용량 기록에 저장되는 필드라 이름을 유지한다.
+// 리뷰 독립성을 정하는 계열(만든 회사)은 model-registry의 family이며, 이 값과 다르다.
 // Gemini CLI slugs encode effort; custom/Claude models retain the --effort path.
 const GEMINI=/^gemini-\d+(?:\.\d+)*-[a-z0-9][a-z0-9-]*$/;
 const SUFFIX=/-(low|medium|high)$/;

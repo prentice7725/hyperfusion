@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- 범용화 1단계: 컨트롤러가 일꾼 이름 대신 리드 계열에 따른 역할(`team-roles.mjs`)로 판단한다. APEX 구현자(외부 최상위), 전문가 구현자(`sonnet_implementation`·`REASSIGN_TO_SONNET`), grant 전용 일꾼, 예비 일꾼(`claude_reserve`), 위임 가능한 작성자를 리드 모델에서 계산한다. Opus 리드는 지금과 같다(Sol·Sonnet·Haiku, 기존 테스트 전부 통과). 비 Claude 리드는 `family-rules-v1`로 리뷰하고 배정에 팀(리드 모델·후보)을 기록하며, adaptive 리뷰가 아니면 init을 거절한다. Codex 리드(Astra)에서는 Sol이 전문가, Sonnet이 APEX가 되고, Sol 구현은 기존과 같은 workspace-write grant로만 열린다. 전략 이름(`sol_apex`, `sonnet_implementation`, `reassign_to_sonnet`)과 상태 기록 형식은 그대로다. 리드 모델은 아직 설정의 Opus뿐이며, 호스트에서 리드를 정하는 것은 다음 단계다. 레지스트리는 회사 접두사(`claude-`, `gpt-<숫자>`, `gemini-`, `grok-`)로 등록되지 않은 모델의 계열만 정한다.
 - 범용화 1단계 준비: 모델 레지스트리(`model-registry.mjs`)와 팀 구성 함수(`team-composer.mjs`)를 추가했다. 계열(family)은 모델을 만든 회사로 판정하고, 레지스트리에 없는 모델·`"auto"`는 `unknown`(누구와도 독립이 아님)이다. `compose`는 리드 계열을 기준으로 역할을 나누고, 리드를 포함해 계열이 둘 미만이면 `TEAM_SINGLE_FAMILY`로 거절한다. `familyReviewPlan`(`family-rules-v1`)은 작성자와 독립인 계열 수로 리뷰 자리 수를 정한다. Opus 리드에서 `cross-vendor-pairs-v1`의 리뷰어·강도와 같은 결과를 내는지 표 기반 테스트로 확인했다. `legacy-v1`은 AGY만 있고 Grok이 없는 팀에서 Luna·Haiku·Sonnet의 중요 작업이 한 자리라 일반 규칙과 다르므로, 기존 정책은 계속 `review-plan.mjs`가 계산한다. 아직 컨트롤러에 연결하지 않았으며 동작 변화는 없다.
 
 ## 0.29.0 — 2026-10-25
