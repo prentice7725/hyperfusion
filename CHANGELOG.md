@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 범용화 1단계 준비: 모델 레지스트리(`model-registry.mjs`)와 팀 구성 함수(`team-composer.mjs`)를 추가했다. 계열(family)은 모델을 만든 회사로 판정하고, 레지스트리에 없는 모델·`"auto"`는 `unknown`(누구와도 독립이 아님)이다. `compose`는 리드 계열을 기준으로 역할을 나누고, 리드를 포함해 계열이 둘 미만이면 `TEAM_SINGLE_FAMILY`로 거절한다. `familyReviewPlan`(`family-rules-v1`)은 작성자와 독립인 계열 수로 리뷰 자리 수를 정한다. Opus 리드에서 `cross-vendor-pairs-v1`의 리뷰어·강도와 같은 결과를 내는지 표 기반 테스트로 확인했다. `legacy-v1`은 AGY만 있고 Grok이 없는 팀에서 Luna·Haiku·Sonnet의 중요 작업이 한 자리라 일반 규칙과 다르므로, 기존 정책은 계속 `review-plan.mjs`가 계산한다. 아직 컨트롤러에 연결하지 않았으며 동작 변화는 없다.
+
 ## 0.29.0 — 2026-10-25
 
 - 위임 리뷰어(`delegate-review`)는 일꾼의 주장을 받지 않는다. `context.last_result`에는 `status`, `files_changed`, `unresolved`, `needs_lead_decision`만 남고 요약·테스트 보고·위험 평가는 `claims_withheld`에 키 이름만 남는다. `recent_reviews`도 이전 반려 기준만 주고 이전 판정·사유는 뺀다. 테스트 결과는 컨트롤러가 돌린 `controller_acceptance`로 본다. advisor·committee 상담은 그대로다
