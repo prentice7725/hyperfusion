@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {isMain,isWin,killTree,assertCommandLine} from './platform.mjs';
-import {read,immutable,repo,snapshot} from './artifact.mjs';
+import {read,immutable,repo,snapshot,hash} from './artifact.mjs';
 import {assertLease} from './writer-lease.mjs';
 import {result as validateResult,consultResult} from './contracts.mjs';
 import {adapter} from './adapters/index.mjs';
@@ -32,7 +32,9 @@ const timeoutFor=(root,state,executor,override)=>{
 };
 
 // 일꾼 프로세스 하나를 감독하며 실행한다. tag는 산출물 이름(launch-<tag>.json 등)에 붙는다.
-async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescence=false,signal,monitorQuietMs=120000,monitorIntervalMs=1000}) {
+// marker: 이 프로세스가 컨트롤러가 띄운 일꾼임을 리드 가드가 알아보게 하는 값(lease 토큰의 해시나 상담 ID).
+// 호스트 훅을 끌 수 없는 환경(Codex 관리형 훅, agy)에서 일꾼이 리드용 가드에 막히지 않게 한다.
+async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescence=false,signal,monitorQuietMs=120000,monitorIntervalMs=1000,marker={}}) {
  if(!Number.isSafeInteger(monitorQuietMs)||monitorQuietMs<1||!Number.isSafeInteger(monitorIntervalMs)||monitorIntervalMs<1)throw Error('Invalid monitor interval');
  const started=Date.now();
  if(signal?.aborted)throw Object.assign(Error('Bridge interrupted before launch'),{code:'AUTOPILOT_INTERRUPTED'});
@@ -73,7 +75,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
    forceResolve=resolve;
    // Windows에는 프로세스 그룹이 없어 detached를 쓰지 않고(새 콘솔이 뜬다) taskkill /T로 트리를 정리한다.
    // PWD를 작업 폴더로 고정한다. agy는 cwd나 --add-dir이 아니라 PWD로 workspace를 정하기도 하는데, 환경 정리에서 PWD가 빠지면 엉뚱한 곳을 본다.
-   child=spawn(request.cli.executable,[...(request.cli.prefix_args??[]),...request.cli.args],{cwd:root,stdio:[request.stdin===undefined?'ignore':'pipe','pipe','pipe'],shell:false,env:{...workerEnv(request.executor),PWD:root},detached:!isWin,windowsHide:true});
+   child=spawn(request.cli.executable,[...(request.cli.prefix_args??[]),...request.cli.args],{cwd:root,stdio:[request.stdin===undefined?'ignore':'pipe','pipe','pipe'],shell:false,env:{...workerEnv(request.executor),...marker,PWD:root},detached:!isWin,windowsHide:true});
    alive=!!child.pid;child.on('exit',()=>{alive=false;exited=true;});
    if(child.pid)monitor?.start(child.pid);
    if(child.pid)guard(()=>activity.started());
@@ -133,7 +135,7 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
  try{
   // 파일이 아니라 컨트롤러가 다시 만든 요청으로 실행한다. 달라졌으면 여기서 멈춘다.
   const verified=verifyExecute(root,state,dir,request,lease);
-  parsed=await supervise(root,dir,n,{...request,...verified,role:'implement',round:n,task_id:state.task_id,executor:state.owner},{timeoutMs:timeoutFor(root,state,state.owner,timeoutMs),maxBytes,proveQuiescence,signal,monitorQuietMs,monitorIntervalMs});
+  parsed=await supervise(root,dir,n,{...request,...verified,role:'implement',round:n,task_id:state.task_id,executor:state.owner},{timeoutMs:timeoutFor(root,state,state.owner,timeoutMs),maxBytes,proveQuiescence,signal,monitorQuietMs,monitorIntervalMs,marker:{HF_WORKER_LEASE:hash(lease.token)}});
   result=validateResult(parsed.result,request.task_id,request.round);
  }catch(e){
   await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} failed`,{priority:'high'});
@@ -172,7 +174,7 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuies
   if(snapshot(root).digest!==open.digest)throw Error('READ_ONLY_TREE_CHANGED');
   const sent=read(path.join(dir,`consult-${id}-${m.member}.json`));
   const request={...sent,...verifyConsult(root,state,dir,sent,{id,member:m.member,executor:m.executor})};
-  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs),maxBytes,proveQuiescence:proofRequired,signal});
+  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs),maxBytes,proveQuiescence:proofRequired,signal,marker:{HF_WORKER_CONSULT:String(id)}});
   let result;try{result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);}catch(error){error.quiescence=parsed.quiescence;throw error;}
   const file=path.join(dir,`consult-result-${id}-${m.member}.json`);
   immutable(file,result);

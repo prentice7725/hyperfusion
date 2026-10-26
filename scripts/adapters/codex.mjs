@@ -43,6 +43,8 @@ function member(name,{model,canWrite}) {
    ...((consult||!cli.supports?.resume)&&cli.supports?.['--ephemeral']?['--ephemeral']:[]),
    '--model',options.model??model,
    ...(options.reasoning_effort?['-c',`model_reasoning_effort="${options.reasoning_effort}"`]:[]),
+   // 일꾼은 리드용 사용자 훅을 물려받지 않는다(Claude 일꾼의 --safe-mode와 같은 목적). 관리형 훅은 이 값으로 꺼지지 않으므로 가드가 일꾼 표시를 따로 본다.
+   '-c','features.hooks=false',
    ...sandboxArgs({consult,repoRoot:brief.repo_root}),
    '--json',...(resume?[session]:[]),
    // 프롬프트는 stdin('-')으로 넘긴다. 명령줄 길이 제한과 따옴표 문제를 피한다.
