@@ -9,7 +9,7 @@ Codex CLI에서 HyperFusion을 실행하면 Codex의 모델(예: GPT 6.1 Astra, 
 1. 스킬: 이 저장소 폴더를 `~/.agents/skills/hyperfusion`으로 심볼릭 링크한다. Codex는 링크된 스킬 폴더를 따라간다.
 2. 훅: 스킬 폴더에서 `node scripts/lead-guard.mjs --print-settings --host codex`를 실행하고, 출력의 `hooks`를 `~/.codex/hooks.json`에 합친다. 저장소의 `.codex/`가 아니라 사용자 설정에 둔다.
 3. 신뢰: Codex는 관리형이 아닌 훅을 정의의 해시로 신뢰한다. `/hooks`에서 새 항목을 검토하고 신뢰해야 돈다. 설정을 바꾸면 다시 신뢰해야 한다.
-4. 확인: 작업을 시작하기 전에 Bash 도구를 한 번 쓰고 init을 실행한다. init은 최근 Bash PreToolUse 훅 관측(`hooks_observed`)과 훅이 보고한 리드 모델(`lead_identity`)을 기록한다. 관측이 없으면 리드 모델을 알 수 없으므로 운영자가 `HF_LEAD_MODEL`을 정해야 한다.
+4. 확인: 작업을 시작하기 전에 Bash 도구를 한 번 쓰고 init을 실행한다. init은 최근 Bash PreToolUse 훅 관측(`hooks_observed`)과 훅이 보고한 리드 모델(`lead_identity`)을 기록한다. 관측이 없거나 훅이 모델을 보고하지 않으면 init은 `LEAD_MODEL_UNKNOWN`으로 거절한다(기본 Opus로 가정하지 않는다). 이때는 운영자가 Codex를 띄우기 전에 `HF_LEAD_MODEL`을 정한다.
 
 ## 가드가 하는 일
 
@@ -27,6 +27,10 @@ Stop은 Codex에 `stop_hook_active`가 없으므로 같은 턴(`turn_id`)에서 
 ## 일꾼과 리드 구분
 
 일꾼 `codex exec`에는 `-c features.hooks=false`를 넘겨 사용자 훅을 끈다. 관리형 훅(`requirements.toml`)은 이 값으로 꺼지지 않으므로, 브리지는 일꾼 프로세스에 lease 토큰의 해시(`HF_WORKER_LEASE`)나 상담 ID(`HF_WORKER_CONSULT`)를 넘기고 가드는 이 값이 현재 lease·상담과 맞을 때만 일꾼으로 본다. 리드는 셸 명령으로 자기 호스트 프로세스의 환경을 바꿀 수 없다.
+
+## 실측
+
+실측 절차는 [codex-field-test.md](codex-field-test.md)에 있다. Codex 세션에 그대로 넘겨 실행시키고, 결과 보고로 등급을 정한다.
 
 ## 알려진 한계
 

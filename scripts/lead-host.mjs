@@ -1,5 +1,5 @@
 // 리드 호스트와 리드 모델을 정한다. 리드 계열은 누가 리뷰어가 될 수 있는지를 정하므로 권한 입력으로 다룬다.
-// 출처 순서: 호스트 훅이 남긴 관측값 → 운영자 환경변수 HF_LEAD_MODEL → 설정(저장소 설정은 claude-opus-*만 적을 수 있다).
+// 출처 순서: 호스트 훅이 남긴 관측값 → 운영자 환경변수 HF_LEAD_MODEL → 설정(저장소 설정은 claude-opus-*만 적을 수 있고, 호스트가 Claude Code일 때만 쓴다).
 // 두 출처의 계열이 다르면 거절한다. 저장소 설정으로 리드 계열을 바꿀 수 없다.
 import fs from 'node:fs';
 import {read} from './artifact.mjs';
@@ -46,6 +46,11 @@ export function leadIdentity(root,configuration,{env=process.env,at=Date.now()}=
  const operator=typeof env[LEAD_MODEL_ENV]==='string'&&env[LEAD_MODEL_ENV].trim()?env[LEAD_MODEL_ENV].trim():null;
  const configured=configuration?.lead_model??null;
  if(observed&&operator&&familyOf(observed)!==familyOf(operator))throw Error(`LEAD_IDENTITY_CONFLICT: the host reports ${observed} but ${LEAD_MODEL_ENV} is ${operator}`);
+ // 설정값(기본 Opus)은 호스트가 Claude Code라는 근거가 있을 때만 쓴다. 근거가 없으면 Codex·agy 리드를 Claude 리드로 잘못 볼 수 있다.
+ // 근거: 최근 훅이 Claude Code를 보고했거나, 훅 관측 없이 Claude Code가 셸에 넣는 CLAUDECODE=1이 있다.
+ if(!observed&&!operator&&!(host==='claude-code'||!host&&env.CLAUDECODE==='1')){
+  throw Error(`LEAD_MODEL_UNKNOWN: ${host?`the ${host} host hook reported no lead model`:'no host hook reported the lead model and this is not a Claude Code shell'}; check the host hook settings or have the operator set ${LEAD_MODEL_ENV} before starting the host`);
+ }
  const model=observed??operator??configured;
  const source=observed?'host-hook':operator?'operator-env':'config';
  const family=familyOf(model);

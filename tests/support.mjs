@@ -7,6 +7,9 @@ import {read} from '../scripts/artifact.mjs';
 import {execute} from '../scripts/executor-bridge.mjs';
 import {repoId} from '../scripts/control-dir.mjs';
 
+// 테스트는 Claude Code 리드를 흉내 낸다. Claude Code 셸이 넣는 표시를 기본으로 둔다(다른 호스트 시험은 env를 직접 준다).
+process.env.CLAUDECODE??='1';
+
 // 테스트 전용 대역 CLI. 실제 Grok/Antigravity 모델을 호출하지 않는다.
 const FAKE_COMMON=`#!/usr/bin/env node
 import fs from 'node:fs';

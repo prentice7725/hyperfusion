@@ -9,7 +9,7 @@ Antigravity(agy)에서 HyperFusion을 실행하면 agy가 돌리는 모델이 �
 1. 스킬: 이 저장소 폴더를 플러그인이나 `~/.gemini/config/skills/hyperfusion`으로 둔다(`agy plugins install` 또는 심볼릭 링크).
 2. 훅: 스킬 폴더에서 `node scripts/lead-guard.mjs --print-settings --host antigravity`를 실행하고, 출력의 두 항목(`hyperfusion-guard`, `hyperfusion-usage`)을 `~/.gemini/config/hooks.json`에 합친다. 저장소의 `.agents/hooks.json`이 아니라 사용자 설정에 둔다.
 3. 모델 고정: `--model`이나 `/model`로 리드 모델을 고정한다. 고정하지 않으면 훅이 `"auto"`를 보고할 수 있고, `"auto"`는 `unknown`이라 위임 승인이 꺼진다.
-4. 확인: 작업을 시작하기 전에 `run_command`를 한 번 쓰고 init을 실행한다. init은 최근 훅 관측과 훅이 보고한 리드 모델(`lead_identity`)을 기록한다.
+4. 확인: 작업을 시작하기 전에 `run_command`를 한 번 쓰고 init을 실행한다. init은 최근 훅 관측과 훅이 보고한 리드 모델(`lead_identity`)을 기록한다. 관측이 없거나 모델 보고가 없으면 `LEAD_MODEL_UNKNOWN`으로 거절하므로, 운영자가 agy를 띄우기 전에 `HF_LEAD_MODEL`을 정한다.
 
 ## 가드가 하는 일
 
