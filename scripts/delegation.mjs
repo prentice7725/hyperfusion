@@ -10,8 +10,7 @@ export const DEFAULT_DELEGATED_ROUNDS=2;
 // 재량권 아래 자동 복구의 한도와 제외 대상. 다시 시도해도 같은 결과일 실패(권한·인증·한도·변조)는 리드에게 올린다.
 export const AUTO_RECOVERY_CAP=2;
 export const NON_RETRYABLE=/permission|denied|forbidden|unauthori[sz]ed|authenticat|login|api[ _-]?key|credential|sign(?:ed)?[ _-]?in|quota|rate[ _-]?limit|credit|billing|tamper|provenance|ROLE_GATE|not installed|ENOENT|DISPATCH_/i;
-// 자동 구현자. 이 일꾼들의 STANDARD 라운드만 위임 대상이다(Sonnet·Sol 구현은 별도 grant가 필요한 중요·APEX 작업이다).
-export const DELEGABLE_OWNERS=['grok','antigravity','haiku','luna'];
+// 위임 대상인 자동 구현자는 리드 계열에 따른 역할로 정한다(team-roles의 delegableOwners). Opus 리드면 Grok·AGY·Haiku·Luna다.
 
 // init 입력에서 delegation을 꺼내 검사하고 입력에서 지운다. 없으면 null.
 export function takeDelegation(configuration,assignment,input) {

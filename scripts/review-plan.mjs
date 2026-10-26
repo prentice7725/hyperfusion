@@ -3,9 +3,12 @@
 // 계획은 기본 리뷰어와 자리 수를 정한다. 한도·장애로 기본 리뷰어가 못 하면 리드가 사유를 적고 다른 모델로 바꿔 끼운다.
 // 저장소 설정이나 워커 JSON은 자리 수를 줄이거나 리뷰어를 바꾸지 못한다. 최종 판정은 언제나 리드다.
 
-import {EXECUTORS,externalFirst,taskExecutorOptions,automaticImplementer} from './executor-config.mjs';
-import {vendorOf} from './member-registry.mjs';
+import {EXECUTORS,externalFirst,taskExecutorOptions,automaticImplementer,grantOnly} from './executor-config.mjs';
+import {vendorOf,MEMBERS} from './member-registry.mjs';
 import {vendorAllowed} from './vendor-policy.mjs';
+import {independent,UNKNOWN} from './model-registry.mjs';
+import {compose,familyReviewPlan,FAMILY_RULES_POLICY} from './team-composer.mjs';
+import {apexMember,specialistMember,reservedMembers,compatibleLead} from './team-roles.mjs';
 
 export const CRITICALITIES=['standard','important','apex'];
 export const ASSIGNMENT_STRATEGIES=['external_primary','dual_review','sonnet_implementation','sol_apex'];
@@ -17,15 +20,19 @@ const LATER=['explicit_repair'];
 export const REVIEW_EFFORT={sol:'medium',sonnet:'high'};
 export const PAIRED_REVIEW_POLICY='cross-vendor-pairs-v1';
 export const LEGACY_REVIEW_POLICY='legacy-v1';
+// 비 Claude 리드의 일반 규칙. 배정에 기록된 팀(리드 모델·후보)으로 다시 계산한다.
+export {FAMILY_RULES_POLICY};
+const POLICIES=[PAIRED_REVIEW_POLICY,LEGACY_REVIEW_POLICY,FAMILY_RULES_POLICY];
 // 같은 회사 모델끼리의 리뷰는 허용하되 교차 검증이 약하다는 표시를 남긴다.
 export const sameFamily=(a,b)=>!!vendorOf(a)&&vendorOf(a)===vendorOf(b);
 
 export function planReview(owner,assignment={review_policy:PAIRED_REVIEW_POLICY},{risk=[]}={}) {
  const {criticality='standard',strategy='external_primary',review_policy=LEGACY_REVIEW_POLICY}=assignment??{};
- if(![PAIRED_REVIEW_POLICY,LEGACY_REVIEW_POLICY].includes(review_policy))throw Error('ADAPTIVE_REVIEW: unknown review policy');
+ if(!POLICIES.includes(review_policy))throw Error('ADAPTIVE_REVIEW: unknown review policy');
  if(!OWNERS.includes(owner))throw Error('ADAPTIVE_REVIEW: unknown round owner '+owner);
  if(!CRITICALITIES.includes(criticality))throw Error('ADAPTIVE_REVIEW: task_criticality must be standard, important, or apex');
  if(!ASSIGNMENT_STRATEGIES.includes(strategy))throw Error('ADAPTIVE_REVIEW: assignment_strategy is not enabled');
+ if(review_policy===FAMILY_RULES_POLICY)return familyPlan(owner,assignment,{criticality,strategy,risk});
  // 이중 리뷰는 Grok/AGY에 대해서만 Sol+Sonnet이다. Luna/Haiku의 독립성 규칙을 숫자 맞추기로 깨지 않는다.
  // 위험 경로(risk_paths)를 건드린 라운드는 기록된 등급과 상관없이 중요 작업처럼 리뷰한다. 등급 기록은 바꾸지 않는다.
  const raised=criticality==='important'||criticality==='apex'||strategy==='dual_review'||risk.length>0;
@@ -49,6 +56,18 @@ export function reviewEffort(reviewers,{deepGrok=false}={}) {
   ...(deepGrok&&reviewers.includes('grok')?{grok:'xhigh'}:{})};
 }
 
+// 배정에 기록된 팀으로 family-rules-v1 계획을 만든다. 계열 표(families)를 계획에 실어 자리 검사가 같은 값을 쓰게 한다.
+export const teamOfAssignment=assignment=>compose({lead:{model:assignment?.team?.lead_model},candidates:assignment?.team?.candidates??[]});
+function familyPlan(owner,assignment,{criticality,strategy,risk}) {
+ const team=teamOfAssignment(assignment);
+ const p=familyReviewPlan(team,owner,{criticality,strategy,risk});
+ const families={lead:team.lead.family,...Object.fromEntries(Object.entries(team.members).map(([n,m])=>[n,m.family]))};
+ return {owner,criticality,strategy,review_policy:FAMILY_RULES_POLICY,reviewers:p.reviewers,effort:p.effort,risk:[...risk],families,seat_reason:p.seat_reason};
+}
+// 계획에 계열 표가 있으면 그것으로, 없으면 지금처럼 CLI 회사로 같은 계열인지 본다.
+const familyIn=(plan,e)=>plan.families?(plan.families[e]??UNKNOWN):vendorOf(e);
+export const sameFamilyIn=(plan,a,b)=>plan.families?!independent(familyIn(plan,a),familyIn(plan,b)):sameFamily(a,b);
+
 // 이번 위임에서 채울 자리와 리뷰어. 이미 끝난 리뷰(kept)는 다시 돌리지 않는다. 실패한 리뷰어는 기본값에서 빠지고, 다시 쓰려면 이름을 적는다.
 // 기본 리뷰어가 아닌 모델을 넣으면 substitution_reason이 필요하다. 작성자 자신과 리드는 위임 리뷰어가 될 수 없다.
 // reviewed는 이 라운드에 이미 판정을 낸 리뷰어 전체(교체된 반려 포함)다. 같은 모델에게 다시 묻지 않는다.
@@ -71,10 +90,10 @@ export function panelSeats(plan,{asked,kept=[],reviewed=[],failed=[],reason}={})
  const substitutes=picks.filter(e=>!plan.reviewers.includes(e));
  const why=typeof reason==='string'?reason.trim():'';
  if(substitutes.length&&!why)throw Error('ADAPTIVE_REVIEW: substitution_reason is required to replace the planned reviewer ('+plan.reviewers.join(', ')+')');
- if(plan.review_policy===PAIRED_REVIEW_POLICY){
+ if(plan.review_policy===PAIRED_REVIEW_POLICY||plan.review_policy===FAMILY_RULES_POLICY){
   const all=[...kept,...picks];
-  if(all.some(e=>sameFamily(e,owner)))throw Error('ADAPTIVE_REVIEW: same-vendor review cannot fill an independent seat');
-  if(new Set(all.map(vendorOf)).size!==all.length)throw Error('ADAPTIVE_REVIEW: paired reviewers must use distinct vendors');
+  if(all.some(e=>sameFamilyIn(plan,e,owner)))throw Error('ADAPTIVE_REVIEW: same-vendor review cannot fill an independent seat');
+  if(all.some((e,i)=>all.slice(0,i).some(o=>sameFamilyIn(plan,e,o))))throw Error('ADAPTIVE_REVIEW: paired reviewers must use distinct vendors');
  }
  return {reviewers:picks,effort:reviewEffort(picks,{deepGrok:plan.review_policy===PAIRED_REVIEW_POLICY&&plan.reviewers.length>1}),substitutes,substitution_reason:substitutes.length?why:null,kept:[...kept]};
 }
@@ -84,7 +103,7 @@ export function reviewCoverage(plan,records,digest) {
  const passed=[...new Set((records??[]).filter(r=>r?.ok&&r.verdict==='pass'&&r.digest===digest&&r.executor!==plan.owner).map(r=>r.executor))];
  const substitutes=passed.filter(e=>!plan.reviewers.includes(e));
  const gaps=plan.reviewers.filter(e=>e!=='lead'&&!passed.includes(e)).slice(substitutes.length);
- const same_family=passed.filter(e=>sameFamily(e,plan.owner));
+ const same_family=passed.filter(e=>sameFamilyIn(plan,e,plan.owner));
  return {covered:gaps.length===0&&passed.length>=plan.reviewers.filter(e=>e!=='lead').length,passed,substitutes,gaps,same_family};
 }
 
@@ -95,6 +114,8 @@ export function takeAssignment(configuration,input) {
  const present=['task_criticality','assignment_strategy','assignment_reason'].filter(k=>input?.[k]!==undefined);
  if(!adaptive){
   if(present.length)throw Error('ADAPTIVE_REVIEW: task_criticality requires review.strategy lead-gated-adaptive');
+  // 계열 규칙을 집행하는 것은 adaptive 리뷰뿐이다. 비 adaptive 위임 리뷰는 자기 리뷰만 막는다.
+  if(!compatibleLead(configuration))throw Error('ADAPTIVE_REVIEW: a non-Claude lead requires review.strategy lead-gated-adaptive');
   return null;
  }
  if(LATER.includes(input.assignment_strategy))throw Error('ADAPTIVE_REVIEW: '+input.assignment_strategy+' is not enabled in this phase');
@@ -107,11 +128,21 @@ export function takeAssignment(configuration,input) {
  const reason=input.assignment_reason??'controller assignment at init';
  if(typeof reason!=='string'||!reason.trim())throw Error('ADAPTIVE_REVIEW: assignment_reason must be text');
  delete input.task_criticality;delete input.assignment_strategy;delete input.assignment_reason;
- const authorized_implementer=strategy==='sonnet_implementation'?'sonnet':strategy==='sol_apex'?'sol':null;
+ // sonnet_implementation은 전문가 자리, sol_apex는 외부 최상위 자리다. 누가 그 자리인지는 리드 계열이 정한다(Opus 리드면 Sonnet·Sol).
+ const authorized_implementer=strategy==='sonnet_implementation'?specialistMember(configuration):strategy==='sol_apex'?apexMember(configuration):null;
+ if((strategy==='sonnet_implementation'||strategy==='sol_apex')&&!authorized_implementer)throw Error('ROLE_GATE: '+strategy+' has no eligible member for this lead');
+ const base={criticality,strategy,reason:reason.trim(),revision:1,final_decider:'lead',set_by:'controller',authorized_implementer};
+ // 비 Claude 리드는 일반 규칙(family-rules-v1)으로 리뷰한다. 팀(리드 모델·후보)을 기록해 이후 계산이 같은 값을 쓰게 한다.
+ if(!compatibleLead(configuration)){
+  const candidates=Object.keys(MEMBERS).filter(n=>vendorAllowed(configuration,n)&&(configuration?.external?.available?.includes(n)||configuration?.review?.reviewers?.includes(n)));
+  const team={lead_model:configuration.lead_model,candidates};
+  compose({lead:{model:team.lead_model},candidates});
+  return {...base,review_policy:FAMILY_RULES_POLICY,team};
+ }
  // Preserve approved installations without Grok (e.g. the Claude+Codex preset).
  // A missing binary in a Grok-enabled team is still an error, never a downgrade.
  const grokEnabled=vendorAllowed(configuration,'grok')&&(configuration?.external?.available?.includes('grok')||configuration?.review?.reviewers?.includes('grok'));
- return {criticality,strategy,review_policy:grokEnabled?PAIRED_REVIEW_POLICY:LEGACY_REVIEW_POLICY,reason:reason.trim(),revision:1,final_decider:'lead',set_by:'controller',authorized_implementer};
+ return {...base,review_policy:grokEnabled?PAIRED_REVIEW_POLICY:LEGACY_REVIEW_POLICY};
 }
 
 export function sameAssignment(recorded,current) {
@@ -120,22 +151,25 @@ export function sameAssignment(recorded,current) {
   &&recorded.revision===current.revision&&recorded.reason===current.reason
   &&recorded.final_decider===current.final_decider&&recorded.set_by===current.set_by
   &&(recorded.review_policy??LEGACY_REVIEW_POLICY)===(current.review_policy??LEGACY_REVIEW_POLICY)
-  &&(recorded.authorized_implementer??null)===(current.authorized_implementer??null);
+  &&(recorded.authorized_implementer??null)===(current.authorized_implementer??null)
+  &&JSON.stringify(recorded.team??null)===JSON.stringify(current.team??null);
 }
 
 // 구현 승인은 라운드가 끝나면 만료된다. 저장소 설정이나 워커 JSON에는 만들지 않는다.
+// 강도·sandbox는 일꾼 CLI의 성질이다. Codex의 Sol은 평소 읽기 전용이라 승인 라운드에만 workspace-write를 연다.
+export const grantProfile=executor=>executor==='sol'
+ ?{effort:'medium',sandbox:'workspace-write'}
+ :{effort:'high',sandbox:null};
 export function makeGrant({executor,strategy,criticality,reason,revision}) {
- const specialist=executor==='sol'
-  ?{effort:'medium',sandbox:'workspace-write'}
-  :{effort:'high',sandbox:null};
- return {revision,executor,role:'implement',strategy,criticality,reason,round:null,set_by:'controller',...specialist};
+ return {revision,executor,role:'implement',strategy,criticality,reason,round:null,set_by:'controller',...grantProfile(executor)};
 }
 
 export function initialGrant(assignment) {
- if(assignment?.strategy==='sonnet_implementation')return makeGrant({executor:'sonnet',strategy:assignment.strategy,criticality:assignment.criticality,reason:assignment.reason,revision:1});
- if(assignment?.strategy==='sol_apex')return makeGrant({executor:'sol',strategy:assignment.strategy,criticality:assignment.criticality,reason:assignment.reason,revision:1});
+ if(assignment?.strategy==='sonnet_implementation'||assignment?.strategy==='sol_apex')return makeGrant({executor:assignment.authorized_implementer,strategy:assignment.strategy,criticality:assignment.criticality,reason:assignment.reason,revision:1});
  return null;
 }
+const SPECIALIST_STRATEGIES=['sonnet_implementation','reassign_to_sonnet'];
+const display=name=>name[0].toUpperCase()+name.slice(1);
 
 export function sameGrant(recorded,grant) {
  if(!recorded||!grant||recorded.round!=null)return false;
@@ -143,21 +177,23 @@ export function sameGrant(recorded,grant) {
  return fields.every(k=>recorded[k]===grant[k]);
 }
 
-// 옵트인 작업에서 Sonnet/Sol 구현은 소모되지 않은 컨트롤러 승인이 있을 때만 연다.
+// 옵트인 작업에서 grant 전용 일꾼(Opus 리드면 Sonnet/Sol) 구현은 소모되지 않은 컨트롤러 승인이 있을 때만 연다.
 export function assertImplementRound(state,owner) {
- if(state?.configuration?.review?.strategy!=='lead-gated-adaptive'){
-  if(externalFirst(state?.configuration)&&['sonnet','sol'].includes(owner))throw Error('ROLE_GATE: '+owner+' requires adaptive controller authorization');
+ const c=state?.configuration;
+ if(c?.review?.strategy!=='lead-gated-adaptive'){
+  if(externalFirst(c)&&grantOnly(c).includes(owner))throw Error('ROLE_GATE: '+owner+' requires adaptive controller authorization');
   return null;
  }
- if(owner!=='sonnet'&&owner!=='sol')return null;
+ if(!grantOnly(c).includes(owner))return null;
  const grant=state.implement_grant;
  const open=grant&&grant.executor===owner&&grant.role==='implement'&&grant.round==null&&grant.set_by==='controller';
  if(!open)throw Error(`ROLE_GATE: ${owner} needs an unconsumed controller implement grant`);
- if(owner==='sol'&&!(grant.strategy==='sol_apex'&&grant.sandbox==='workspace-write'&&grant.criticality==='apex'&&grant.effort==='medium')){
-  throw Error('ROLE_GATE: Sol implements only an APEX round');
+ const profile=grantProfile(owner);
+ if(owner===apexMember(c)&&!(grant.strategy==='sol_apex'&&grant.sandbox===profile.sandbox&&grant.criticality==='apex'&&grant.effort===profile.effort)){
+  throw Error(`ROLE_GATE: ${display(owner)} implements only an APEX round`);
  }
- if(owner==='sonnet'&&!(grant.effort==='high'&&(grant.strategy==='sonnet_implementation'||grant.strategy==='reassign_to_sonnet'))){
-  throw Error('ROLE_GATE: Sonnet implements only an authorized important or reassigned round');
+ if(owner!==apexMember(c)&&!(owner===specialistMember(c)&&grant.effort===profile.effort&&(grant.sandbox??null)===profile.sandbox&&SPECIALIST_STRATEGIES.includes(grant.strategy))){
+  throw Error(`ROLE_GATE: ${display(owner)} implements only an authorized important or reassigned round`);
  }
  if(grant.strategy==='sonnet_implementation'&&grant.criticality!=='important')throw Error('ROLE_GATE: sonnet_implementation requires task_criticality important');
  return grant;
@@ -172,7 +208,10 @@ export function implementDispatch(state,owner) {
  const active=!!(adaptive&&grant&&grant.executor===owner&&grant.role==='implement'&&grant.set_by==='controller'&&(grant.round==null||grant.round===round));
  // External-First: 운영자가 강도를 직접 적지 않은 Grok/AGY는 작업 난이도에 맞춘다.
  if(active&&grant.effort)options.reasoning_effort=grant.effort;
- const apexGrant=!!(active&&owner==='sol'&&grant.strategy==='sol_apex'&&grant.sandbox==='workspace-write'&&grant.criticality==='apex');
+ // 평소 읽기 전용인 CLI(Codex의 Sol)에 쓰기를 여는 것은 승인된 자리의 grant뿐이다.
+ const c=state.configuration;
+ const opened=owner===apexMember(c)?grant?.strategy==='sol_apex'&&grant?.criticality==='apex':owner===specialistMember(c)&&SPECIALIST_STRATEGIES.includes(grant?.strategy);
+ const apexGrant=!!(active&&grant.sandbox==='workspace-write'&&grantProfile(owner).sandbox==='workspace-write'&&opened);
  return {options,apexGrant};
 }
 
@@ -181,14 +220,17 @@ export function executionAllowed(state) {
  const owner=state.owner;
  const adaptive=state.configuration?.review?.strategy==='lead-gated-adaptive';
  const grant=state.implement_grant;
- if(owner==='sol'){
-  return !!(adaptive&&grant&&grant.executor==='sol'&&grant.round===state.iteration&&grant.role==='implement'&&grant.strategy==='sol_apex'&&grant.sandbox==='workspace-write');
+ const c=state.configuration;
+ const held=!!(grant&&grant.executor===owner&&grant.round===state.iteration&&grant.role==='implement');
+ if(owner===apexMember(c)){
+  return !!(adaptive&&held&&grant.strategy==='sol_apex'&&grant.sandbox===grantProfile(owner).sandbox);
  }
- if(!EXECUTORS.includes(owner))return false;
- if(owner==='haiku'&&!automaticImplementer(state.configuration,owner)&&!explicitImplementation(state,owner))return false;
- if(adaptive&&owner==='sonnet')return !!(grant&&grant.executor==='sonnet'&&grant.round===state.iteration&&grant.role==='implement');
- // External-First만 켜진 작업에는 grant 장치가 없다. Sonnet 구현 라운드를 열 수 없다.
- if(!adaptive&&owner==='sonnet'&&externalFirst(state.configuration))return false;
+ const gated=grantOnly(c).includes(owner);
+ if(!EXECUTORS.includes(owner)&&!gated)return false;
+ if(reservedMembers(c).includes(owner)&&!automaticImplementer(c,owner)&&!explicitImplementation(state,owner))return false;
+ if(adaptive&&gated)return held;
+ // External-First만 켜진 작업에는 grant 장치가 없다. grant 전용 일꾼의 구현 라운드를 열 수 없다.
+ if(!adaptive&&gated&&externalFirst(c))return false;
  return true;
 }
 

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isMain,resolveExecutable} from './platform.mjs';
-import {config,selectExecutor,CAP,APEX_ROUND_CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND,automaticImplementer} from './executor-config.mjs';
+import {config,selectExecutor,CAP,APEX_ROUND_CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND,automaticImplementer,grantOnly} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
 import {atomic,immutable,read,repo,snapshot,changes,git,hash,SAFE_DIFF,riskyGitConfig} from './artifact.mjs';
@@ -26,7 +26,7 @@ import {compactView} from './lead-view.mjs';
 import {isPreserve,checkPreserve,protectedChanges} from './preserve.mjs';
 import {modifiedAcceptanceTests} from './acceptance-integrity.mjs';
 import {hookObservation} from './hook-observation.mjs';
-import {takeDelegation,sameDelegation,takeRedoDelegation,sameRedoDelegation,contractChanged,DELEGABLE_OWNERS,AUTO_RECOVERY_CAP,NON_RETRYABLE} from './delegation.mjs';
+import {takeDelegation,sameDelegation,takeRedoDelegation,sameRedoDelegation,contractChanged,AUTO_RECOVERY_CAP,NON_RETRYABLE} from './delegation.mjs';
 import {acTable,failureCriteria,prDraft,draftInputs,taskChangeEvidence,criterionIds} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
@@ -41,8 +41,9 @@ import {evidencePacket,evidenceSearch} from './evidence-index.mjs';
 import {gateCollector} from './gate-diagnostics.mjs';
 import {resumePacket,inspectionControl} from './resume-packet.mjs';
 import {captureRoundBase,roundDelta} from './round-delta.mjs';
-import {sameFamily} from './review-plan.mjs';
+import {sameFamilyIn,FAMILY_RULES_POLICY} from './review-plan.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation,PAIRED_REVIEW_POLICY} from './review-plan.mjs';
+import {apexMember,specialistMember,reservedMembers,delegableOwners} from './team-roles.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 // 상담 위원에게 직접 넣어 주는 diff의 최대 길이. 12,000자로는 리뷰어가 변경 대부분을 보지 못했다.
@@ -57,6 +58,12 @@ const CONTEXT_OUTPUT_TAIL=1500;
 //   openControl   한 번의 호출에 필요한 상태와 보조 함수(예산, 교체 순서, 저장)를 묶는다.
 //   액션 함수들    init, archive, status, consult, ... 각각 하나의 명령을 처리한다.
 //   run           잠금을 잡고 알맞은 액션으로 보낸다.
+
+// 역할 이름을 사람이 읽는 이름으로(sol → Sol). 오류 문구가 이전과 같게 나오게 한다.
+const display=name=>name?name[0].toUpperCase()+name.slice(1):'(none)';
+const orList=(list,comma='')=>list.length<2?list.join(''):`${list.slice(0,-1).join(', ')}${comma} or ${list.at(-1)}`;
+// grant 전용이면서 일반 구현 명단에 없는 일꾼(Opus 리드면 Sol)은 adaptive 작업에서 이름으로만 받는다.
+const pickExecutor=(configuration,adaptive,name)=>adaptive&&grantOnly(configuration).includes(name)&&!EXECUTORS.includes(name)?name:selectExecutor(configuration,name);
 
 function openControl(root) {
   // 제어 파일은 작업 폴더 밖에 둔다. 일꾼의 편집 도구가 닿지 않는 곳이어야 범위 검사를 믿을 수 있다.
@@ -82,7 +89,9 @@ function openControl(root) {
 
   // 일꾼 예산과 교체 순서
   c.pool=()=>c.s.configuration.external.available;
-  c.budget=owner=>owner==='sol'?(c.s.apex_rounds??0)<APEX_ROUND_CAP:c.s.attempts[owner]<CAP[owner];
+  // APEX 자리와 일반 명단 밖의 grant 일꾼(Codex의 Sol)은 APEX 라운드 상한으로 센다.
+  c.apexCounted=owner=>owner===apexMember(c.s.configuration)||(owner!=='lead'&&CAP[owner]===undefined);
+  c.budget=owner=>c.apexCounted(owner)?(c.s.apex_rounds??0)<APEX_ROUND_CAP:c.s.attempts[owner]<CAP[owner];
   // 옵트인 작업의 Sonnet/Sol은 승인 없는 자동 후보가 아니다. 예산이 남아도 구현 라운드를 열지 않는다.
 
   // 배치 판단은 실행 파일 존재만 확인한다. 도움말 프로브의 일시적 실패로 예산을 버리지 않는다.
@@ -104,11 +113,11 @@ function openControl(root) {
   // 예산이 남아 있고 설치도 돼 있어서 실제로 일을 시킬 수 있는 일꾼.
   c.canWork=name=>{
     if(!vendorAllowed(c.s.configuration,name))return false;
-    if(c.s?.configuration?.review?.strategy==='lead-gated-adaptive'&&(name==='sonnet'||name==='sol')){
+    if(c.s?.configuration?.review?.strategy==='lead-gated-adaptive'&&grantOnly(c.s.configuration).includes(name)){
       const grant=c.s.implement_grant;
       return !!(c.budget(name)&&grant&&grant.executor===name&&grant.role==='implement'&&grant.round==null&&grant.set_by==='controller'&&!c.installError(name));
     }
-    if(!automaticImplementer(c.s.configuration,name)&&!(name==='haiku'&&explicitImplementation(c.s,name)))return false;
+    if(!automaticImplementer(c.s.configuration,name)&&!(reservedMembers(c.s.configuration).includes(name)&&explicitImplementation(c.s,name)))return false;
     return c.budget(name)&&!c.installError(name);
   };
   c.unavailable=()=>Object.fromEntries(c.pool().map(e=>[e,c.installError(e)]).filter(([,message])=>message));
@@ -254,8 +263,8 @@ function init(c,input) {
   }
 
   const adaptive=configuration.review?.strategy==='lead-gated-adaptive';
-  // Sol은 일반 구현 명단에 없다. APEX 승인 작업에서만 init이 이 이름을 받는다.
-  const requested=adaptive&&input.executor==='sol'?'sol':selectExecutor(configuration,input.executor);
+  // Sol(일반 명단 밖의 grant 일꾼)은 승인 작업에서만 init이 이 이름을 받는다.
+  const requested=pickExecutor(configuration,adaptive,input.executor);
   if(requested!=='auto')assertVendor(configuration,requested);
   // 예전 버전의 기록이 작업 폴더 안(.fusion)에 있으면 새 작업을 시작하지 않는다. 일꾼이 그 폴더를 고칠 수 있기 때문이다.
   if(isLegacy(c.root)){
@@ -268,11 +277,10 @@ function init(c,input) {
   const redoDelegation=takeRedoDelegation(configuration,assignment,input);
   const reconciliation=takeReconciliation(input);
   const grant=initialGrant(assignment);
-  if(grant?.executor==='sol'&&requested!=='sol'&&requested!=='auto')throw Error('ROLE_GATE: sol_apex starts with Sol');
-  if(grant?.executor==='sonnet'&&requested!=='sonnet'&&requested!=='auto')throw Error('ROLE_GATE: sonnet_implementation starts with Sonnet');
-  if(adaptive&&requested==='sonnet'&&grant?.executor!=='sonnet')throw Error('ROLE_GATE: Sonnet needs an unconsumed controller implement grant');
-  if(adaptive&&requested==='sol'&&grant?.executor!=='sol')throw Error('ROLE_GATE: Sol implements only an APEX round');
-  if(requested==='sonnet'&&!grant&&!automaticImplementer(configuration,requested))throw Error('ROLE_GATE: Sonnet requires adaptive controller authorization');
+  if(grant&&requested!==grant.executor&&requested!=='auto')throw Error(`ROLE_GATE: ${assignment.strategy} starts with ${display(grant.executor)}`);
+  const gated=grantOnly(configuration).includes(requested);
+  if(adaptive&&gated&&grant?.executor!==requested)throw Error(requested===apexMember(configuration)?`ROLE_GATE: ${display(requested)} implements only an APEX round`:`ROLE_GATE: ${display(requested)} needs an unconsumed controller implement grant`);
+  if(gated&&!grant&&!automaticImplementer(configuration,requested))throw Error(`ROLE_GATE: ${display(requested)} requires adaptive controller authorization`);
   input=contract.brief(input);
   const readOnly=readOnlyPlan(input.read_only,input.scope);
   for(const job of readOnly?.subtasks??[]){
@@ -310,17 +318,19 @@ function init(c,input) {
   }
 
   if(grant){
-    const rest=routing.candidates.filter(e=>e!==grant.executor&&e!=='sonnet'&&e!=='sol');
+    const rest=routing.candidates.filter(e=>e!==grant.executor&&!grantOnly(configuration).includes(e));
     routing={...routing,mode:'authorized',executor:grant.executor,candidates:[grant.executor,...rest],reason:`controller implement grant for ${grant.executor}; ${routing.reason}`};
   } else if(adaptive){
-    const candidates=routing.candidates.filter(e=>e!=='sonnet'&&e!=='sol');
+    const gatedNames=grantOnly(configuration);
+    const candidates=routing.candidates.filter(e=>!gatedNames.includes(e));
     const executor=candidates.includes(routing.executor)?routing.executor:candidates[0];
     if(!executor)throw Error('ADAPTER_UNAVAILABLE: no routed executor is installed');
-    routing={...routing,executor,candidates,reason:routing.executor==='sonnet'||routing.executor==='sol'?`${routing.reason}; sonnet and sol are not automatic implementers`:routing.reason};
+    routing={...routing,executor,candidates,reason:gatedNames.includes(routing.executor)?`${routing.reason}; ${gatedNames.join(' and ')} are not automatic implementers`:routing.reason};
   }
   const executor=routing.executor;
-  if(delegation&&!DELEGABLE_OWNERS.includes(executor))throw Error(`DELEGATION: ${executor} is not an automatic implementer; delegate only grok, antigravity, haiku or luna rounds`);
-  if(redoDelegation&&!DELEGABLE_OWNERS.includes(executor))throw Error(`REDO_DELEGATION: ${executor} is not an automatic implementer; delegate rejections only for grok, antigravity, haiku or luna rounds`);
+  const delegable=delegableOwners(configuration);
+  if(delegation&&!delegable.includes(executor))throw Error(`DELEGATION: ${executor} is not an automatic implementer; delegate only ${orList(delegable)} rounds`);
+  if(redoDelegation&&!delegable.includes(executor))throw Error(`REDO_DELEGATION: ${executor} is not an automatic implementer; delegate rejections only for ${orList(delegable)} rounds`);
   const base=snapshot(c.root);
   c.s={
     schema_version:SCHEMA_VERSION,architecture:ARCHITECTURE,package_version:VERSION,configuration,routing,limits,...(readOnly?{read_only:readOnly}:{}),
@@ -709,7 +719,7 @@ function autoRedoEvaluation(c,records,now) {
   const need=(ok,name,why)=>{(ok?passed:unmet).push(ok?name:why);return ok;};
   if(!need(sameRedoDelegation(c.optional('redo-delegation.json'),d),'redo delegation record matches','the redo delegation record does not match the controller record'))return {eligible:false,unmet,passed};
   need(sameAssignment(c.optional('assignment.json'),s.assignment)&&s.assignment?.criticality==='standard'&&s.assignment?.strategy==='external_primary','standard task','the task is not a STANDARD external_primary task');
-  need(DELEGABLE_OWNERS.includes(s.owner),'automatic implementer',`${s.owner} is not an automatic implementer`);
+  need(delegableOwners(s.configuration).includes(s.owner),'automatic implementer',`${s.owner} is not an automatic implementer`);
   const used=(s.auto_redos??[]).length;
   need(used<d.max_redos,'within the delegated rejection limit',`${used} delegated rejections already used (limit ${d.max_redos})`);
   need(!c.writerHeld(),'no writer','a writer is still present');
@@ -775,14 +785,14 @@ function repeatedCriteria(s,blocking) {
   return [...new Set(blocking.flatMap(contract.criterionKeys))].filter(k=>before.has(k));
 }
 const panelBlocking=records=>[...new Set(records.filter(r=>r.ok&&r.verdict!=='pass').flatMap(r=>r.blocking_criteria??[]).filter(x=>typeof x==='string'&&x.trim()))];
-// APEX는 Sol에 남는다. 그 밖에는 REASSIGN_OTHER로 넘길 수 있는 일꾼이 있을 때만 교체를 권한다.
-const swapTargets=(c,s)=>s.owner==='sol'?[]:['grok','antigravity','haiku','luna'].filter(x=>x!==s.owner&&c.pool().includes(x)&&c.canWork(x));
+// APEX는 외부 최상위(Opus 리드면 Sol)에 남는다. 그 밖에는 REASSIGN_OTHER로 넘길 수 있는 일꾼이 있을 때만 교체를 권한다.
+const swapTargets=(c,s)=>s.owner===apexMember(s.configuration)?[]:delegableOwners(s.configuration).filter(x=>x!==s.owner&&c.pool().includes(x)&&c.canWork(x));
 // 일꾼이 라운드 상한에 닿았을 때 리드에게 남은 길. 같은 일꾼 REDO는 다음 begin에서 'round cap reached'로 막히므로 후보에서 뺀다.
 // 순서는 권하는 순서다: 다른 외부 일꾼 → Sonnet(승인 grant가 필요) → 리드 판단/중단.
 const exhaustedOptions=(c,s)=>{
   const targets=swapTargets(c,s);
   return [...(targets.length?[`REASSIGN_OTHER (${targets.join(', ')})`]:[]),
-    ...(s.owner!=='sonnet'&&s.assignment?.strategy!=='sol_apex'&&c.budget('sonnet')?['REASSIGN_TO_SONNET']:[]),'ESCALATE','BLOCK'];
+    ...(specialistMember(s.configuration)&&s.owner!==specialistMember(s.configuration)&&s.assignment?.strategy!=='sol_apex'&&c.budget(specialistMember(s.configuration))?['REASSIGN_TO_SONNET']:[]),'ESCALATE','BLOCK'];
 };
 
 // 반려 위임으로 돌려보낸 라운드의 이력. 같은 AC가 이번 라운드에도 반려됐는지(still_rejected)를 함께 보여 준다.
@@ -945,10 +955,10 @@ function begin(c,input) {
     const decided=s.lead_decision?.round===s.iteration?s.lead_decision.next_executor??null:null;
     if(decided&&!pick&&input.executor!==decided)throw Error('ROLE_GATE: this alternative is bound to '+decided);
     owner=decided
-      ?adaptive&&decided==='sol'?'sol':selectExecutor(s.configuration,decided)
+      ?pickExecutor(s.configuration,adaptive,decided)
       :pick
         ?c.rotation().find(e=>e!==s.owner&&c.canWork(e))
-        :adaptive&&input.executor==='sol'?'sol':selectExecutor(s.configuration,input.executor);
+        :pickExecutor(s.configuration,adaptive,input.executor);
     if(!owner&&pick){
       // 예산이 남은 일꾼이 있어도 설치돼 있지 않으면 쓸 수 없다. 이 단계에 갇히지 않게 다음 단계(takeover 또는 BLOCKED)로 옮긴다.
       s.phase=c.exhausted();
@@ -967,7 +977,7 @@ function begin(c,input) {
       if(requested===undefined||requested===owner||requested==='auto'){
         throw Error(`ADAPTER_UNAVAILABLE: ${owner}; phase is now ALTERNATIVE_REQUIRED; retry begin with an available executor`);
       }
-      owner=adaptive&&requested==='sol'?'sol':selectExecutor(s.configuration,requested);
+      owner=pickExecutor(s.configuration,adaptive,requested);
     }
     if(input.executor!==undefined&&input.executor!==owner)throw Error('Executor switch requires an alternative verdict');
   }
@@ -995,7 +1005,7 @@ function begin(c,input) {
   }
   const pending=assertImplementRound(s,owner);
   const manual=input.executor===owner||explicitImplementation(s,owner);
-  if(owner!=='lead'&&!pending&&!automaticImplementer(s.configuration,owner)&&!(owner==='haiku'&&manual)){
+  if(owner!=='lead'&&!pending&&!automaticImplementer(s.configuration,owner)&&!(reservedMembers(s.configuration).includes(owner)&&manual)){
     throw Error('ROLE_GATE: '+owner+' is not an eligible automatic implementer');
   }
   if(pending){
@@ -1036,7 +1046,7 @@ function begin(c,input) {
   s.owner=owner;
   s.implementation_selection={executor:owner,source:manual?'explicit':pending?'controller-grant':'automatic',round};
   if(pending)s.implement_grant={...pending,round};
-  if(owner==='sol')s.apex_rounds=(s.apex_rounds??0)+1;else s.attempts[owner]++;
+  if(c.apexCounted(owner))s.apex_rounds=(s.apex_rounds??0)+1;else s.attempts[owner]++;
   if(a){
     s.active_executor=owner;
     if(session)s.sessions[owner]=session;
@@ -1289,9 +1299,9 @@ function acceptanceHalt(c,evidence) {
 
 // ── 리뷰 ────────────────────────────────────────────────────────────
 
-// 소모된 Sonnet/Sol 승인은 자동 교체로 넘어가지 않는다. 같은 작성자의 다음 라운드는 새 승인이 있어야 시작한다.
+// 소모된 grant 일꾼(Opus 리드면 Sonnet/Sol)의 승인은 자동 교체로 넘어가지 않는다. 같은 작성자의 다음 라운드는 새 승인이 있어야 시작한다.
 const consumedSpecialist=s=>s.configuration.review?.strategy==='lead-gated-adaptive'
-  &&(s.owner==='sol'||s.owner==='sonnet')
+  &&grantOnly(s.configuration).includes(s.owner)
   &&s.implement_grant?.executor===s.owner&&s.implement_grant.round!=null;
 
 // 판정을 적용한다. 리드가 직접 내린 판정이든 위임 리뷰어의 판정이든 같은 규칙을 거친다.
@@ -1527,7 +1537,7 @@ function roundUsage(c) {
 }
 
 function nextGrant(s,executor,strategy,criticality,reason) {
-  if(executor==='sol'&&(s.apex_rounds??0)>=APEX_ROUND_CAP)throw Error('ROLE_GATE: Sol APEX round cap reached; BLOCK or approve verified work');
+  if(executor===apexMember(s.configuration)&&(s.apex_rounds??0)>=APEX_ROUND_CAP)throw Error(`ROLE_GATE: ${display(executor)} APEX round cap reached; BLOCK or approve verified work`);
   if(s.implement_grant&&s.implement_grant.round==null)throw Error('ROLE_GATE: an implement grant is already open');
   return makeGrant({executor,strategy,criticality,reason,revision:(s.implement_grant?.revision??0)+1});
 }
@@ -1608,24 +1618,27 @@ function leadDecision(c,input) {
       keep_owner=typeof input.keep_owner_reason==='string'?input.keep_owner_reason.trim():'';
       if(!keep_owner)throw Error(`LEAD_DECISION: ${s.owner} was rejected again on ${repeated.join(', ')}; REASSIGN_OTHER (${swapTargets(c,s).join(', ')}) or give keep_owner_reason to REDO`);
     }
-    if(s.owner==='sol'){
-      if(s.assignment?.strategy!=='sol_apex'||s.assignment?.criticality!=='apex')throw Error('ROLE_GATE: Sol implements only an APEX round');
-      grant=nextGrant(s,'sol','sol_apex','apex',rationale);
-    } else if(s.owner==='sonnet'){
-      grant=nextGrant(s,'sonnet','reassign_to_sonnet',s.assignment.criticality,rationale);
+    if(s.owner===apexMember(s.configuration)){
+      if(s.assignment?.strategy!=='sol_apex'||s.assignment?.criticality!=='apex')throw Error(`ROLE_GATE: ${display(s.owner)} implements only an APEX round`);
+      grant=nextGrant(s,s.owner,'sol_apex','apex',rationale);
+    } else if(s.owner===specialistMember(s.configuration)){
+      grant=nextGrant(s,s.owner,'reassign_to_sonnet',s.assignment.criticality,rationale);
     }
     phase='REDO';
   } else if(normalized==='REASSIGN_TO_SONNET'){
-    if(s.assignment?.strategy==='sol_apex')throw Error('ROLE_GATE: an APEX task stays with Sol');
-    if(s.owner==='sonnet')throw Error('LEAD_DECISION: REASSIGN_TO_SONNET requires a different executor; use REDO for the same owner');
-    grant=nextGrant(s,'sonnet','reassign_to_sonnet',s.assignment.criticality,rationale);
-    next_executor='sonnet';
-    required_reviewer='sol';
+    const specialist=specialistMember(s.configuration);
+    if(s.assignment?.strategy==='sol_apex')throw Error(`ROLE_GATE: an APEX task stays with ${display(apexMember(s.configuration))}`);
+    if(!specialist)throw Error('LEAD_DECISION: REASSIGN_TO_SONNET has no specialist member for this lead');
+    if(s.owner===specialist)throw Error('LEAD_DECISION: REASSIGN_TO_SONNET requires a different executor; use REDO for the same owner');
+    grant=nextGrant(s,specialist,'reassign_to_sonnet',s.assignment.criticality,rationale);
+    next_executor=specialist;
+    // 전문가 라운드의 첫 리뷰 자리(Opus 리드면 Sol).
+    required_reviewer=planReview(specialist,s.assignment).reviewers[0];
     phase='ALTERNATIVE_REQUIRED';
   } else if(normalized==='REASSIGN_OTHER'){
-    const allowed=['grok','antigravity','haiku','luna'];
+    const allowed=delegableOwners(s.configuration);
     if(input.executor!==undefined){
-      if(!allowed.includes(input.executor))throw Error('LEAD_DECISION: REASSIGN_OTHER executor must be grok, antigravity, haiku, or luna');
+      if(!allowed.includes(input.executor))throw Error(`LEAD_DECISION: REASSIGN_OTHER executor must be ${orList(allowed,',')}`);
       if(input.executor===s.owner)throw Error('LEAD_DECISION: REASSIGN_OTHER requires a different executor');
     }
     next_executor=input.executor??null;
@@ -1689,7 +1702,7 @@ function policyEvaluation(c) {
   if(!need(sameDelegation(c.optional('delegation.json'),d),'DELEGATION_RECORD_MISMATCH','delegation record matches','the delegation record does not match the controller record'))return result();
   need(sameAssignment(c.optional('assignment.json'),s.assignment),'ASSIGNMENT_RECORD_MISMATCH','assignment record matches','the assignment record does not match the controller record');
   need(s.assignment?.criticality==='standard'&&s.assignment?.strategy==='external_primary','TASK_REQUIRES_LEAD','standard task','the task is not a STANDARD external_primary task');
-  need(DELEGABLE_OWNERS.includes(s.owner),'OWNER_NOT_DELEGABLE','automatic implementer',`${s.owner} is not an automatic implementer`);
+  need(delegableOwners(s.configuration).includes(s.owner),'OWNER_NOT_DELEGABLE','automatic implementer',`${s.owner} is not an automatic implementer`);
   need(n<=d.max_rounds,'ROUND_LIMIT_EXHAUSTED','within the delegated round limit',`round ${n} is past the delegated limit of ${d.max_rounds}`);
   need(!c.writerHeld(),'WRITER_PRESENT','no writer','a writer is still present');
   need(snapshot(c.root).digest===s.post_digest,'TREE_DIGEST_STALE','tree unchanged since the round','the tree changed after the round');
@@ -1807,8 +1820,8 @@ function autoSubstituteInput(c) {
   const picks=[];
   for(const e of s.configuration.review.reviewers){
     if(picks.length===seats)break;
-    if(used.has(e)||e==='lead'||sameFamily(e,s.owner))continue;
-    if(plan.review_policy===PAIRED_REVIEW_POLICY&&[...kept,...picks].some(other=>sameFamily(e,other)))continue;
+    if(used.has(e)||e==='lead'||sameFamilyIn(plan,e,s.owner))continue;
+    if((plan.review_policy===PAIRED_REVIEW_POLICY||plan.review_policy===FAMILY_RULES_POLICY)&&[...kept,...picks].some(other=>sameFamilyIn(plan,e,other)))continue;
     try{adapter(e).probe(s.configuration.executors[e]??{});}catch{continue;}
     picks.push(e);
   }
@@ -1827,15 +1840,16 @@ function grantImplement(c,input) {
   if(!reason)throw Error('ROLE_GATE: grant reason must be text');
   const revision=(s.implement_grant?.revision??0)+1;
   let grant;
-  if(input.executor==='sonnet'){
-    if(input.strategy!=='reassign_to_sonnet')throw Error('ROLE_GATE: Sonnet reassignment requires strategy reassign_to_sonnet');
-    if(s.assignment?.strategy==='sol_apex')throw Error('ROLE_GATE: an APEX task stays with Sol');
-    grant=makeGrant({executor:'sonnet',strategy:'reassign_to_sonnet',criticality:s.assignment.criticality,reason,revision});
-  } else if(input.executor==='sol'){
-    if(input.strategy!=='sol_apex')throw Error('ROLE_GATE: Sol implement grant requires strategy sol_apex');
-    if(s.assignment?.strategy!=='sol_apex'||s.assignment?.criticality!=='apex')throw Error('ROLE_GATE: Sol implements only an APEX round');
-    grant=makeGrant({executor:'sol',strategy:'sol_apex',criticality:'apex',reason,revision});
-  } else throw Error('ROLE_GATE: only sonnet or sol can receive an implement grant');
+  const specialist=specialistMember(s.configuration),apex=apexMember(s.configuration);
+  if(input.executor&&input.executor===specialist){
+    if(input.strategy!=='reassign_to_sonnet')throw Error(`ROLE_GATE: ${display(specialist)} reassignment requires strategy reassign_to_sonnet`);
+    if(s.assignment?.strategy==='sol_apex')throw Error(`ROLE_GATE: an APEX task stays with ${display(apex)}`);
+    grant=makeGrant({executor:specialist,strategy:'reassign_to_sonnet',criticality:s.assignment.criticality,reason,revision});
+  } else if(input.executor&&input.executor===apex){
+    if(input.strategy!=='sol_apex')throw Error(`ROLE_GATE: ${display(apex)} implement grant requires strategy sol_apex`);
+    if(s.assignment?.strategy!=='sol_apex'||s.assignment?.criticality!=='apex')throw Error(`ROLE_GATE: ${display(apex)} implements only an APEX round`);
+    grant=makeGrant({executor:apex,strategy:'sol_apex',criticality:'apex',reason,revision});
+  } else throw Error(`ROLE_GATE: only ${[specialist,apex].filter(Boolean).join(' or ')} can receive an implement grant`);
   s.implement_grant=grant;
   c.art(`implement-grant-${grant.revision}.json`,grant);
   c.save();
