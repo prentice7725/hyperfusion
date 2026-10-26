@@ -30,6 +30,10 @@ Stop은 정상 종료(`model_stop`, `NO_TOOL_CALL`)이고 `fullyIdle:true`일 �
 
 agy에는 훅만 끄는 플래그가 없다. 일꾼 agy도 `~/.gemini/config/hooks.json`을 읽으므로, 브리지가 일꾼 프로세스에 lease 토큰의 해시(`HF_WORKER_LEASE`)나 상담 ID(`HF_WORKER_CONSULT`)를 넘기고 가드는 이 값이 현재 lease·상담과 맞을 때만 일꾼으로 본다.
 
+## 실측
+
+실측 절차는 [antigravity-field-test.md](antigravity-field-test.md)에 있다. agy 세션에 그대로 넘겨 실행시키고, 결과 보고로 등급을 정한다.
+
 ## 알려진 한계
 
 - 훅 실패·시간 초과의 동작은 문서에 없다. AionCore는 agy 1.3.1에서 약 30초 뒤 도구가 실행되는 것을 관찰했다(fail-open으로 본다). 경계는 컨트롤러의 스냅샷·drift 검사·수용 테스트다.
