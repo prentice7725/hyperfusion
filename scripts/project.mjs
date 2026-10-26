@@ -11,6 +11,9 @@ import {controlPath,ensureControl,acquireLock} from './control-dir.mjs';
 import {installationRoster,recommendPreset} from './installation.mjs';
 import {MEMBERS as REGISTRY,PROJECT_MEMBERS} from './member-registry.mjs';
 import {validateWorkflow,freezeWorkflow,assertWorkflow,workflowReadiness,recordWorkflowClose,recordIntegration,workflowIntegrated} from './workflow-plan.mjs';
+import {leadIdentity} from './lead-host.mjs';
+import {compose} from './team-composer.mjs';
+import {independent} from './model-registry.mjs';
 
 // 프로젝트 층: 리드가 기획 문서를 읽고 팀을 꾸려 보고하고, 사용자가 승인한 팀으로 마일스톤을 진행한다.
 // 승인 전에는 작업을 시작할 수 없고, 마일스톤이 끝나면 체크포인트 보고와 사용자 확인 전에는 다음으로 못 넘어간다.
@@ -76,6 +79,17 @@ export function validatePlan(root,plan) {
  if(!implementers.length)throw Error('The team needs at least one implementer');
  const members=plan.team.map(t=>t.member);
  if(plan.preset!==undefined&&!['claude-codex','external-first','classic-installed'].includes(plan.preset))throw Error('Unknown project preset');
+ // 비 Claude 리드: 이름으로 짠 프리셋·리뷰어 요구 대신 계열 규칙으로 검사한다(R0, R1).
+ const lead=leadIdentity(root,config(root));
+ const compatible=lead.family==='anthropic';
+ if(!compatible){
+  if(['claude-codex','external-first'].includes(plan.preset))throw Error(`PROJECT: preset ${plan.preset} assumes a Claude lead; this lead is ${lead.model} (${lead.family})`);
+  const team=compose({lead:{model:lead.model},candidates:members});
+  const lonely=implementers.filter(e=>!members.some(m=>m!==e&&independent(team.members[m].family,team.members[e].family))&&!independent(team.lead.family,team.members[e].family));
+  if(lonely.length)throw Error('Adaptive project team has no reviewer from another model family for: '+lonely.join(', '));
+  plan.review??={by:'delegate',strategy:'lead-gated-adaptive',reviewers:members.filter(m=>REVIEWERS.includes(m)),auto_apply:false};
+  if(plan.review.strategy!=='lead-gated-adaptive')throw Error('PROJECT: a non-Claude lead requires lead-gated-adaptive review');
+ }
  if(plan.preset==='claude-codex'){
   if(['sonnet','luna','sol'].some(m=>!members.includes(m)))throw Error('claude-codex preset requires installed Sonnet, Luna and Sol');
   plan.review??={by:'delegate',strategy:'lead-gated-adaptive',reviewers:['sol','sonnet'],auto_apply:false};
@@ -88,7 +102,8 @@ export function validatePlan(root,plan) {
  if(plan.review.auto_apply!==undefined&&typeof plan.review.auto_apply!=='boolean')throw Error('Project review.auto_apply must be boolean');
  if(plan.review.strategy==='lead-gated-adaptive'){
   if(plan.review.by!=='delegate')throw Error('Adaptive project review requires delegate');
-  const required=new Set(implementers.flatMap(e=>e==='luna'?['sonnet']:e==='grok'||e==='antigravity'?['sol','sonnet']:['sol']));
+  // Claude 리드의 기존 리뷰 정책이 요구하는 리뷰어. 비 Claude 리드는 위에서 계열 규칙으로 검사했다.
+  const required=new Set(compatible?implementers.flatMap(e=>e==='luna'?['sonnet']:e==='grok'||e==='antigravity'?['sol','sonnet']:['sol']):[]);
   if([...required].some(e=>!members.includes(e)))throw Error('Adaptive project team is missing mandatory reviewer(s): '+[...required].filter(e=>!members.includes(e)).join(', '));
   warnings.push('Sonnet implementation requires a controller grant; Sol APEX requires a task-specific grant, never owns rules.');
  }

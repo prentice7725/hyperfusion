@@ -118,7 +118,9 @@ export function config(root) {
  // Validate operator policy even if no particular executor is selected yet.
  vendorAllowed(v,'sol');
  const userRules=v.routing?.rules!==undefined;
- if(['sol','astra'].includes(v.lead))throw Error('Invalid HyperFusion configuration: Codex lead config belongs to the main branch; this branch is Opus-led');
+ // 리드는 호스트(또는 운영자 HF_LEAD_MODEL)가 정한다. 저장소 설정은 기본값인 Opus만 적을 수 있고, 적었다면 그 계열이 맞는지 init이 확인한다.
+ if(v.lead!==undefined&&v.lead!=='opus')throw Error('Invalid HyperFusion configuration: the lead is chosen by the host or the operator (HF_LEAD_MODEL), not by hyperfusion.config.json');
+ v.lead_model_source=fs.existsSync(file)&&v.lead_model!==undefined?'config':'default';
  v.lead??='opus';v.lead_model??='claude-opus-5-5';v.lead_takeover??=true;v.external??=structuredClone(DEFAULT_CONFIG.external);
  v.executors??={};v.executors.antigravity??={sandbox:true};
  // 운영자가 직접 적은 강도인지 기록한다. 파일에 같은 키가 있어도 컨트롤러가 다시 계산해 덮어쓴다.

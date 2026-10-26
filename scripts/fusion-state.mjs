@@ -26,6 +26,7 @@ import {compactView} from './lead-view.mjs';
 import {isPreserve,checkPreserve,protectedChanges} from './preserve.mjs';
 import {modifiedAcceptanceTests} from './acceptance-integrity.mjs';
 import {hookObservation} from './hook-observation.mjs';
+import {leadIdentity,leadPowers,assertLeadFamily} from './lead-host.mjs';
 import {takeDelegation,sameDelegation,takeRedoDelegation,sameRedoDelegation,contractChanged,AUTO_RECOVERY_CAP,NON_RETRYABLE} from './delegation.mjs';
 import {acTable,failureCriteria,prDraft,draftInputs,taskChangeEvidence,criterionIds} from './ac-trace.mjs';
 import {collectRunUsage} from './usage-accounting.mjs';
@@ -262,6 +263,10 @@ function init(c,input) {
     projectTask={...planned,milestone:milestone.id,project:project.name};
   }
 
+  // 리드는 호스트가 정하고 작업 동안 고정한다(R7). 역할과 리뷰 정책은 이 모델로 계산한다.
+  const lead=leadIdentity(c.root,configuration);
+  const powers=leadPowers(lead);
+  configuration={...configuration,lead_model:lead.model,...(lead.enforced?{lead:'host'}:{}),...(powers.takeover?{}:{lead_takeover:false})};
   const adaptive=configuration.review?.strategy==='lead-gated-adaptive';
   // Sol(일반 명단 밖의 grant 일꾼)은 승인 작업에서만 init이 이 이름을 받는다.
   const requested=pickExecutor(configuration,adaptive,input.executor);
@@ -276,6 +281,7 @@ function init(c,input) {
   const delegation=takeDelegation(configuration,assignment,input);
   const redoDelegation=takeRedoDelegation(configuration,assignment,input);
   const reconciliation=takeReconciliation(input);
+  if(!powers.delegation&&(delegation||redoDelegation))throw Error(`DELEGATION: a grade ${lead.grade} lead (${lead.host}, ${lead.model}) cannot grant delegated approval; run the task without delegation or verify the host hooks`);
   const grant=initialGrant(assignment);
   if(grant&&requested!==grant.executor&&requested!=='auto')throw Error(`ROLE_GATE: ${assignment.strategy} starts with ${display(grant.executor)}`);
   const gated=grantOnly(configuration).includes(requested);
@@ -338,7 +344,7 @@ function init(c,input) {
     attempts:Object.fromEntries([...EXECUTORS,'lead'].map(e=>[e,0])),
     sessions:Object.fromEntries(EXECUTORS.map(e=>[e,null])),
     task_id:input.task_id,phase:'PLAN',communication_language:'en',hook_observation:observedHooks,
-    hooks_observed:observedHooks.hooks_observed,warnings:observedHooks.warning?[observedHooks.warning]:[],
+    hooks_observed:observedHooks.hooks_observed,warnings:[observedHooks.warning,lead.warning].filter(Boolean),lead_identity:lead,
     ...(assignment?{assignment,review_preview:{...planReview(executor,assignment),provisional:true}}:{}),
     ...(delegation?{delegation}:{}),
     ...(redoDelegation?{redo_delegation:redoDelegation}:{}),
@@ -912,6 +918,8 @@ function applyDelegatedReview(c,open,member,result) {
 
 function begin(c,input) {
   const s=c.s;
+  // R7: 라운드마다 리드 계열이 init 때와 같은지 본다. 같은 계열 안의 모델 변경은 기록만 한다.
+  const leadChange=assertLeadFamily(c.root,s.lead_identity);
   // 첫 라운드에 입력이 없으면 init 때 받은 brief를 그대로 쓴다(next가 권하는 것과 같다). 리드가 같은 내용을 다시 넘기지 않아도 된다.
   if(s.phase==='PLAN'&&(!input||!Object.keys(input).length))input=c.optional('initial-brief.json')??input;
   if(input?.read_only!==undefined&&JSON.stringify(readOnlyPlan(input.read_only,input.scope??c.optional('initial-brief.json')?.scope))!==JSON.stringify(s.read_only??null))throw Error('READ_ONLY_PLAN: permissions are fixed at init');
@@ -1046,6 +1054,7 @@ function begin(c,input) {
   s.owner=owner;
   s.implementation_selection={executor:owner,source:manual?'explicit':pending?'controller-grant':'automatic',round};
   if(pending)s.implement_grant={...pending,round};
+  if(leadChange)(s.lead_model_changes??=[]).push({round,...leadChange,observed_at:new Date().toISOString()});
   if(c.apexCounted(owner))s.apex_rounds=(s.apex_rounds??0)+1;else s.attempts[owner]++;
   if(a){
     s.active_executor=owner;
