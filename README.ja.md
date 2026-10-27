@@ -8,19 +8,16 @@
 
 ## 最近の変更
 
+**0.30.0**
+
+- **Codex・Antigravity のリード(C 等級)。** Claude Code だけでなく、Codex CLI や agy のセッションもリードになれます。`node scripts/lead-guard.mjs --print-settings --host codex|antigravity` がフック設定を出力します。リードのモデルはホストのフックか `HF_LEAD_MODEL` から決まり、根拠がなければ init は `LEAD_MODEL_UNKNOWN` で拒否します。Claude 以外のリードには `review.strategy: "lead-gated-adaptive"` が必要です。Windows で一部を実測しました。→ [Codex](references/hosts/codex.md)、[Antigravity](references/hosts/antigravity.md)
+- **役割はリードのモデル系列に従う。** 実装者・専門家・レビュー枠をリードのモデルから計算します(Claude 以外のリードは `family-rules-v1`)。Opus リードの動作は変わりません。
+- **実測で見つかったレビュー・受け入れの問題を修正。** agy は結果スキーマをファイルで受け取り、それでも Windows のコマンドラインに収まらないときは短くすべきフィールドを示します。`detail` で書かれた Grok の指摘を受け付けます。契約の訂正がレビュアーに届きます。ワーカーが blocked と報告してもコントローラが受け入れコマンドを実行します(承認の拒否は変わりません)。レビュアーのターン上限を別に設定できます(`consult_max_turns`)。
+
 **0.29.0**
 
 - **レビュアーに結論を渡さない。** 委任レビュアーは、ワーカーの要約・テスト合格の報告・リスク評価や、以前のレビュアーの判定・理由を受け取りません。diff、ファイル、コントローラが自分で実行した受け入れ結果だけで判断します。→ [review（韓国語）](references/review-protocol.md)
 - **リードの指摘ごとの処分。** `lead-decision`で指摘ごとに`act`・`consider`・`noted`・`dismissed`・`contract_misread`と理由を残します。却下した指摘は次のワーカーに渡らず、指標がレビュアーごとの実効性（`actionable_rate`）を数えます。→ [review（韓国語）](references/review-protocol.md#지적별-처분-finding_dispositions-선택)
-
-**0.28.0**
-
-- **再レビュー用の`round-diff`。** 2ラウンド目から、今回のラウンドで変わった行だけを表示します。承認は引き続き累積diff全体が対象です。
-- **受け入れ失敗の抜粋。** 出力の末尾より前で最初に失敗した行とその後の数行を記録し、次ラウンドのフィードバックとリードの文脈に使います。
-- **リードガードがMCPツールも検査。** 読み取り専用と確認済みのツールと`HF_LEAD_MCP_ALLOW`に書いたツールだけが通ります。既存の導入では`npm run guard:settings`の`mcp__.*`項目をマージしてください。
-- **ワーカーのコーディング方針（オプトイン）。** `coding_policy:"ponytail"`で実装指示に固定ルールを追加します。既定は無効、効果は未測定です。→ [設定（韓国語）](references/configuration.md#일꾼-코딩-정책-coding_policy)
-- **実験ツール。** 読み取り専用の`evidence`・`evidence-search`（[設計と制約](references/evidence-retrieval-experiment.md)）と[コントローラのオーバーヘッド計測ツール](references/controller-overhead.md)。承認権限はありません。
-- **Node 24以上**が必要です。
 
 ## 作った理由
 

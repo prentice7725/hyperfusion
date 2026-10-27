@@ -8,19 +8,16 @@
 
 ## 최근 변경
 
+**0.30.0**
+
+- **Codex·Antigravity 리드(C 등급).** Claude Code뿐 아니라 Codex CLI나 agy 세션도 리드가 될 수 있다. `node scripts/lead-guard.mjs --print-settings --host codex|antigravity`가 훅 설정을 출력한다. 리드 모델은 호스트 훅이나 `HF_LEAD_MODEL`에서 정하고, 근거가 없으면 init이 `LEAD_MODEL_UNKNOWN`으로 거절한다. 비 Claude 리드는 `review.strategy: "lead-gated-adaptive"`가 필요하다. Windows에서 일부 실측했다. → [Codex](references/hosts/codex.md), [Antigravity](references/hosts/antigravity.md)
+- **역할은 리드 모델의 계열을 따른다.** 구현자·전문가·리뷰 자리를 리드 모델에서 계산한다(비 Claude 리드는 `family-rules-v1`). Opus 리드의 동작은 그대로다.
+- **실측에서 찾은 리뷰·수용 문제 수정.** agy는 결과 스키마를 파일로 받고, 그래도 Windows 명령줄에 넘치면 줄일 필드를 알려 준다. `detail`로 쓴 Grok 지적을 받는다. 계약 정정이 리뷰어에게 간다. 일꾼이 blocked로 보고해도 컨트롤러가 수용 명령을 돌린다(승인 거절은 그대로). 리뷰어 턴 상한을 따로 줄 수 있다(`consult_max_turns`).
+
 **0.29.0**
 
 - **리뷰어에게 결론을 주지 않는다.** 위임 리뷰어는 일꾼의 요약·테스트 통과 보고·위험 평가와 이전 리뷰어의 판정·사유를 받지 않는다. diff, 파일, 컨트롤러가 직접 돌린 수용 결과로만 판단한다. → [review](references/review-protocol.md)
 - **리드의 지적별 처분.** `lead-decision`에서 지적마다 `act`·`consider`·`noted`·`dismissed`·`contract_misread`와 사유를 남긴다. 기각한 지적은 다음 일꾼에게 넘어가지 않고, 지표가 리뷰어별 실효성(`actionable_rate`)을 센다. → [review](references/review-protocol.md#지적별-처분-finding_dispositions-선택)
-
-**0.28.0**
-
-- **재검수용 `round-diff`.** 2라운드부터 이번 라운드에서 바뀐 줄만 보여 준다. 승인은 여전히 누적 diff 전체가 대상이다.
-- **수용 실패 발췌.** 출력 꼬리보다 앞에서 처음 실패한 줄과 그 뒤 몇 줄을 함께 남겨 다음 라운드 피드백과 리드 문맥에 쓴다.
-- **리드 가드가 MCP 도구도 검사한다.** 읽기 전용으로 확인된 도구와 `HF_LEAD_MCP_ALLOW`에 적은 도구만 통과한다. 기존 설치는 `npm run guard:settings`의 `mcp__.*` 항목을 병합해야 한다.
-- **일꾼 코딩 정책(옵트인).** `coding_policy:"ponytail"`로 구현 지시문에 고정 규칙을 덧붙인다. 기본 꺼짐, 효과 미측정. → [설정](references/configuration.md#일꾼-코딩-정책-coding_policy)
-- **실험 도구.** 읽기 전용 `evidence`·`evidence-search`([설계와 한계](references/evidence-retrieval-experiment.md))와 [컨트롤러 오버헤드 도구](references/controller-overhead.md). 승인 권한은 없다.
-- **Node 24 이상**이 필요하다.
 
 ## 왜 만들었나
 
