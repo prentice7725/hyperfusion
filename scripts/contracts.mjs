@@ -95,7 +95,12 @@ export function feedback(v) {
  requireThat(Array.isArray(v)&&v.length>0&&v.every(item),'Re-dispatch requires lead_feedback: concrete orders for the worker (strings or {file, line?, comment})');
  return v;
 }
+// 스키마를 강제하지 않는 Grok은 지적 본문을 issue 대신 detail로 적을 때가 있다(KF3 실측). 이름만 다른 그 필드 하나만 issue로 옮긴다.
+// 다른 검사(파일, 줄, 심각도, 빈 본문)는 그대로 엄격하다.
+const findingAlias=f=>f&&typeof f==='object'&&f.issue===undefined&&typeof f.detail==='string'
+ ?Object.fromEntries(Object.entries(f).map(([k,x])=>[k==='detail'?'issue':k,x])):f;
 export function consultResult(v,task_id,consult_id,member,mode) {
+ if(v&&Array.isArray(v.findings))v={...v,findings:v.findings.map(findingAlias)};
  requireThat(v&&v.task_id===task_id&&v.consult_id===consult_id&&v.member===member,'Consult provenance mismatch');
  requireThat(str(v.summary)&&typeof v.root_cause==='string'&&Array.isArray(v.plan)&&v.plan.every(x=>typeof x==='string'),'Invalid consult fields');
  requireThat(['pass','redo','alternative','decision','none'].includes(v.recommended_verdict)&&['low','medium','high'].includes(v.confidence),'Invalid consult verdict');

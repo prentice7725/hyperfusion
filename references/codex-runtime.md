@@ -23,4 +23,4 @@ These environment options apply only to implementation, never read-only review/c
 
 ## Turn budgets
 
-Claude/Grok retain the default `--max-turns 40`. Configure `executors.<member>.max_turns` or `max_turns_by_difficulty:{low:20,medium:40,high:80}` to change it (1–1000). Explicit max_turns takes precedence. Codex/AGY do not expose that contract here; such options are rejected. Supervisor wall-time and implementation round caps remain unchanged.
+Claude/Grok retain the default `--max-turns 40`. Configure `executors.<member>.max_turns` or `max_turns_by_difficulty:{low:20,medium:40,high:80}` to change it (1–1000). Explicit max_turns takes precedence. Review and consult runs use `consult_max_turns` (1–1000) instead when it is set, for reviewers that stop with `stop_reason: tool_use` while reading every changed file. Codex/AGY do not expose that contract here; such options are rejected. Supervisor wall-time and implementation round caps remain unchanged.
