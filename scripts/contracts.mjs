@@ -100,7 +100,7 @@ export function feedback(v) {
 const findingAlias=f=>f&&typeof f==='object'&&f.issue===undefined&&typeof f.detail==='string'
  ?Object.fromEntries(Object.entries(f).map(([k,x])=>[k==='detail'?'issue':k,x])):f;
 export function consultResult(v,task_id,consult_id,member,mode) {
- if(v&&Array.isArray(v.findings))v={...v,findings:v.findings.map(findingAlias)};
+ if(v&&Array.isArray(v.findings)){const findings=v.findings.map(findingAlias);if(findings.some((f,i)=>f!==v.findings[i]))v={...v,findings};}
  requireThat(v&&v.task_id===task_id&&v.consult_id===consult_id&&v.member===member,'Consult provenance mismatch');
  requireThat(str(v.summary)&&typeof v.root_cause==='string'&&Array.isArray(v.plan)&&v.plan.every(x=>typeof x==='string'),'Invalid consult fields');
  requireThat(['pass','redo','alternative','decision','none'].includes(v.recommended_verdict)&&['low','medium','high'].includes(v.confidence),'Invalid consult verdict');
