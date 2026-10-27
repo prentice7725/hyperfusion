@@ -8,19 +8,16 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 ## Recent changes
 
+**0.30.0**
+
+- **Codex and Antigravity leads (grade C).** A Codex CLI or agy session can now lead, not only Claude Code. `node scripts/lead-guard.mjs --print-settings --host codex|antigravity` prints the hooks. The lead model comes from host hooks or `HF_LEAD_MODEL`; without that evidence init refuses with `LEAD_MODEL_UNKNOWN`. Non-Claude leads need `review.strategy: "lead-gated-adaptive"`. Partly field-tested on Windows. See [Codex](references/hosts/codex.md) and [Antigravity](references/hosts/antigravity.md).
+- **Roles follow the lead's model family.** Implementer, specialist and reviewer seats are computed from the lead (`family-rules-v1` for non-Claude leads). Opus-led behaviour is unchanged.
+- **Review and acceptance fixes from field runs.** agy gets its result schema as a file, and a prompt that is still too long for Windows says which field to shorten. Grok findings written with `detail` are accepted. Contract corrections reach reviewers. The controller runs acceptance even when a worker reports blocked, but still refuses to approve it. Reviewers can get their own turn limit (`consult_max_turns`).
+
 **0.29.0**
 
 - **Reviewers get no conclusions.** Delegated reviewers no longer see the worker's summary, test claims or risk notes, nor earlier reviewers' verdicts and reasons. They judge from the diff, the files and controller-run acceptance results. See [review](references/review-protocol.md).
 - **Per-finding lead dispositions.** `lead-decision` can classify each finding as `act`, `consider`, `noted`, `dismissed` or `contract_misread` with a reason. Dismissed findings are not forwarded to the next worker, and metrics score each reviewer (`actionable_rate`). See [review](references/review-protocol.md#지적별-처분-finding_dispositions-선택).
-
-**0.28.0**
-
-- **`round-diff` for re-review.** From round 2, shows only the lines changed in the current round. Approval still covers the full cumulative diff.
-- **Acceptance failure excerpts.** The first failing line before the stored output tail, plus a few lines after it, feed the next round's feedback and the lead's review context.
-- **Lead guard covers MCP tools.** Only verified read-only tools and names listed in `HF_LEAD_MCP_ALLOW` pass. Existing installs must merge the `mcp__.*` entry from `npm run guard:settings`.
-- **Worker coding policy (opt-in).** `coding_policy:"ponytail"` appends pinned rules to implementation prompts. Off by default; effect unmeasured. See [configuration](references/configuration.md#일꾼-코딩-정책-coding_policy).
-- **Experimental tools.** Read-only `evidence` and `evidence-search` ([design and limits](references/evidence-retrieval-experiment.md)) and [controller overhead tools](references/controller-overhead.md). Neither grants approval.
-- **Node 24 or newer** is required.
 
 ## Why HyperFusion
 

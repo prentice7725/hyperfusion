@@ -2,7 +2,7 @@
 name: hyperfusion
 description: Multi-model orchestration led by the host's frontier model, with serialized workers, audited tests and cross-family review. Use for HyperFusion, Grok, Antigravity/agy, Sonnet/Haiku or Codex Luna/Sol implementation, review and image-asset requests.
 ---
-# HyperFusion v0.29.0
+# HyperFusion v0.30.0
 
 Start with the classic procedure below. For a short English reference map, read [executor-quickstart.md](references/executor-quickstart.md). Load other references only when their step applies.
 

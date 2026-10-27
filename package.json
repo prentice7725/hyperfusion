@@ -1,6 +1,6 @@
 {
   "name": "hyperfusion",
-  "version": "0.29.0",
+  "version": "0.30.0",
   "private": true,
   "license": "MIT",
   "description": "Multi-model orchestration led by the host model, with Grok, Antigravity, Sonnet, Haiku and Codex Luna/Sol workers and cross-family review",
