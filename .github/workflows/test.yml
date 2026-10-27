@@ -13,12 +13,21 @@ permissions:
   contents: read
 jobs:
   test:
+    name: test (${{ matrix.os }}, ${{ matrix.node }}${{ matrix.shard && format(', {0}', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Windows runs test files one at a time (scripts/run-tests.mjs), so its suite is split
+      # across separate runners. Each runner is its own host, so serialization still holds.
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        node: [24]
+        include:
+          - {os: ubuntu-latest, node: 24, shard: ''}
+          - {os: windows-latest, node: 24, shard: 1/4}
+          - {os: windows-latest, node: 24, shard: 2/4}
+          - {os: windows-latest, node: 24, shard: 3/4}
+          - {os: windows-latest, node: 24, shard: 4/4}
+    env:
+      HF_TEST_SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,9 +35,13 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Acceptance supervision preflight
         run: node --input-type=module -e "import {runCommands} from './scripts/acceptance.mjs'; const results=runCommands(process.cwd(),['node -p 1']); console.log(JSON.stringify(results)); if(results.some(r=>r.status!=='pass'))process.exit(1);"
+      # The suite-wide regressions run once per OS: on the unsharded job and the first shard.
       - name: Writable roots and resume smoke regressions
+        if: matrix.shard == '' || startsWith(matrix.shard, '1/')
         run: node --test --test-concurrency=1 tests/sandbox-roots.test.mjs tests/smoke.test.mjs
       - name: Acceptance and agent guard regressions
+        if: matrix.shard == '' || startsWith(matrix.shard, '1/')
         run: node --test --test-concurrency=1 tests/agent-guards.test.mjs
       - run: npm test
-      - run: node scripts/generate-state-docs.mjs --check
+      - if: matrix.shard == '' || startsWith(matrix.shard, '1/')
+        run: node scripts/generate-state-docs.mjs --check
