@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {fixture} from './support.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {controlPath} from '../scripts/control-dir.mjs';
-import {decideAgy,normalizeAgy,agyMcpName,settingsSnippet} from '../scripts/lead-guard.mjs';
+import {decideAgy,normalizeAgy,agyMcpName,agyCommandPath,settingsSnippet} from '../scripts/lead-guard.mjs';
 import {leadIdentity} from '../scripts/lead-host.mjs';
 import {config} from '../scripts/executor-config.mjs';
 
@@ -35,6 +35,8 @@ test('an agy lead cannot write, delegate or leave the sandbox during a task',t=>
  assert.equal(tool(f,'run_command',{CommandLine:bridge,BypassSandbox:true}).decision,'allow');
  assert.equal(tool(f,'run_command',{CommandLine:'npm test'}).decision,'allow');
  assert.equal(tool(f,'view_file',{AbsolutePath:path.join(f.root,'a.txt')}).decision,'allow');
+ // agy 1.4.7의 실제 읽기 도구 이름.
+ assert.equal(tool(f,'read_file',{Path:path.join(f.root,'a.txt')}).decision,'allow');
  assert.equal(tool(f,'call_mcp_tool',{ServerName:'github',ToolName:'get_me'}).decision,'allow');
  // 저장소를 알 수 없는 호출은 관여하지 않는다.
  assert.equal(decideAgy({toolCall:{name:'write_to_file',args:{TargetFile:'rel.txt'}}},'PreToolUse').decision,'allow');
@@ -56,6 +58,12 @@ test('agy hook settings, usage binding and lead identity',t=>{
  assert.match(s['hyperfusion-guard'].PreToolUse[0].hooks[0].command,/--host antigravity --event PreToolUse$/);
  assert.match(s['hyperfusion-guard'].Stop[0].command,/--event Stop$/);
  assert.equal(s['hyperfusion-usage'].PreToolUse[0].matcher,'run_command');
+ // agy는 따옴표를 글자 그대로 넘기므로 명령에 따옴표가 없어야 하고, 공백이 든 경로는 거절한다.
+ for(const hook of [s['hyperfusion-guard'].PreToolUse[0].hooks[0],s['hyperfusion-guard'].Stop[0],s['hyperfusion-usage'].SessionStart[0]]){
+  assert.doesNotMatch(hook.command,/["']/);assert.match(hook.command,/^node \S+\.mjs /);
+ }
+ assert.equal(agyCommandPath('C:/tools/hf/scripts/lead-guard.mjs'),'C:/tools/hf/scripts/lead-guard.mjs');
+ assert.throws(()=>agyCommandPath('C:/Program Files/hf/scripts/lead-guard.mjs'),/without spaces/);
  const f=fixture(t,{initialize:false});
  const usage=path.join(SCRIPTS,'lead-usage.mjs');
  const send=(event,body)=>spawnSync(process.execPath,[usage,'--hook','--host','antigravity','--event',event],{input:JSON.stringify(body),encoding:'utf8',env:process.env});

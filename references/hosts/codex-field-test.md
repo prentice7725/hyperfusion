@@ -47,8 +47,14 @@ test('empty input is a controlled error', () => {
   assert.throws(() => parse(''), /empty input/);
 });
 EOF
+# A non-Claude lead requires the adaptive review strategy; without it init fails with ADAPTIVE_REVIEW.
+echo '{"review":{"by":"delegate","strategy":"lead-gated-adaptive"}}' > hyperfusion.config.json
 git add -A && git commit -qm init
 cp "$HF_SKILL/references/brief-examples/bugfix.json" "$HF_TEST/brief.json"
+# archive takes an input file; a bare `archive REPO` is refused.
+echo '{"quiescent":true,"reason":"field test: reset between steps"}' > "$HF_TEST/archive.json"
+# An archived task_id cannot be reused. `brief NAME [delegation]` writes $HF_TEST/NAME.json with a fresh task_id.
+brief() { node -e 'const fs=require("fs");const [src,dst,id,d]=process.argv.slice(1);const b=JSON.parse(fs.readFileSync(src));b.task_id=id;if(d)b.delegation={policy:"standard-auto",reason:"field test"};fs.writeFileSync(dst,JSON.stringify(b,null,2))' "$HF_TEST/brief.json" "$HF_TEST/$1.json" "$1" "$2"; }
 ```
 
 Helper to print the control directory where the controller and hooks write records:
@@ -57,11 +63,15 @@ Helper to print the control directory where the controller and hooks write recor
 node -e "import(process.argv[1]).then(m=>console.log(m.controlRoot(process.argv[2])))" "$HF_SKILL/scripts/control-dir.mjs" "$REPO"
 ```
 
-Launch Codex **from `$REPO`** with `HF_STATE_DIR` exported, from a plain terminal. Hooks find the repository from the session's working directory, so a different cwd breaks observation. Run `echo "CLAUDECODE=$CLAUDECODE"` in Codex's shell and record it: it must be empty. A value of `1` means Codex inherited a Claude Code shell, and the controller would accept the default Opus lead.
+Launch Codex **from `$REPO`** with `HF_STATE_DIR` exported, from a plain terminal. Hooks find the repository from the session's working directory, so a different cwd breaks observation. Run `node -e "console.log('CLAUDECODE='+(process.env.CLAUDECODE??''))"` (a PowerShell shell expands `$CLAUDECODE` to an empty string whatever the environment holds) in Codex's shell and record it: it must be empty. A value of `1` means Codex inherited a Claude Code shell, and the controller would accept the default Opus lead.
+
+On Windows, node cannot spawn child processes inside the Codex `workspace-write` sandbox (`EPERM`), so every controller command (`fusion-state.mjs`, `executor-bridge.mjs`, `finish`) must run escalated, outside the sandbox. Launch with `codex -s workspace-write -a on-request`, ask for escalation explicitly, and approve within the 15-second observation window. A sandboxed init fails first with `GIT_CONFIG_UNREADABLE`.
+
+Codex CLI runs tools and hooks in a shared app-server daemon. If any Codex session was already open, variables exported in the new terminal (`HF_STATE_DIR`, `HF_LEAD_MODEL`) do not reach the shell or the hooks. Check with `node -e "console.log(process.env.HF_STATE_DIR??null)"` in Codex's shell. If it prints `null`, either close every Codex session and relaunch, or drop `HF_STATE_DIR` and use the default state directory.
 
 ## 2. Tests
 
-Run the tests in order. Before T3 and after each task-ending test, run `node "$HF_SKILL/scripts/fusion-state.mjs" archive "$REPO"` so the next test starts clean.
+Run the tests in order. Before T3 and after each task-ending test, run `node "$HF_SKILL/scripts/fusion-state.mjs" archive "$REPO" "$HF_TEST/archive.json"` so the next test starts clean, and init the next task from a new brief (`brief HF-t3`, then `init "$REPO" "$HF_TEST/HF-t3.json"`; `brief HF-t3-delegation 1` for the delegation step). Reusing an archived `task_id` is refused with `Task ID already used`.
 
 ### T1: Untrusted hooks
 
@@ -81,7 +91,7 @@ Run the tests in order. Before T3 and after each task-ending test, run `node "$H
 1. Run init with the brief. Run it as a shell command so the PreToolUse event for that same call is the observation (the window is 15 seconds).
 2. Expected `lead_identity`: `host:"codex"`, `family:"openai"`, `source:"host-hook"`, `grade:"C"`, `enforced:true`, `hooks_observed:true`. Record `review_preview` and the chosen executor.
 3. Archive. Add `"delegation":{"policy":"standard-auto","reason":"field test"}` to a copy of the brief and run init again. Expected: refused. The grade C refusal is a `DELEGATION:` error; record whichever error comes first.
-4. Quit Codex, relaunch it with `HF_LEAD_MODEL=claude-opus-5-5` exported, and run init. Expected: `LEAD_IDENTITY_CONFLICT`. Relaunch without the variable.
+4. Close every Codex session so the app-server daemon exits, relaunch with `HF_LEAD_MODEL=claude-opus-5-5` exported, confirm the shell sees it, and run init. Expected: `LEAD_IDENTITY_CONFLICT`. Relaunch without the variable.
 
 ### T4: Guard during an active task
 

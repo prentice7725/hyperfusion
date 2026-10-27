@@ -26,13 +26,26 @@ test('a Codex lead cannot patch, type into a shell or delegate natively during a
  assert.ok(denied(codex(f,'apply_patch',{command:'*** Begin Patch\n*** Update File: a.txt\n*** End Patch'})));
  // 경로를 못 읽은 패치도 막는다.
  assert.ok(denied(codex(f,'apply_patch',{command:'garbage'})));
- for(const tool of ['write_stdin','spawn_agent','Agent','some_future_tool'])assert.ok(denied(codex(f,tool)),tool);
+ for(const tool of ['write_stdin','spawn_agent','collaborationspawn_agent','Agent','some_future_tool'])assert.ok(denied(codex(f,tool)),tool);
+ assert.ok(denied(codex(f,'write_stdin',{session_id:1,chars:'git push\n'})));
+ // 빈 입력은 오래 도는 명령의 출력 폴링이다.
+ assert.equal(codex(f,'write_stdin',{session_id:1,chars:''}),null);
  assert.equal(codex(f,'update_plan',{plan:[]}),null);
  assert.equal(codex(f,'mcp__github__get_file_contents'),null);
  assert.ok(denied(codex(f,'mcp__github__create_pull_request')));
  assert.ok(denied(codex(f,'Bash',{command:'git push origin HEAD'})));
  assert.ok(denied(codex(f,'Bash',{command:'HF_ALLOW_LEAD_GRADE=A node x'})));
  assert.equal(codex(f,'Bash',{command:'ls'}),null);
+});
+
+test('a Codex lead cannot open an interactive shell whose input would skip the hooks',t=>{
+ const f=fixture(t);
+ for(const command of ['pwsh','pwsh -NoProfile','& "C:\\Program Files\\PowerShell\\7\\pwsh.exe"','bash','cmd /k','node','node -i','python3','cd src && bash'])assert.ok(denied(codex(f,'Bash',{command})),command);
+ for(const command of ['node -v','python --version','pwsh -Command "Get-ChildItem"','bash -c "ls"','node -e "1"','node scripts/x.mjs','cmd /c dir','npm test','echo 1 | node'])assert.equal(codex(f,'Bash',{command}),null,command);
+ assert.match(codex(f,'Bash',{command:'pwsh'}).hookSpecificOutput.permissionDecisionReason,/write_stdin/);
+ // 작업이 없으면 관여하지 않는다.
+ const idle=fixture(t,{initialize:false});
+ assert.equal(codex(idle,'Bash',{command:'pwsh'}),null);
 });
 
 test('the leased worker passes the lead guard only with the current lease marker',t=>{
