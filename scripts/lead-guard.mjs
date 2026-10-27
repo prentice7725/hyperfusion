@@ -93,14 +93,42 @@ export function decideMcp(input) {
 // write_stdin은 이미 허용된 셸에 입력을 넣을 때 PreToolUse를 다시 거치지 않고, spawn_agent는 컨트롤러를 거치지 않는 위임이다.
 // 둘 다, 그리고 이름을 모르는 도구는 작업 중에 쓰기로 보고 막는다.
 export const CODEX_READ_TOOLS=['update_plan','view_image'];
-export const CODEX_BYPASS_TOOLS=['write_stdin','spawn_agent','Agent'];
+// 0.164.0은 하위 에이전트 도구를 네임스페이스를 붙인 collaborationspawn_agent로 보고한다.
+export const CODEX_BYPASS_TOOLS=['write_stdin','spawn_agent','collaborationspawn_agent','Agent'];
 export function patchPaths(text) {
  if(typeof text!=='string')return [];
  return [...text.matchAll(/^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm)].map(m=>m[1].trim()).filter(Boolean);
 }
+// Codex는 write_stdin에 PreToolUse 훅을 걸지 않는다(0.164.0 실측). 대화형 셸·REPL을 띄우면 그 뒤 입력은 가드를 거치지 않으므로
+// 작업 중에는 띄우는 단계(exec_command)에서 막는다. 버전 확인·명령 인자를 준 실행은 대화형이 아니다.
+const INTERPRETERS=/^(?:pwsh|powershell|bash|sh|zsh|fish|dash|ksh|cmd|nu|wsl|node|deno|bun|python[\d.]*|py|ipython|irb|ruby|perl|php|lua|julia|r|ghci|sqlite3|psql|mysql)$/;
+const RUN_FLAGS=/^(?:-c|-command|-encodedcommand|-ec|-file|-f|-e|--eval|-p|--print|-m|-x|\/c)$/i;
+const STAY_FLAGS=/^(?:-i|--interactive|-noexit|--repl|\/k)$/i;
+const INFO_FLAGS=/^(?:-v|-V|--version|-version|-h|--help|-help|\/\?)$/;
+export function interactiveShell(command) {
+ if(typeof command!=='string')return false;
+ // 파이프 뒤의 프로그램은 앞 명령의 출력을 입력으로 받으므로 write_stdin과 상관없다. 각 명령의 맨 앞만 본다.
+ return command.split(/&&|\|\||;/).some(part=>{
+  const words=(part.split('|')[0].trim().replace(/^&\s*/,'').match(/"[^"]*"|'[^']*'|\S+/g)??[]).map(w=>w.replace(/^["']|["']$/g,''));
+  if(!words.length)return false;
+  const name=path.basename(words[0].replaceAll('\\','/')).toLowerCase().replace(/\.exe$/,'');
+  if(!INTERPRETERS.test(name))return false;
+  const rest=words.slice(1);
+  if(rest.some(w=>STAY_FLAGS.test(w)))return true;
+  if(rest.some(w=>INFO_FLAGS.test(w)))return false;
+  return rest.every(w=>/^[-/]/.test(w)&&!RUN_FLAGS.test(w));
+ });
+}
 export function decideCodex(input) {
  const tool=input?.tool_name,cwd=path.resolve(input?.cwd??process.cwd());
- if(tool==='Bash')return decideBash(input);
+ if(tool==='Bash'){
+  const out=decideBash(input);
+  if(out||!interactiveShell(input.tool_input?.command))return out;
+  const root=repoRootOf(path.join(cwd,'.hf-bash'));
+  return root?treeLock(root,' Blocked: input to an interactive shell or REPL goes through write_stdin, which Codex does not pass through hooks.'):null;
+ }
+ // 빈 입력은 Codex가 오래 도는 명령의 출력을 받아 오는 폴링이다(init·begin·브리지도 이 경로로 끝난다). 입력이 있으면 아래에서 막는다.
+ if(tool==='write_stdin'&&input.tool_input?.chars==='')return null;
  if(typeof tool==='string'&&tool.startsWith('mcp__'))return decideMcp(input);
  if(CODEX_READ_TOOLS.includes(tool))return null;
  if(['apply_patch','Edit','Write'].includes(tool)){
@@ -237,7 +265,7 @@ export function decideUserPrompt(input) {
 // 입력을 Claude Code 형식으로 바꿔 같은 판정을 쓰고, 결과를 agy 형식({decision})으로 되돌린다.
 // 도구 이름은 문서와 다른 에이전트의 실측 보고를 따른 것이다. 모르는 이름은 작업 중에 쓰기로 보고 막는다.
 export const AGY_WRITE_TOOLS=['write_to_file','replace_file_content','multi_replace_file_content','write_file','edit_file'];
-export const AGY_READ_TOOLS=['view_file','view_file_outline','view_code_item','list_dir','grep_search','find_by_name','codebase_search','read_url_content','search_web','read_resource','list_resources'];
+export const AGY_READ_TOOLS=['view_file','read_file','view_file_outline','view_code_item','list_dir','grep_search','find_by_name','codebase_search','read_url_content','search_web','read_resource','list_resources'];
 export const AGY_BYPASS_TOOLS=['invoke_subagent','define_subagent','send_message'];
 const AGY_PATH_KEYS=['Path','TargetFile','AbsolutePath','FilePath','File'];
 const AGY_STOP_REASONS=['model_stop','no_tool_call'];
@@ -311,10 +339,18 @@ export function decideAgy(raw,event) {
  return out?{decision:'deny',reason:out.hookSpecificOutput.permissionDecisionReason}:{decision:'allow'};
 }
 
+// agy는 Windows에서 훅 명령을 셸 없이 공백으로만 나눠 실행한다. 따옴표가 글자 그대로 넘어가 "C:/…"가 hooks.json 폴더 기준 상대 경로가 되고,
+// 훅이 실패하면 도구 호출이 막힌다(agy 1.4.7 실측). 그래서 경로를 따옴표 없이 쓰고, 공백·따옴표가 든 경로로는 설정을 만들지 않는다.
+export function agyCommandPath(file) {
+ if(/[\s"']/.test(file))throw Error(`agy splits hook commands on whitespace and keeps quotes literally; move the skill to a path without spaces or quotes (${file})`);
+ return file;
+}
+
 // agy hooks.json 항목. 최상위 키는 훅 이름이고 Stop·SessionStart는 matcher 없이 핸들러 배열이다.
 function agySnippet(script,usage) {
- const guard=event=>({type:'command',command:`node "${script}" --host antigravity --event ${event}`,timeout:30});
- const collect=event=>({type:'command',command:`node "${usage}" --hook --host antigravity --event ${event}`,timeout:10});
+ script=agyCommandPath(script);usage=agyCommandPath(usage);
+ const guard=event=>({type:'command',command:`node ${script} --host antigravity --event ${event}`,timeout:30});
+ const collect=event=>({type:'command',command:`node ${usage} --hook --host antigravity --event ${event}`,timeout:10});
  return {'hyperfusion-guard':{enabled:true,PreToolUse:[{matcher:'*',hooks:[guard('PreToolUse')]}],Stop:[guard('Stop')],SessionStart:[guard('SessionStart')]},
   'hyperfusion-usage':{enabled:true,PreToolUse:[{matcher:'run_command',hooks:[collect('PreToolUse')]}],SessionStart:[collect('SessionStart')]}};
 }

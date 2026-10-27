@@ -47,8 +47,14 @@ test('empty input is a controlled error', () => {
   assert.throws(() => parse(''), /empty input/);
 });
 EOF
+# A non-Claude lead requires the adaptive review strategy; without it init fails with ADAPTIVE_REVIEW.
+echo '{"review":{"by":"delegate","strategy":"lead-gated-adaptive"}}' > hyperfusion.config.json
 git add -A && git commit -qm init
 cp "$HF_SKILL/references/brief-examples/bugfix.json" "$HF_TEST/brief.json"
+# archive takes an input file; a bare `archive REPO` is refused.
+echo '{"quiescent":true,"reason":"field test: reset between steps"}' > "$HF_TEST/archive.json"
+# An archived task_id cannot be reused. `brief NAME [delegation]` writes $HF_TEST/NAME.json with a fresh task_id.
+brief() { node -e 'const fs=require("fs");const [src,dst,id,d]=process.argv.slice(1);const b=JSON.parse(fs.readFileSync(src));b.task_id=id;if(d)b.delegation={policy:"standard-auto",reason:"field test"};fs.writeFileSync(dst,JSON.stringify(b,null,2))' "$HF_TEST/brief.json" "$HF_TEST/$1.json" "$1" "$2"; }
 ```
 
 Helper to print the control directory where the controller and hooks write records:
@@ -57,11 +63,11 @@ Helper to print the control directory where the controller and hooks write recor
 node -e "import(process.argv[1]).then(m=>console.log(m.controlRoot(process.argv[2])))" "$HF_SKILL/scripts/control-dir.mjs" "$REPO"
 ```
 
-Launch agy from a plain terminal, open `$REPO` as the workspace, pin the lead model (for example `--model gemini-4-argon-high`), and export `HF_STATE_DIR` first. agy hooks run in the folder that holds `hooks.json`, not in the workspace, so the guard finds the repository from `workspacePaths` and tool arguments. Run `echo "CLAUDECODE=$CLAUDECODE"` with `run_command` and record it: it must be empty.
+Launch agy from a plain terminal, open `$REPO` as the workspace, pin the lead model (for example `--model gemini-4-argon-high`), and export `HF_STATE_DIR` first. agy hooks run in the folder that holds `hooks.json`, not in the workspace, so the guard finds the repository from `workspacePaths` and tool arguments. Run `node -e "console.log('CLAUDECODE='+(process.env.CLAUDECODE??''))"` (a PowerShell shell expands `$CLAUDECODE` to an empty string whatever the environment holds) with `run_command` and record it: it must be empty.
 
 ## 2. Tests
 
-Run the tests in order. Before T3 and after each task-ending test, run `node "$HF_SKILL/scripts/fusion-state.mjs" archive "$REPO"` so the next test starts clean.
+Run the tests in order. Before T3 and after each task-ending test, run `node "$HF_SKILL/scripts/fusion-state.mjs" archive "$REPO" "$HF_TEST/archive.json"` so the next test starts clean, and init the next task from a new brief (`brief HF-t3`, then `init "$REPO" "$HF_TEST/HF-t3.json"`; `brief HF-t3-delegation 1` for the delegation step). Reusing an archived `task_id` is refused with `Task ID already used`.
 
 ### T1: Hooks not running
 
