@@ -112,7 +112,7 @@ test('Antigravity never accepts a previous run\'s structured_output as the curre
 // agy는 셸 권한이 없는 헤드리스로 돌고, 거부된 명령이 하나라도 있으면 결과 없이 끝난다.
 // 공통 지시문의 "run the tests"가 그대로 가면 "셸을 쓰지 말라"는 지시와 부딪혀 테스트를 치려다 라운드를 날린다.
 const agyBrief=extra=>({task_id:'T',round:1,repo_root:'/tmp/r',objective:'Add a test for X, then run npm test',scope:{paths:['src'],allowed_expansion:'ask-lead'},constraints:[],success_criteria:['AC1'],allowed_actions:['read','edit','test'],forbidden_actions:['commit','push'],evidence_required:[],...extra});
-const agyInstructions=brief=>JSON.parse(agyDispatch(brief,{token:'x',owner:'antigravity',round:1},{session:null,resume:false,probe:{executable:'agy',prefix_args:[],supports:{'--model':true}},options:{}}).prompt).instructions;
+const agyInstructions=brief=>JSON.parse(agyDispatch(brief,{token:'x',owner:'antigravity',round:1},{session:null,resume:false,probe:{executable:'agy',prefix_args:[],supports:{'--model':true}},promptFile:'/tmp/ctl/prompt-1.txt',options:{}}).prompt).instructions;
 
 test('Antigravity is never told to run the tests while its shell is closed',()=>{
  for(const brief of [agyBrief({}),agyBrief({acceptance_commands:[{id:'AC1',command:'npm test'}]}),agyBrief({executor_bash_rules:['Bash(git diff)']})]){

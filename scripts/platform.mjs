@@ -62,9 +62,26 @@ export function renameWithRetry(from,to) {
  }
 }
 
+// Node(libuv)가 Windows 명령줄을 만드는 방식대로 센다. 공백·따옴표가 있는 인자는 따옴표로 감싸고, 안의 "는 \"로,
+// " 앞이나 끝에 오는 \는 두 배로 늘린다. JSON 프롬프트는 따옴표가 많아 글자 수만 세면 실제 길이보다 작게 나온다.
+function quotedLength(arg) {
+ const s=String(arg);
+ if(!s)return 2;
+ if(!/[\s"]/.test(s))return s.length;
+ let n=s.length+2,slashes=0;
+ for(const ch of s){
+  if(ch==='\\'){slashes++;continue;}
+  if(ch==='"')n+=slashes+1;
+  slashes=0;
+ }
+ return n+slashes;
+}
+export const windowsCommandLineLength=(executable,args)=>[executable,...args].reduce((n,a,i)=>n+quotedLength(a)+(i?1:0),0);
+export const WINDOWS_COMMAND_LINE_MAX=32000;
 // Windows 명령줄은 32767자 제한이 있다. 프롬프트를 인자로 넘기는 일꾼은 미리 막는다.
-export function assertCommandLine(executable,args) {
- if(!isWin)return;
- const length=[executable,...args].reduce((n,a)=>n+String(a).length+3,0);
- if(length>32000)throw Error('Command line too long for Windows ('+length+' chars); shorten the brief');
+// hint는 넘쳤을 때만 부르는 함수다. 무엇이 커졌고 어떻게 줄이는지 일꾼별로 알려 준다.
+export function assertCommandLine(executable,args,{windows=isWin,hint=null}={}) {
+ if(!windows)return;
+ const length=windowsCommandLineLength(executable,args);
+ if(length>WINDOWS_COMMAND_LINE_MAX)throw Error(`Command line too long for Windows (${length} chars, limit ${WINDOWS_COMMAND_LINE_MAX}); `+(hint?.()??'shorten the brief'));
 }

@@ -49,15 +49,31 @@ export const newSession=()=>null;
 // 프롬프트가 명령줄로 가므로(Windows 32,767자) 상담 위원에게 넣는 diff를 작게 유지한다. 나머지는 파일을 직접 읽는다.
 export const contextDiffMax=12000;
 
-export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
+// agy 1.4.8 실측: 텍스트 print 모드는 프롬프트를 -p 인자로만 받는다(-p 값 없음은 오류, -p -는 글자 "-"를 프롬프트로 쓴다).
+// stdin은 --input-format stream-json뿐인데 출력까지 stream-json으로 바꿔야 해 envelope 계약이 달라진다. 그래서 프롬프트는 명령줄에 남기고,
+// 넘치면 무엇이 커졌는지 알려 준다. 라운드마다 커지는 것은 lead_feedback(수용 실패 출력, 명령 하나에 약 6천 자)과 리드가 고친 계약이다.
+export function oversizeHint(brief) {
+ const fields=Object.entries(brief.consult?brief.consult.context??{}:brief)
+  .map(([k,v])=>[k,JSON.stringify(v)?.length??0]).filter(([,n])=>n>=1000).sort((a,b)=>b[1]-a[1]).slice(0,4);
+ const where=brief.consult?'consult context':'brief';
+ return `agy takes its prompt only as a command-line argument. Largest ${where} fields: ${fields.map(([k,n])=>`${k} (${n} chars)`).join(', ')||'(none over 1000 chars)'}. `
+  +(brief.consult
+   ?'Narrow the consult focus or pick another reviewer for this round'
+   :'Shorten lead_feedback (quote only the failing assertion from long acceptance output instead of @review), trim repeated text in the objective and success criteria, or REASSIGN_OTHER to a worker that reads its prompt from a file (grok, sonnet, haiku, luna)');
+}
+
+export function dispatch(brief,lease,{session,resume,probe:cli,promptFile,options={}}) {
  const choice=selectAgyModel(options);
  if(choice.model&&!cli.supports?.['--model'])throw Error('MODEL_UNSUPPORTED: Antigravity requires --model support for a model override');
  if(choice.effort_flag&&!cli.supports?.['--effort'])throw Error('EFFORT_UNSUPPORTED: Antigravity requires --effort support for a reasoning_effort setting');
  if(resume&&!session)throw Error('Antigravity resume requires a saved conversation_id');
+ if(!promptFile)throw Error('Antigravity dispatch requires promptFile (its JSON schema file is written next to it)');
  // agy에는 실행 단위 명령 허용 플래그가 없다. 터미널 제한은 --sandbox와 운영자의 agy settings.json(permissions.allow)뿐이다.
  const ignored=bashRules(brief);
  const text=commandOrders(prompt(brief,lease),ignored,brief);
- const args=['--output-format','json','--json-schema',JSON.stringify(schemaFor(brief)),...(choice.model?['--model',choice.model]:[]),...(choice.effort_flag?['--effort',choice.effort_flag]:[]),
+ // --json-schema는 "스키마 문자열 또는 스키마 파일 경로"를 받는다(agy --help). 명령줄을 줄이려고 파일로 넘긴다. 브리지가 실행 직전에 만든다.
+ const schemaFile=promptFile.replace(/\.txt$/,'')+'.schema.json';
+ const args=['--output-format','json','--json-schema',schemaFile,...(choice.model?['--model',choice.model]:[]),...(choice.effort_flag?['--effort',choice.effort_flag]:[]),
   // 상담은 plan 모드(읽기·계획만), 구현은 accept-edits.
   ...(brief.consult?['--mode','plan']:brief.allowed_actions.includes('edit')?['--mode','accept-edits']:[]),'--add-dir',brief.repo_root,
   ...(unsandboxed(options,brief)?[]:['--sandbox']),
@@ -66,8 +82,9 @@ export function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
 ...(cli.supports?.['--print-timeout']?['--print-timeout',printTimeout(options)]:[]),
   ...(resume?['--conversation',session]:cli.supports?.['--new-project']?['--new-project']:[]),'-p',text];
  // 프롬프트를 명령줄로 넘기므로 Windows 길이 제한을 lease 획득 전에 확인한다.
- assertCommandLine(cli.executable,[...(cli.prefix_args??[]),...args]);
- return {cli:{...cli,args,session_id:session??null,resume,model:choice.model,model_family:choice.model_family,reasoning_effort:choice.reasoning_effort,ignored_bash_rules:ignored},prompt:text};
+ assertCommandLine(cli.executable,[...(cli.prefix_args??[]),...args],{hint:()=>oversizeHint(brief)});
+ return {cli:{...cli,args,session_id:session??null,resume,model:choice.model,model_family:choice.model_family,reasoning_effort:choice.reasoning_effort,ignored_bash_rules:ignored,
+  extra_files:[{path:schemaFile,content:JSON.stringify(schemaFor(brief))}]},prompt:text};
 }
 
 // 헤드리스 agy는 허용 목록 밖의 명령을 자동 거부하고, 거부가 한 번이라도 나면 결과 없이 끝난다

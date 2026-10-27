@@ -84,6 +84,9 @@ if(args.includes('--help')){console.error('Usage of agy.EXE:\\n  --add-dir\\n  -
 if(args[0]==='models'){if(mode==='agy-no-models'){console.error('not signed in');process.exit(1);}console.log('gemini-3.5-flash\\tGemini 3.5 Flash\\ngemini-3.6-pro-high\\tGemini 3.6 Pro (High)\\ngemini-3.8-flash-medium\\tGemini 3.8 Flash (Medium)\\ngemini-4-argon-high\\tGemini 4 Argon (High)\\ngemini-4-argon-medium\\tGemini 4 Argon (Medium)');process.exit(0);}
 if(mode==='agy-signed-out'){console.error('Error: not signed in. Run agy to sign in.');process.exit(1);}
 fs.writeFileSync(HERE+'/fake-agy-args.json',JSON.stringify(args));
+// 컨트롤러는 스키마를 파일 경로로 넘긴다(명령줄 길이). 인라인 JSON이 오면 계약 위반으로 실패한다.
+const schemaArg=args[args.indexOf('--json-schema')+1];
+if(!fs.existsSync(schemaArg)||!JSON.parse(fs.readFileSync(schemaArg,'utf8')).properties)process.exit(3);
 const request=JSON.parse(args[args.indexOf('-p')+1]);
 const prior=args.includes('--conversation')?args[args.indexOf('--conversation')+1]:null;
 if(prior&&(!fs.existsSync(HERE+'/fake-agy-session')||fs.readFileSync(HERE+'/fake-agy-session','utf8')!==prior)){console.log(JSON.stringify({error:'unknown conversation'}));process.exit(1);}

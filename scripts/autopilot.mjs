@@ -130,6 +130,11 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
     }
     if(s.phase==='REVIEW'){
      if(s.pending_review)throw failure('AUTOPILOT_PENDING_REVIEW','A delegated verdict requires lead review');
+     // 미완료 결과는 승인될 수 없으므로 리뷰어를 쓰기 전에 리드에게 넘긴다. 트리를 바꾼 라운드는 컨트롤러가 수용 명령을 돌렸으니
+     // 그 결과를 먼저 확인해, AUTOPILOT_ACCEPTANCE_UNVERIFIED가 실제로 돌린 증거(실패·종료 증명 누락)를 가리키게 한다.
+     const raw=read(path.join(dir,`raw-result-${s.iteration}.json`));
+     const incomplete=raw.status!=='complete'?failure('AUTOPILOT_WORKER_INCOMPLETE',`The worker reported ${raw.status}${raw.needs_lead_decision?' and asked for a lead decision':''}; an incomplete result cannot be approved, so no reviewer was started. The lead answers it (REDO with lead_feedback, or another route)`):null;
+     if(incomplete&&s.acceptance?.round!==s.iteration)throw incomplete;
      const acceptance=s.acceptance?.file?read(path.join(dir,s.acceptance.file)):null;
      if(s.acceptance?.round!==s.iteration||s.acceptance.status!=='pass'||s.acceptance.quiescent!==true
        ||!acceptance?.results?.length||!acceptance.results.every(r=>r.quiescence?.quiescent===true))
@@ -137,6 +142,7 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
      const ignored=s.acceptance.ignored_after?read(path.join(dir,s.acceptance.ignored_after)):null;
      if(s.acceptance.tree_digest!==snapshot(root).digest||!ignored||ignoredChanges(ignored,ignoredManifest(root,brief.acceptance_artifacts)).length)
       throw failure('AUTOPILOT_ACCEPTANCE_UNVERIFIED','The tree or ignored inputs changed after acceptance; the lead must inspect them');
+     if(incomplete)throw incomplete;
      await runReview(settle('delegate-review',{}));continue;
     }
     throw failure('INVALID_PHASE','Autopilot cannot advance '+s.phase);
