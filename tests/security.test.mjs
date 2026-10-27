@@ -296,7 +296,7 @@ test('read-only consults and reviews always run sandboxed, whatever the config s
  const brief={task_id:'T',round:1,repo_root:os.tmpdir(),objective:'o',scope:{paths:['a'],allowed_expansion:'ask-lead'},constraints:[],success_criteria:['AC1'],allowed_actions:['read'],
   consult:{id:'c1',mode:'advisor',member:'m1',question:'q',focus:[],context:{}}};
  const cli={executable:process.execPath,prefix_args:[],supports:{}};
- const d=adapter('antigravity').dispatch(brief,{token:'consult',owner:'antigravity'},{session:null,resume:false,probe:cli,options:{sandbox:false}});
+ const d=adapter('antigravity').dispatch(brief,{token:'consult',owner:'antigravity'},{session:null,resume:false,probe:cli,promptFile:path.join(os.tmpdir(),'prompt-consult-c1-m1.txt'),options:{sandbox:false}});
  assert.ok(d.cli.args.includes('--sandbox'));
 });
 

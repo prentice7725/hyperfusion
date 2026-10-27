@@ -77,6 +77,15 @@ export function taskExecutorOptions(configuration,owner,difficulty) {
  if(externalFirst(configuration)&&table?.[difficulty]&&configuration?.effort_source?.[owner]==='default')options.reasoning_effort=table[difficulty];
  return options;
 }
+// 상담·리뷰(읽기 전용) 실행의 옵션. consult_max_turns가 있으면 그 값이 리뷰 실행의 턴 상한이다.
+// 리뷰어는 바뀐 파일을 모두 읽느라 구현보다 턴이 더 들 수 있다(KF3: stop_reason tool_use로 끝난 Sonnet·Haiku·Grok 리뷰).
+// effort는 적응형 리뷰 계획이 정한 강도다. 브리지 검증도 같은 함수로 같은 값을 다시 만든다.
+export function consultExecutorOptions(configuration,executor,{reasoning_effort}={}) {
+ const options={...(configuration?.executors?.[executor]??{})};
+ if(options.consult_max_turns!==undefined)options.max_turns=options.consult_max_turns;
+ if(reasoning_effort)options.reasoning_effort=reasoning_effort;
+ return options;
+}
 // 설정에 policy가 없으면 adaptive 리뷰 전략일 때만 External-First다. 둘 다 없으면 이전 동작 그대로.
 export const routingPolicy=c=>c?.routing?.policy??(c?.review?.strategy==='lead-gated-adaptive'?'external-first':'classic');
 export const externalFirst=c=>routingPolicy(c)==='external-first';
@@ -148,7 +157,7 @@ export function config(root) {
   &&Object.entries(v.executors).every(([k,o])=>REVIEWERS.includes(k)&&o&&typeof o==='object'&&(o.timeout_ms===undefined||(Number.isSafeInteger(o.timeout_ms)&&o.timeout_ms>0))
    &&(o.model===undefined||(typeof o.model==='string'&&/^[\w.:/-]{1,80}$/.test(o.model)))&&(o.reasoning_effort===undefined||typeof o.reasoning_effort==='string')&&validCaps(o.caps)
    &&(k==='antigravity'?validModelMap(o.models_by_difficulty):o.models_by_difficulty===undefined)
-   &&(o.max_turns===undefined||(Number.isSafeInteger(o.max_turns)&&o.max_turns>0&&o.max_turns<=1000))
+   &&[o.max_turns,o.consult_max_turns].every(n=>n===undefined||(Number.isSafeInteger(n)&&n>0&&n<=1000))
    &&(o.max_turns_by_difficulty===undefined||(o.max_turns_by_difficulty&&typeof o.max_turns_by_difficulty==='object'&&!Array.isArray(o.max_turns_by_difficulty)&&Object.entries(o.max_turns_by_difficulty).every(([d,n])=>DIFFICULTIES.includes(d)&&Number.isSafeInteger(n)&&n>0&&n<=1000))))
   &&['lead','delegate'].includes(v.review.by)&&Array.isArray(v.review.reviewers)&&v.review.reviewers.length>0&&v.review.reviewers.every(x=>REVIEWERS.includes(x))&&new Set(v.review.reviewers).size===v.review.reviewers.length&&typeof v.review.auto_apply==='boolean'
   &&(v.review.strategy===undefined||v.review.strategy==='lead-gated-adaptive')
@@ -159,7 +168,7 @@ export function config(root) {
  if(!ok)throw Error('Invalid HyperFusion configuration');
  // 추론 강도는 일꾼 CLI가 받는 값만 허용한다. 틀린 값을 조용히 넘기면 CLI가 실패하거나 무시하므로 여기서 막는다.
  for(const [k,o] of Object.entries(v.executors)){
-  if((o.max_turns!==undefined||o.max_turns_by_difficulty!==undefined)&&!['grok','sonnet','haiku'].includes(k))throw Error('TURN_LIMIT_UNSUPPORTED: '+k+' does not expose --max-turns');
+  if((o.max_turns!==undefined||o.max_turns_by_difficulty!==undefined||o.consult_max_turns!==undefined)&&!['grok','sonnet','haiku'].includes(k))throw Error('TURN_LIMIT_UNSUPPORTED: '+k+' does not expose --max-turns');
   const efforts=k==='antigravity'?supportedAgyEfforts(o.model):EFFORT_LEVELS[k]??[];
   if(o.reasoning_effort!==undefined&&!efforts.includes(o.reasoning_effort))throw Error(`EFFORT_UNSUPPORTED: ${k} reasoning_effort must be one of ${efforts.join(', ')||'(none)'}`);
   if(k==='antigravity'){

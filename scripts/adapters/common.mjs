@@ -56,7 +56,8 @@ const CONSULT_RULES=[
  'Keep task_id, consult_id and member unchanged. findings use repository-relative file paths; line is 1-based, or 0 when not tied to a line.',
  'severity: blocker breaks a success criterion, major is a real bug or risk, minor is worth fixing, nit is style.',
  'recommended_verdict is what you would tell the lead: pass, redo (same worker can fix), alternative (needs a different approach/worker), decision (requirements or architecture unclear), or none.',
- 'Only report what you verified by reading the code. Say so in summary when evidence is thin, and lower confidence.'
+ 'Only report what you verified by reading the code. Say so in summary when evidence is thin, and lower confidence.',
+ 'context.contract_corrections, when present, lists contract corrections the lead recorded in earlier rounds. They amend the objective and success criteria: judge the change against the corrected contract, and do not report a defect that only contradicts the superseded wording.'
 ];
 const CONSULT_ORDERS={
  advisor:['You are an independent reviewer hired by the lead. Another worker produced the change described in context. Find what is wrong or missing against the success criteria.'],

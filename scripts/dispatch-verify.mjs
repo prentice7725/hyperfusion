@@ -3,6 +3,7 @@ import {adapter} from './adapters/index.mjs';
 import {read,hash} from './artifact.mjs';
 import {implementDispatch,sameGrant,sameAssignment,assertImplementRound} from './review-plan.mjs';
 import {assertVendor} from './vendor-policy.mjs';
+import {consultExecutorOptions} from './executor-config.mjs';
 
 // 브리지는 dispatch 파일을 그대로 믿지 않는다. 컨트롤러가 쓴 brief와 상태에서 같은 요청을 다시 만들어 보고,
 // 실행 파일, 인자, 프롬프트가 하나라도 다르면 일꾼을 띄우지 않는다. 그래서 파일이 바뀌었어도 권한이 넓어지지 않는다.
@@ -61,9 +62,8 @@ export function verifyConsult(root,state,dir,request,{id,member,executor}) {
  if(!ok)throw Error('DISPATCH_TAMPERED: consult request does not match the open consult or is not read-only; nothing was started');
  const a=adapter(executor);
  // 옵트인 리뷰 계획이 강도를 정하면 그 값이 설정 파일보다 우선이다. 검증도 같은 값을 다시 만든다.
- const options={...(state.configuration?.executors?.[executor]??{})};
  const planned=state.open_consult?.plan?.effort?.[executor];
- if(state.open_consult?.adaptive&&planned)options.reasoning_effort=planned;
+ const options=consultExecutorOptions(state.configuration,executor,{reasoning_effort:state.open_consult?.adaptive?planned:undefined});
  const expected=a.dispatch(brief,{token:'consult',owner:executor},{session:request.cli?.session_id??null,resume:false,probe:a.probe(options),
   promptFile:path.join(dir,`prompt-consult-${id}-${member}.txt`),options});
  compare(`consult-${id}-${member}.json`,expected,request);

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isMain,resolveExecutable} from './platform.mjs';
-import {config,selectExecutor,CAP,APEX_ROUND_CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND,automaticImplementer,grantOnly} from './executor-config.mjs';
+import {config,selectExecutor,CAP,APEX_ROUND_CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND,automaticImplementer,grantOnly,consultExecutorOptions} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
 import {atomic,immutable,read,repo,snapshot,changes,git,hash,SAFE_DIFF,riskyGitConfig} from './artifact.mjs';
@@ -555,7 +555,8 @@ function consult(c,input) {
     round_changed_files:n?(c.optional(`validation-${n}.json`)?.changed??[]):[],unattributed_changes:cumulative.unattributed_changes,
     ...(n?{controller_acceptance:acceptanceContext(c,latest,consultBase)}:{}),
     recent_reviews:s.reviews.slice(-3).map(r=>mode==='review'?{owner:r.owner,round:r.round,blocking_criteria:r.blocking_criteria}
-      :{owner:r.owner,round:r.round,verdict:r.verdict,blocking_criteria:r.blocking_criteria,rationale:r.rationale})
+      :{owner:r.owner,round:r.round,verdict:r.verdict,blocking_criteria:r.blocking_criteria,rationale:r.rationale}),
+    ...contractCorrections(c,n)
   };
 
   // 모든 위원의 dispatch를 먼저 만든다. 하나라도 실패하면(예: Windows 명령줄 길이) 상태를 바꾸지 않는다.
@@ -576,7 +577,7 @@ function consult(c,input) {
     const d=a.dispatch(brief,{token:'consult',owner:m.executor},{
       session:a.newSession(),resume:false,probe:m.cli,
       promptFile:path.join(c.taskdir(),`prompt-consult-${id}-${m.member}.txt`),
-      options:{...(s.configuration.executors[m.executor]??{}),...(panel?.effort?.[m.executor]?{reasoning_effort:panel.effort[m.executor]}:{})}
+      options:consultExecutorOptions(s.configuration,m.executor,{reasoning_effort:panel?.effort?.[m.executor]})
     });
     return [m.member,{transport:'executor-cli',kind:'consult',executor:m.executor,...d,task_id:s.task_id,consult_id:id,member:m.member}];
   });
@@ -610,6 +611,17 @@ function consult(c,input) {
     consult_id:id,mode,members:roster,command:process.execPath,args:[BRIDGE,c.root,'--consult',id],
     next_action:'run command once, then consult-finish with quiescent:true'
   };
+}
+
+// 리드가 contract_change:true로 기록한 결정은 계약(목표·성공 기준)을 고친 것이다. 리뷰어가 고치기 전 문구로 판정하지 않게 그 사유를 넘긴다.
+// 리뷰어에게 결론을 건네지 않는다는 원칙은 그대로다: 넘기는 것은 계약 정정이지 작업에 대한 판정이 아니다.
+function contractCorrections(c,n) {
+  const list=[];
+  for(let r=1;r<=n;r++){
+    const d=c.optional(`lead-decision-${r}.json`);
+    if(d?.contract_change===true)list.push({round:d.round,decision:d.decision,rationale:d.rationale});
+  }
+  return list.length?{contract_corrections:list}:{};
 }
 
 function consultFinish(c,input) {
@@ -1152,7 +1164,10 @@ function finish(c,input) {
       s.memory_error=`worker lessons not recorded: ${e.message}`;
     }
   }
-  const acc=brief.acceptance_commands&&input.result.status==='complete'
+  // 일꾼이 미완료(blocked·needs_decision·failed)라고 해도 트리를 바꿨으면 수용 명령을 돌려 증거로 남긴다.
+  // 승인 거절은 그대로다(review·lead-decision·위임 리뷰가 미완료 결과의 pass를 막는다).
+  const complete=input.result.status==='complete';
+  const acc=brief.acceptance_commands&&(complete||changed.length)
     ?acceptanceRun(c,brief,'finish',c.optional(`ignored-base-${n}.json`),{known:post}):null;
   if(acceptanceHalt(c,acc))return s;
   s.result_failures=0;
@@ -1163,7 +1178,8 @@ function finish(c,input) {
   c.save();
   // 수용 테스트가 실패한 일꾼 라운드는 리드가 볼 필요 없이 실패 출력과 함께 같은 일꾼에게 되돌린다.
   // 일반 반려와 같은 규칙(예산, 같은 실패 반복 시 교체)을 거친다. 리드 takeover 라운드는 리드가 직접 판정한다.
-  if(acc?.status==='fail'&&s.owner!=='lead'){
+  // 미완료 결과의 실패는 일꾼의 질문(needs_decision 등)을 덮지 않도록 자동으로 되돌리지 않고, 증거로만 리드에게 간다.
+  if(acc?.status==='fail'&&s.owner!=='lead'&&complete){
     const failed=acc.results.filter(r=>r.status!=='pass');
     return applyReview(c,{verdict:'redo',reviewed_by:'controller',
       rationale:`Acceptance commands failed after finish (${failed.map(r=>r.command).join(', ')}); returned to the worker without lead review`,
@@ -1485,11 +1501,19 @@ function verify(c,input) {
 
 // ── 복구 ────────────────────────────────────────────────────────────
 
+// 쓰기 lease가 남아 있으면 recover는 그 토큰을 요구한다. 토큰 값은 오류에 싣지 않고 어디서 찾는지만 알려 준다.
+function recoverToken(c,token) {
+  if(read(path.join(c.dir,'locks/writer.json')).token===token)return;
+  throw Error(`RECOVER_TOKEN: ${token===undefined?'recover needs token, the writer token of the active lease':'token does not match the active writer lease'}. `
+    +`It is the "token" field of the begin output for this round, and the "token" field of ${path.join(c.dir,'locks','writer.json')}; pass it as recover token. Nothing was changed`);
+}
+
 function recover(c,input) {
   const s=c.s;
   if(input.quiescent!==true||typeof input.reason!=='string'||!input.reason.trim()){
     throw Error('Recovery requires stopped writers and rationale');
   }
+  if(c.writerHeld())recoverToken(c,input.token);
   // 범위 밖에 남은 파일을 리드가 알고 받아들이는 경우. 상태를 바꾸기 전에 입력부터 검사한다.
   const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope,c.root);
   if(['PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED'].includes(s.phase)){
