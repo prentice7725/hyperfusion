@@ -39,7 +39,7 @@ export function verifyExecute(root,state,dir,request,lease) {
   }
  }
  // begin과 같은 규칙으로 만든다. coding_policy는 brief 파일이 아니라 작업 설정에서 온다.
- const brief={...read(path.join(dir,`brief-${n}.json`)),repo_root:root,round:n,coding_policy:state.configuration?.coding_policy};
+ const brief={...read(path.join(dir,`brief-${n}.json`)),repo_root:root,round:n,coding_policy:state.configuration?.coding_policy,lead_model:state.configuration?.lead_model};
  const planned=implementDispatch(state,owner);
  const expected=a.dispatch(brief,lease,{session:state.sessions?.[owner]??null,resume:!!request.cli?.resume,probe:a.probe(planned.options),promptFile:path.join(dir,`prompt-${n}.txt`),...planned});
  compare(`dispatch-${n}.json`,expected,request);
@@ -50,7 +50,8 @@ export function verifyExecute(root,state,dir,request,lease) {
 export function verifyConsult(root,state,dir,request,{id,member,executor}) {
  assertVendor(state.configuration,executor);
  let brief;
- try{brief=JSON.parse(request.prompt).brief;}catch{throw Error('DISPATCH_TAMPERED: consult prompt is not a brief; nothing was started');}
+ // 지시문의 brief에는 lead_model이 빠져 있다. 리드 이름은 요청이 아니라 작업 기록에서 다시 넣는다.
+ try{brief={...JSON.parse(request.prompt).brief,lead_model:state.configuration?.lead_model};}catch{throw Error('DISPATCH_TAMPERED: consult prompt is not a brief; nothing was started');}
  const c=brief?.consult;
  const execution=state.open_consult?.execution;
  if(execution?.revision===1&&(hash(request.prompt)!==execution.prompt_hashes?.[member]||canon(c?.work_manifest)!==canon(execution.manifests?.[member])))throw Error('DISPATCH_TAMPERED: read-only manifest/shared evidence changed; nothing was started');

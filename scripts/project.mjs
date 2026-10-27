@@ -12,6 +12,7 @@ import {installationRoster,recommendPreset} from './installation.mjs';
 import {MEMBERS as REGISTRY,PROJECT_MEMBERS} from './member-registry.mjs';
 import {validateWorkflow,freezeWorkflow,assertWorkflow,workflowReadiness,recordWorkflowClose,recordIntegration,workflowIntegrated} from './workflow-plan.mjs';
 import {leadIdentity} from './lead-host.mjs';
+import {displayModel} from './model-registry.mjs';
 import {compose} from './team-composer.mjs';
 import {independent} from './model-registry.mjs';
 
@@ -211,7 +212,8 @@ export function teamReport(root,p=loadProject(root)) {
  L.push('## 읽은 기획 문서','',...p.sources.map(s=>`- \`${s.path}\``),'');
  L.push('## 팀','','| 팀원 | 모델 | 역할 | 담당 작업 | 이유 | 설치 |','|---|---|---|---|---|---|');
  for(const t of p.team)L.push(`| ${t.member} | ${cell(modelOf(c,t.member))} | ${cell(t.role)} | ${t.owns.length?cell(t.owns.map(o=>'`'+o+'`').join(', ')):(t.member==='sol'?'리뷰':'예비')} | ${cell(t.why)} | ${installed(c,t.member)?'✓':'✗ 설치 필요'} |`);
- L.push('','- 리드: Claude Opus 5.5 — 계획, 배치, 최종 검증(VERIFY), 설계 결정');
+ let leadName;try{leadName=displayModel(leadIdentity(root,c).model);}catch{leadName=null;}
+ L.push('',`- 리드: ${leadName??'호스트 리드 모델(미확인)'} — 계획, 배치, 최종 검증(VERIFY), 설계 결정`);
  if(p.preset)L.push(`- 프리셋: ${p.preset}${p.preset==='claude-codex'?' — 승인 후 low는 Luna, medium/high 비이미지 작업은 controller grant로 Sonnet; Sol은 리뷰 전담':''}`);
  L.push(`- 리뷰: ${p.review.by==='delegate'?'위임 — '+p.review.reviewers.join(' → ')+' 순서(구현자는 자기 라운드 리뷰 불가)':'리드가 직접'}`,'');
  if(p.review.strategy==='lead-gated-adaptive')L.push('- v0.3: 자동 구현은 External-First, Haiku reserve 유지. 실제 owner로 필수 리뷰를 정하며 호스트 최종 판정 전 VERIFY/CLOSE 금지. Sonnet/Sol은 작업별 controller grant만 허용.','');

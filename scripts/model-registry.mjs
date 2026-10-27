@@ -56,6 +56,8 @@ export function familyOf(reported) {
  if(typeof reported!=='string'||HOST_CHOSEN.includes(reported.trim().toLowerCase()))return UNKNOWN;
  return FAMILY_PREFIXES.find(([re])=>re.test(reported.trim()))?.[1]??UNKNOWN;
 }
+// 사람이 읽는 모델 이름. 등록된 모델은 첫 별칭, 아니면 받은 값 그대로다. 값이 없으면 null.
+export const displayModel=reported=>{const base=modelBase(reported);return base?MODELS[base].aliases?.[0]??base:typeof reported==='string'&&reported.trim()?reported.trim():null;};
 export const tierOf=reported=>MODELS[modelBase(reported)]?.tier??null;
 
 // 일꾼의 계열과 등급. model은 운영자가 지정한 모델(없으면 프로필 기본값).
