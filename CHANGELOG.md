@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Claude 일꾼(Sonnet·Haiku) 구현 지시문에 쓸 수 있는 Bash 패턴과 금지 형태(파이프·리다이렉트·`2>&1`·`;`·`&&`·서브셸·환경변수 접두)를 적고, 거부된 호출 하나가 라운드 전체를 실패시킨다고 알린다. 맞지 않는 명령(수용 명령 포함)은 돌리지 말고 `not_run`으로 보고하게 한다. `executor_bash_rules`가 없으면 셸을 쓰지 말라고 하고 "직접 돌려 보라"는 문장을 뺀다. 실측에서 Haiku가 수용 명령에 파이프를 붙였다가 거부돼 맞게 고친 라운드를 두 번 잃었고, 수정 뒤 같은 브리프로 첫 라운드에 거부 없이 통과했다. 거부를 실패로 보는 규칙은 그대로다.
 - 수정: `coding_policy`를 켠 작업에서 브리지가 dispatch를 다시 만들 때 정책을 빼서 지시문이 달라졌고, 모든 구현 라운드가 `DISPATCH_TAMPERED`로 일꾼을 띄우지 못했다. 브리지 검증도 begin과 같이 작업 설정의 `coding_policy`를 넣는다. 실제 Haiku 일꾼 실측에서 발견했고, 브리지까지 실행하는 회귀 테스트를 추가했다.
 - Antigravity 실측 절차서 `references/hosts/antigravity-field-test.md`를 추가했다(훅 입력·도구 이름 채취, 작업 중 차단, lease 표시값, Stop·SessionStart, 훅 실패, 모델 전환, transcript 샘플).
 - 리드 식별: 호스트 훅이 리드 모델을 보고하지 않고 운영자 `HF_LEAD_MODEL`도 없으면, 호스트가 Claude Code라는 근거(최근 Claude Code 훅 관측 또는 Claude Code 셸의 `CLAUDECODE=1`)가 있을 때만 설정의 Opus를 리드로 쓴다. 근거가 없거나 Codex·agy 훅이 모델 없이 관측되면 init과 프로젝트 계획이 `LEAD_MODEL_UNKNOWN`으로 거절한다. 훅을 신뢰하지 않은 Codex 리드가 Claude 리드로 취급되던 위험을 막는다. Claude Code 안에서의 동작은 그대로다. Codex 실측 절차서 `references/hosts/codex-field-test.md`를 추가했다.
