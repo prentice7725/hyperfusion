@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fixture} from './support.mjs';
+import {read} from '../scripts/artifact.mjs';
 import {run} from '../scripts/fusion-state.mjs';
 import {hostGrade,leadIdentity,leadPowers,assertLeadFamily,LEAD_MODEL_ENV,LEAD_GRADE_ENV} from '../scripts/lead-host.mjs';
 import {rememberHost} from '../scripts/lead-usage.mjs';
@@ -10,6 +11,8 @@ import {config} from '../scripts/executor-config.mjs';
 import {decide,decideModelSwitch,settingsSnippet,relaxationEnv} from '../scripts/lead-guard.mjs';
 import {FAMILY_RULES_POLICY} from '../scripts/review-plan.mjs';
 import * as project from '../scripts/project.mjs';
+import {execute,consult} from '../scripts/executor-bridge.mjs';
+import {displayModel} from '../scripts/model-registry.mjs';
 
 const CHECK=`node -e "const s=require('fs').readFileSync('a.txt','utf8');if(s!=='fixed'){console.error('a.txt is '+s);process.exit(3)}"`;
 const withEnv=(t,values)=>{
@@ -136,4 +139,22 @@ test('a non-Claude lead plans projects by family rules instead of Claude presets
  assert.equal(ok.review.strategy,'lead-gated-adaptive');
  // 리드와 같은 계열만 남는 팀은 배타적 리뷰를 할 수 없다.
  assert.throws(()=>project.validatePlan(f.root,plan([member('luna',['code:low']),member('sol')],[...rest,{member:'grok',why:'x'},{member:'sonnet',why:'x'}])),/TEAM_SINGLE_FAMILY/);
+});
+
+// 일꾼·리뷰어 지시문의 리드 이름은 호스트가 정한 리드다. 브리지는 같은 이름으로 지시문을 다시 만들어 비교한다.
+test('worker and reviewer prompts name the recorded lead, and the bridge accepts them',async t=>{
+ assert.deepEqual([displayModel('gpt-6.1-astra-high'),displayModel('claude-opus-5-5'),displayModel('gpt-oss-120b'),displayModel(null)],['GPT 6.1 Astra','Claude Opus 5.5','gpt-oss-120b',null]);
+ withEnv(t,{[LEAD_MODEL_ENV]:'gpt-6.1-astra'});
+ const f=fixture(t,{initialize:false});adaptive(f);
+ run(f.root,'init',{...f.brief,executor:'grok'});
+ const started=f.begin();
+ assert.equal(JSON.parse(started.prompt).lead,'GPT 6.1 Astra');
+ assert.equal('lead_model' in JSON.parse(started.prompt).brief,false,'the lead is not repeated inside the brief');
+ f.mode('edit');
+ const out=await execute(f.root);assert.equal(out.status,'RESULT_READY');
+ f.finish(read(out.result_file));
+ const c=run(f.root,'delegate-review',{});
+ const request=read(path.join(f.control,'tasks/HF-test',`consult-${c.consult_id}-${c.members?.[0]?.member??'sonnet'}.json`));
+ assert.equal(JSON.parse(request.prompt).lead,'GPT 6.1 Astra');
+ await consult(f.root,c.consult_id);
 });

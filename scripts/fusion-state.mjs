@@ -567,7 +567,7 @@ function consult(c,input) {
       diff_note:'git diff HEAD of all net task changes since base-1, including recovered/inter-round changes; review every changed file. unattributed_changes are not verified worker contributions. Pre-existing dirty content can appear in the HEAD diff; base-1 is the task baseline. Untracked new files are not shown, read them directly'
         +(cut?`. The diff was cut at ${max} characters: read the rest of each changed file directly (or run git diff HEAD -- <file>) before judging it`:'')};
     const brief={
-      task_id:s.task_id,round:n,repo_root:c.root,objective:latest.objective,scope:selected?{...latest.scope,paths:selected[index].paths}:latest.scope,
+      task_id:s.task_id,round:n,repo_root:c.root,lead_model:s.configuration.lead_model,objective:latest.objective,scope:selected?{...latest.scope,paths:selected[index].paths}:latest.scope,
       constraints:latest.constraints,success_criteria:latest.success_criteria,allowed_actions:['read'],
       ...(latest.prior_experience?{prior_experience:latest.prior_experience}:{}),
       consult:{id,mode,member:m.member,question:input.question,focus:selected?.[index]?.focus??input.focus??[],context:memberContext,
@@ -1029,7 +1029,7 @@ function begin(c,input) {
   const resume=!!(a&&s.sessions[owner]);
   const promptFile=path.join(c.taskdir(),`prompt-${round}.txt`);
   // coding_policy는 작업 설정에서만 온다. 리드 브리프의 같은 키는 덮어쓴다.
-  const brief={...input,repo_root:c.root,round,coding_policy:s.configuration.coding_policy};
+  const brief={...input,repo_root:c.root,round,coding_policy:s.configuration.coding_policy,lead_model:s.configuration.lead_model};
   const planned=implementDispatch(s,owner);
 
   // 프로브와 인자 검증은 lease 획득·시도 소모 전에 끝낸다.
