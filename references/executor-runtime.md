@@ -42,6 +42,7 @@
 - 리드(Opus)와 별개인 Claude Code 하위 프로세스다. 리드의 대화 맥락을 공유하지 않으며, 리드가 직접 쓰는 것으로 치지 않는다.
 - 인자: `-p --model claude-sonnet-5-5 --safe-mode --output-format json --json-schema <결과 스키마> --permission-mode dontAsk --max-turns 40`, 첫 라운드 `--session-id <UUID>`, 이후 `--resume <UUID>`. 프롬프트는 stdin.
 - 도구: Read/Glob/Grep(+edit 허용 시 Edit/Write)과 `executor_bash_rules`에 있는 Bash만 허용. Agent/Task/Skill/MCP와 git 변경 명령은 금지. `--safe-mode`로 사용자 플러그인·훅·메모리를 끄므로 필요한 저장소 지침은 brief에 직접 넣는다.
+- 거부된 도구 호출이 하나라도 있으면 결과를 받지 않으므로, 구현 지시문에 쓸 수 있는 Bash 패턴과 금지 형태(파이프·리다이렉트·`2>&1`·`;`·`&&` 등)를 적고, 맞지 않는 명령은 돌리지 말고 `not_run`으로 보고하게 한다. 규칙이 없으면 셸을 쓰지 말라고 하고 "수용 명령을 직접 돌려 보라"는 문장을 뺀다.
 - `structured_output`을 검증한다. 오류 envelope, 세션 불일치, `permission_denials`는 실패다.
 - `--max-turns`는 일부 버전의 `--help`에 표시되지 않아 프로브하지 않는다(2.1.288에서 확인). 인자로는 넘기며, 인식하지 못하는 버전이면 실행이 실패로 끝난다.
 - 실행 파일 경로는 `HF_CLAUDE_BIN`(기본 `claude`).

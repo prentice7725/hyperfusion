@@ -38,7 +38,8 @@ export function verifyExecute(root,state,dir,request,lease) {
    assertImplementRound({...state,implement_grant:{...grant,round:null}},owner);
   }
  }
- const brief={...read(path.join(dir,`brief-${n}.json`)),repo_root:root,round:n};
+ // begin과 같은 규칙으로 만든다. coding_policy는 brief 파일이 아니라 작업 설정에서 온다.
+ const brief={...read(path.join(dir,`brief-${n}.json`)),repo_root:root,round:n,coding_policy:state.configuration?.coding_policy};
  const planned=implementDispatch(state,owner);
  const expected=a.dispatch(brief,lease,{session:state.sessions?.[owner]??null,resume:!!request.cli?.resume,probe:a.probe(planned.options),promptFile:path.join(dir,`prompt-${n}.txt`),...planned});
  compare(`dispatch-${n}.json`,expected,request);

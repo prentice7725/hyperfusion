@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {extractResult,resultSchema,consultSchema,prompt,ACCEPTANCE} from '../scripts/adapters/common.mjs';
+import {extractResult,resultSchema,consultSchema,prompt,ACCEPTANCE,RUN_TESTS} from '../scripts/adapters/common.mjs';
+import {commandOrders as claudeOrders} from '../scripts/adapters/claude.mjs';
 import {strictSchema} from '../scripts/adapters/codex.mjs';
 import {commandOrders,currentResult,dispatch as agyDispatch} from '../scripts/adapters/antigravity.mjs';
 
@@ -129,4 +130,24 @@ test('Antigravity with an allow-list does not both allow and forbid the acceptan
 test('other workers keep the original run-the-tests order',()=>{
  const text=JSON.parse(prompt(agyBrief({}),{owner:'grok'})).instructions.join('\n');
  assert.match(text,/Write the code, run the tests, fix what fails/);
+});
+
+// 실측에서 Haiku가 수용 명령에 파이프를 붙였다가 거부돼, 맞게 고친 라운드가 결과 없이 끝났다.
+test('Claude workers are told which Bash commands they may run and that a refused call fails the round',()=>{
+ const text=JSON.stringify({instructions:['existing order',RUN_TESTS,ACCEPTANCE]});
+ const edit={allowed_actions:['read','edit','test'],acceptance_commands:['node --test tests/check.test.mjs']};
+ const ruled=JSON.parse(claudeOrders(text,['Bash(node --test*)','Bash(git diff*)'],edit)).instructions;
+ const order=ruled.at(-1);
+ assert.match(order,/"node --test\*", "git diff\*"/);
+ assert.match(order,/no pipes, redirects, 2>&1, ;, &&/);
+ assert.match(order,/Any refused tool call fails the whole round/);
+ assert.ok(ruled.includes(RUN_TESTS)&&ruled.includes(ACCEPTANCE),'allowed commands may still be run');
+ // 규칙이 없으면 셸을 쓰지 말라고 하고, "직접 돌려 보라"는 문장을 바꾼다.
+ const bare=JSON.parse(claudeOrders(text,[],edit)).instructions;
+ assert.ok(!bare.includes(RUN_TESTS)&&!bare.includes(ACCEPTANCE));
+ assert.ok(bare.some(x=>/You have no shell in this round: never call Bash/.test(x)));
+ assert.ok(!bare.some(x=>/Run them yourself/.test(x)));
+ // 상담과 읽기 전용 라운드는 그대로다.
+ assert.equal(claudeOrders(text,[],{...edit,consult:{id:'c'}}),text);
+ assert.equal(claudeOrders(text,[],{allowed_actions:['read']}),text);
 });
