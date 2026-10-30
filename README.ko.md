@@ -169,7 +169,7 @@ Claude Code에서 Opus 5.5를 고르고:
 |---|---|
 | 상태와 명령 | [runtime](references/runtime.md) · [state-actions](references/state-actions.md)(자동 생성) · [state-schema](references/state-schema.json) · [operations](references/operations.md)(운영·오토파일럿·훅·수용 테스트) |
 | 설정 | [configuration](references/configuration.md)(환경변수 포함) · [codex-runtime](references/codex-runtime.md) |
-| 일꾼 | [executor-runtime](references/executor-runtime.md)(Windows 포함) · [routing](references/routing.md) |
+| 일꾼 | [executor-runtime](references/executor-runtime.md)(Windows 포함) · [routing](references/routing.md) · [herdr](references/herdr.md)(선택: Herdr 관측 pane) |
 | 계약 | [delegation-protocol](references/delegation-protocol.md)(brief) · [result-protocol](references/result-protocol.md) |
 | 검수 | [review-protocol](references/review-protocol.md) · [review-pairs](references/review-pairs.md) · [finding-ledger](references/finding-ledger.md) · [consult](references/consult.md) · [read-only-work](references/read-only-work.md) · [universal-supervisor](references/universal-supervisor.md)(v0.3·재량권) |
 | 실패와 복구 | [failure-protocol](references/failure-protocol.md) · [recovery-protocol](references/recovery-protocol.md) · [reconciliation](references/reconciliation.md) |
