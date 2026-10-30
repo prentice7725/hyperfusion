@@ -20,6 +20,7 @@ import {maskTransport} from './redaction.mjs';
 import {watchProcessTree} from './process-proof.mjs';
 import {recordCompletion,controllerDigest} from './reconciliation.mjs';
 import {openMonitor} from './worker-monitor.mjs';
+import {attachObserverPane,herdrEnabled} from './herdr-observer.mjs';
 
 const STATE_CLI=fileURLToPath(new URL('./fusion-state.mjs',import.meta.url));
 
@@ -57,7 +58,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
  if(request.cli.prompt_file)fs.writeFileSync(request.cli.prompt_file,request.prompt,{flag:'wx',mode:0o600});
  // 스키마처럼 CLI가 파일 경로로 받는 입력. 컨트롤러가 정한 경로에 한 번만 쓴다.
  for(const f of request.cli.extra_files??[])fs.writeFileSync(f.path,f.content,{flag:'wx',mode:0o600});
- let stdout='',stderr='',reason=null,child,killTimer,timer,activityTimer,forceResolve,alive=false,exited=false;
+ let stdout='',stderr='',reason=null,child,killTimer,timer,activityTimer,forceResolve,alive=false,exited=false,observer=null;
  const stop=(why,kind='timeout')=>{
   if(reason)return;
   reason=why;
@@ -79,6 +80,10 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
    alive=!!child.pid;child.on('exit',()=>{alive=false;exited=true;});
    if(child.pid)monitor?.start(child.pid);
    if(child.pid)guard(()=>activity.started());
+   // 선택 기능: Herdr 안이면 이 작업자의 모니터 화면을 별도 pane으로 연다. 실패해도 라운드에는 영향이 없다.
+   // HYPERFUSION_HERDR가 없으면 자동 감지라 Herdr 밖에서는 아무것도 하지 않고 기록도 남기지 않는다. 1(강제)일 때만 건너뛴 사유를 남긴다.
+   const herdr=herdrEnabled();
+   if(child.pid&&activity&&(herdr.enabled||herdr.forced))observer=attachObserverPane({dir,tag:String(tag)}).then(r=>guard(()=>activity.noteUntrusted('bridge',r.attached?`herdr pane ${r.pane_id} attached`:`herdr pane skipped: ${r.reason}`)),()=>{});
    if(child.pid)activityTimer=setInterval(()=>guard(()=>activity.tick()),monitorIntervalMs);
    if(child.pid)immutable(path.join(dir,`process-${tag}.json`),{executor:request.executor,pid:child.pid,process_group:isWin?null:child.pid,tree_kill:isWin?'taskkill /T /F':'process group',platform:process.platform,session_id:request.cli.session_id});
    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
@@ -97,6 +102,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
   // 그룹 밖으로 빠져나간 자손(Windows에서는 일꾼이 먼저 끝난 뒤 남은 자손)은 정지 증명 단계에서 감독 중 관측한 것만 정리하고, 그래도 남으면 리드가 확인한다.
   killTree(child,{force:true,alive});
  }
+ await observer;
  const proof=monitor?await monitor.finish({exited,aborted:exit.signal==='SUPERVISOR_ABORT'}):null;
  if(proof)immutable(path.join(dir,`quiescence-${tag}.json`),{...proof,executor:request.executor});
  let observation=null;

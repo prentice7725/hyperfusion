@@ -169,7 +169,7 @@ Claude CodeでOpus 5.5を選び：
 |---|---|
 | 状態とコマンド | [runtime](references/runtime.md) · [state-actions](references/state-actions.md)（自動生成） · [state-schema](references/state-schema.json) · [operations](references/operations.md)（運用・オートパイロット・フック・受け入れテスト） |
 | 設定 | [configuration](references/configuration.md)（環境変数を含む） · [codex-runtime](references/codex-runtime.md) |
-| ワーカー | [executor-runtime](references/executor-runtime.md)（Windows含む） · [routing](references/routing.md) |
+| ワーカー | [executor-runtime](references/executor-runtime.md)（Windows含む） · [routing](references/routing.md) · [herdr](references/herdr.md)（任意：Herdr観測pane） |
 | 契約 | [delegation-protocol](references/delegation-protocol.md)（brief） · [result-protocol](references/result-protocol.md) |
 | 検収 | [review-protocol](references/review-protocol.md) · [review-pairs](references/review-pairs.md) · [finding-ledger](references/finding-ledger.md) · [consult](references/consult.md) · [read-only-work](references/read-only-work.md) · [universal-supervisor](references/universal-supervisor.md)（v0.3・裁量権） |
 | 失敗と復旧 | [failure-protocol](references/failure-protocol.md) · [recovery-protocol](references/recovery-protocol.md) · [reconciliation](references/reconciliation.md) |
