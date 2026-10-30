@@ -4,7 +4,7 @@
 
 ## Unreleased
 
-- 선택적 Herdr 관측 pane: Herdr pane 안에서 실행하면 작업자마다 별도 pane에 읽기 전용 모니터 화면(`scripts/herdr-observer.mjs view`)을 연다. `HYPERFUSION_HERDR`는 없으면 자동 감지(Herdr 안이면 켜고 밖이면 조용히 건너뜀), `0`이면 항상 끔, `1`이면 강제(Herdr 밖이면 건너뛴 이유를 기록)다. pane을 열기 전에 `herdr pane get`으로 현재 pane이 살아 있는지 확인하고, 방금 나눈 pane의 셸이 뜰 때까지 잠시 기다린다. 리드 pane마다 관측 pane 목록을 상태 폴더에 남겨, 라운드마다 새 프로세스로 도는 브리지도 셸 프롬프트에서 쉬는 관측 pane을 다시 쓴다(리드 pane은 한 번만 나뉜다). pane 하나를 붙이는 데 최대 10초만 쓰고, 화면은 작업자 출력의 터미널 제어 문자를 지워 표시하며, 컨트롤러가 최종 상태 없이 사라지면 멈춘다. HyperFusion 자체 시험은 `HYPERFUSION_HERDR=0`으로 돈다. 작업자 실행·종료 증명·결과 검증은 바뀌지 않고, Herdr 호출이 실패해도 라운드는 영향받지 않는다. Windows(PowerShell·cmd)와 POSIX 셸을 지원한다. [references/herdr.md](references/herdr.md)
+- 선택적 Herdr 관측 pane: Herdr pane 안에서 실행하면 작업자마다 별도 pane에 읽기 전용 모니터 화면(`scripts/herdr-observer.mjs view`)을 연다. `HYPERFUSION_HERDR`는 없으면 자동 감지(Herdr 안이면 켜고 밖이면 조용히 건너뜀), `0`이면 항상 끔, `1`이면 강제(Herdr 밖이면 건너뛴 이유를 기록)다. pane을 열기 전에 `herdr pane get`으로 현재 pane이 살아 있는지 확인하고, 방금 나눈 pane의 셸이 뜰 때까지 잠시 기다린다. 리드 pane마다 관측 pane 목록을 상태 폴더에 남겨, 라운드마다 새 프로세스로 도는 브리지도 셸 프롬프트에서 쉬는 관측 pane을 다시 쓴다(리드 pane은 한 번만 나뉜다). pane 하나를 붙이는 데 최대 10초만 쓰고, 화면은 작업자 출력의 터미널 제어 문자를 지우고 pane 폭에 맞게 줄을 잘라 표시하며, 컨트롤러가 최종 상태 없이 사라지면 멈춘다. HyperFusion 자체 시험은 `HYPERFUSION_HERDR=0`으로 돈다. 작업자 실행·종료 증명·결과 검증은 바뀌지 않고, Herdr 호출이 실패해도 라운드는 영향받지 않는다. Windows(PowerShell·cmd)와 POSIX 셸을 지원한다. [references/herdr.md](references/herdr.md)
 
 ## 0.30.0 — 2026-10-27
 

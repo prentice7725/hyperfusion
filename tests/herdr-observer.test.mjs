@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {fixture} from './support.mjs';
 import {execute} from '../scripts/executor-bridge.mjs';
 import {openMonitor} from '../scripts/worker-monitor.mjs';
-import {herdrEnabled,shQuote,psQuote,cmdQuote,shellKind,viewCommand,attachObserverPane,setHerdrRunner,resetHerdrLayout,readWorkerView,formatWorkerView,clean,ownerAlive,layoutFile} from '../scripts/herdr-observer.mjs';
+import {herdrEnabled,shQuote,psQuote,cmdQuote,shellKind,viewCommand,attachObserverPane,setHerdrRunner,resetHerdrLayout,readWorkerView,formatWorkerView,clean,ownerAlive,layoutFile,fit} from '../scripts/herdr-observer.mjs';
 
 // pane 배치 기록은 상태 폴더에 남는다. 사용자의 실제 ~/.hyperfusion을 건드리지 않게 이 파일 전용 폴더를 쓴다.
 const STATE=fs.mkdtempSync(path.join(os.tmpdir(),'hf-herdr-state-'));
@@ -230,6 +230,22 @@ test('worker-controlled text cannot inject terminal escape sequences',()=>{
  const events=[{at:'2026-10-30T00:00:00.000Z',kind:'diagnostic\x1b[8m',detail:'\x1b]8;;http://x\x07click\x1b]8;;\x07'}];
  const text=formatWorkerView({view,events},'1');
  assert.equal(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/.test(text),false);
+});
+
+test('view lines fit a narrow pane instead of wrapping',()=>{
+ assert.equal(fit('abcdef',0),'abcdef');
+ assert.equal(fit('abcdef',6),'abcdef');
+ assert.equal(fit('abcdef',4),'abc…');
+ // 한글은 두 칸이라 4칸에는 한 글자와 …만 들어간다.
+ assert.equal(fit('가나다',4),'가…');
+ assert.equal(fit('가나',4),'가나');
+ const view={executor:'grok',role:'implement',task_id:'HF-x',round:1,state:'RUNNING',elapsed_ms:11000};
+ const events=[{at:'2026-10-30T00:00:00.000Z',kind:'diagnostic',detail:'herdr pane w6:p4 attached'}];
+ const text=formatWorkerView({view,events},'1',Date.now(),12);
+ for(const line of text.split('\n'))assert.ok([...line].length<=12,line);
+ assert.match(text,/^HyperFusion…$/m);
+ assert.match(text,/^state: RUNN…$/m);
+ assert.match(formatWorkerView({view:null,events:[]},'1',Date.now(),12),/^waiting for…$/m);
 });
 
 test('view command carries the controller pid and the view stops when that process is gone',t=>{

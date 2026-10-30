@@ -218,8 +218,25 @@ export function readWorkerView(dir,tag) {
  return {view,events,done:finished(view,exited)};
 }
 
-export function formatWorkerView({view,events},tag,now=Date.now()) {
- if(!view)return `HyperFusion ${clean(tag)}\nwaiting for the worker to start...\n`;
+// 터미널 칸 수. 한글·한자·전각 문자와 이모지는 두 칸을 차지한다.
+const cells=c=>/[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦\u{1f300}-\u{1faff}\u{20000}-\u{3fffd}]/u.test(c)?2:1;
+// 좁은 pane에서 줄이 접히면 화면을 읽을 수 없으므로 폭에 맞게 자르고 끝에 …를 붙인다.
+export function fit(line,width) {
+ if(!(width>0))return line;
+ let used=0,out='';
+ for(const c of line){
+  const w=cells(c);
+  if(used+w>width){
+   while(out&&used+1>width){const last=[...out].at(-1);out=out.slice(0,-last.length);used-=cells(last);}
+   return out+'…';
+  }
+  out+=c;used+=w;
+ }
+ return out;
+}
+
+export function formatWorkerView({view,events},tag,now=Date.now(),width=0) {
+ if(!view)return [`HyperFusion ${clean(tag)}`,'waiting for the worker to start...'].map(l=>fit(l,width)).join('\n')+'\n';
  const age=view.last_activity_at&&!TERMINAL.has(view.state)?Math.max(0,now-Date.parse(view.last_activity_at)):view.last_activity_age_ms;
  const lines=[
   `HyperFusion  ${clean(view.executor??'?')} · ${clean(view.role??'?')} · task ${clean(view.task_id??'?')} round ${clean(view.round??'?')}`,
@@ -229,7 +246,7 @@ export function formatWorkerView({view,events},tag,now=Date.now()) {
   ''
  ];
  for(const e of events)lines.push(clean(`${String(e.at??'').slice(11,19)}  ${e.kind}  ${e.detail??''}`).trimEnd());
- return lines.join('\n')+'\n';
+ return lines.map(l=>fit(l,width)).join('\n')+'\n';
 }
 
 if(isMain(import.meta.url)){
@@ -240,13 +257,15 @@ if(isMain(import.meta.url)){
   process.exitCode=1;
  }else{
   let last='';
+  // 마지막 칸까지 쓰면 일부 터미널이 줄을 넘기므로 한 칸 남긴다. pane 폭이 바뀌면 글이 달라져 다시 그린다.
+  const width=()=>process.stdout.columns>1?process.stdout.columns-1:0;
   const draw=()=>{
    const data=readWorkerView(dir,tag);
-   const text=formatWorkerView(data,tag);
+   const text=formatWorkerView(data,tag,Date.now(),width());
    if(text!==last){last=text;process.stdout.write('\x1b[2J\x1b[H'+text);}
    if(data.done)return true;
    // 컨트롤러가 강제로 끝나 최종 상태를 쓰지 못하면 화면이 영원히 돌지 않게 여기서 멈춘다.
-   if(owner!==null&&!ownerAlive(owner)){process.stdout.write('\ncontroller process ended without a final worker state; view stopped\n');return true;}
+   if(owner!==null&&!ownerAlive(owner)){process.stdout.write('\n'+fit('controller process ended without a final worker state; view stopped',width())+'\n');return true;}
    return false;
   };
   const timer=setInterval(()=>{if(draw()){clearInterval(timer);}},1000);
