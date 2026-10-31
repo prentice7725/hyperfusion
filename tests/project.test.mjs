@@ -24,7 +24,8 @@ const plan=(over={})=>({
 const setup=t=>{const f=fixture(t,{initialize:false});fs.mkdirSync(path.join(f.root,'docs'));fs.writeFileSync(path.join(f.root,'docs/GDD.md'),'# GDD');return f;};
 // 이후 begin/finish가 같은 작업 ID를 쓰도록 fixture의 brief도 바꿔 둔다.
 const task=(f,id,extra={})=>{const out=run(f.root,'init',{...f.brief,task_id:id,...extra});f.brief.task_id=id;return out;};
-const close=f=>{f.begin();f.finish();f.review('pass');run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'npm test',status:'pass'}]});};
+// T1은 계획상 Sonnet이 맡는다. 수용 명령이 없는 작업은 다른 계열(Sol)의 위임 리뷰가 있어야 닫힌다.
+const close=async f=>{f.begin();f.finish();await f.delegatedPass();run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'npm test',status:'pass'}]});};
 const approved=t=>{const f=setup(t);project.propose(f.root,plan());project.approve(f.root,{user_message:'그대로 가자'});return f;};
 
 test('roster lists every member with default role, model and install state',t=>{
@@ -79,7 +80,7 @@ test('excluded members are never called in this project',t=>{
 });
 test('finishing a milestone forces a checkpoint report and the user\'s ack before the next one',async t=>{
  const f=approved(t);
- task(f,'T1');close(f);
+ task(f,'T1');await close(f);
  assert.equal(project.status(f.root).active_milestone,'M1');
  assert.ok(fs.existsSync(path.join(f.control,'metrics/T1.json')),'metrics written automatically at CLOSE');
  task(f,'T2');f.begin();f.finish();f.review('redo',['AC1']);f.begin();f.finish();f.review('pass');run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'check',status:'pass'}]});
@@ -88,7 +89,7 @@ test('finishing a milestone forces a checkpoint report and the user\'s ack befor
  assert.throws(()=>project.ack(f.root,{milestone:'M1',user_message:'ok'}),/run checkpoint first/);
  const cp=project.checkpoint(f.root);
  assert.match(cp.report,/체크포인트 M1: 기반/);
- assert.match(cp.report,/\| T1 기사 모델 \| ✅ 완료 \| sonnet×1 \| 1 \| 1회 \| - \|/);
+ assert.match(cp.report,/\| T1 기사 모델 \| ✅ 완료 \| sonnet×1 \| 1 \| 1회 \(위임 1, 리드 덮어씀 0\) \| - \|/);
  assert.match(cp.report,/\| T2 README \| ✅ 완료 \| luna×2 \| 2 \| 2회 \| - \|/);
  assert.match(cp.report,/\| luna \| 2 \| 1 \|/);assert.match(cp.report,/M2\. 삽화/);
  assert.throws(()=>task(f,'T3'),/PROJECT_CHECKPOINT_PENDING/);
@@ -119,18 +120,18 @@ test('changing the team needs re-approval; adding a task to the running mileston
  assert.deepEqual(task(f,'T1').configuration.external.available,['sonnet','luna']);
  assert.match(project.teamReport(f.root),/T3 표지 \| image-asset \| - \| luna/);
 });
-test('a checkpoint ack can carry the user\'s team change',t=>{
+test('a checkpoint ack can carry the user\'s team change',async t=>{
  const f=approved(t);project.amend(f.root,{drop_tasks:[{id:'T2',why:'later'}]});
- task(f,'T1');close(f);project.checkpoint(f.root);
+ task(f,'T1');await close(f);project.checkpoint(f.root);
  const team=plan().team.map(x=>x.member==='luna'?{...x,owns:['code:low','docs','image-asset']}:x);
  const out=project.ack(f.root,{milestone:'M1',user_message:'luna한테 삽화도 맡겨',changes:{team}});
  assert.equal(out.amend.needs_approval,true);assert.throws(()=>task(f,'T3'),/PROJECT_NOT_APPROVED/);
  project.approve(f.root,{user_message:'ok'});
  assert.equal(task(f,'T3').initial_executor,'luna');
 });
-test('a completed project no longer gates tasks',t=>{
+test('a completed project no longer gates tasks',async t=>{
  const f=setup(t);project.propose(f.root,plan({milestones:[plan().milestones[0]]}));project.approve(f.root,{user_message:'go'});
- project.amend(f.root,{drop_tasks:[{id:'T2',why:'x'}]});task(f,'T1');close(f);project.checkpoint(f.root);
+ project.amend(f.root,{drop_tasks:[{id:'T2',why:'x'}]});task(f,'T1');await close(f);project.checkpoint(f.root);
  assert.equal(project.ack(f.root,{milestone:'M1',user_message:'끝'}).status,'COMPLETE');
  assert.equal(run(f.root,'init',{...f.brief,task_id:'adhoc-1'}).phase,'PLAN');
 });

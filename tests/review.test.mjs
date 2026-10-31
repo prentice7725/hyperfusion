@@ -183,3 +183,27 @@ test('a delegated pass on a risk path waits for the lead even with auto_apply',a
  assert.equal(f.state().phase,'REVIEW');
  assert.equal(run(f.root,'review',{adopt:true}).phase,'VERIFY');
 });
+
+// 수용 명령이 없으면 컨트롤러 증거가 없다. 구현자와 같은 계열의 리뷰만으로는 닫지 않는다.
+test('without acceptance_commands, CLOSE needs a passing review from another model family',async t=>{
+ const f=fixture(t,{initialize:false,executor:'haiku'});
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{by:'delegate'},external:{default:'haiku',available:['haiku','grok']}}));
+ run(f.root,'init',{...f.brief,executor:'haiku'});
+ f.begin();f.finish();
+ assert.throws(()=>f.review('pass'),/SAME_FAMILY_REVIEW: .*\(haiku: anthropic\)/);
+ assert.equal(f.state().phase,'REVIEW','the refusal changes no state');
+ assert.equal(f.review('redo',['AC1']).phase,'REDO','the lead may still reject');
+ f.begin();f.finish();
+ const verify=()=>run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'npm test',status:'pass'}]});
+ // 상태가 같은 계열의 승인만으로 VERIFY에 닿았다면(백스톱), VERIFY에서 다른 계열의 위임 리뷰를 더해 닫을 수 있다.
+ const file=path.join(f.control,'state.json'),s=read(file);
+ s.phase='VERIFY';s.reviews.push({verdict:'pass',rationale:'x',blocking_criteria:[],commands_run:['git diff'],independent_diff_review:true,reviewed_by:'lead',owner:'haiku',round:s.iteration,reviewed_digest:s.post_digest});
+ fs.writeFileSync(file,JSON.stringify(s));
+ assert.throws(verify,/SAME_FAMILY_VERIFICATION: .*approving reviewers: lead \(anthropic\)/);
+ assert.equal(f.state().phase,'VERIFY');
+ await f.delegatedPass({executors:['grok'],substitution_reason:'cross-family close'});
+ assert.equal(verify().phase,'CLOSE');
+ // 다른 계열 일꾼(Grok)은 리드의 직접 리뷰가 이미 다른 계열이다.
+ const g=fixture(t);g.begin();g.finish();g.review('pass');
+ assert.equal(run(g.root,'verify',{acceptance_satisfied:true,tests:[{command:'npm test',status:'pass'}]}).phase,'CLOSE');
+});
