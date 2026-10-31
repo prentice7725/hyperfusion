@@ -30,5 +30,7 @@ export const excludedMembers=c=>named(c,'excluded');
 // 위임 자동 승인을 받을 수 있는 작성자: grant 없이 구현하는 일꾼.
 export const delegableOwners=c=>named(c,'external_general','lead_family_general');
 export const leadFamily=c=>roleTeam(c).lead.family;
+// 구현자·리뷰어의 계열. 'lead'는 리드 계열, 명단에 없는 이름(controller 등)은 unknown.
+export const memberFamilyOf=(c,name)=>name==='lead'?leadFamily(c):roleTeam(c).members[name]?.family??'unknown';
 // 기존 리뷰 정책(legacy-v1, cross-vendor-pairs-v1)은 Anthropic 리드의 역할 배치를 전제로 한다.
 export const compatibleLead=c=>leadFamily(c)==='anthropic';

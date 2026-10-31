@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- `acceptance_commands`가 없는 작업은 구현자와 다른 계열의 통과 리뷰가 있어야 닫힌다. 리드가 구현자와 같은 계열이면(Claude 리드의 Sonnet·Haiku·takeover 라운드) 리드의 pass를 REVIEW에서 `SAME_FAMILY_REVIEW`로 거절한다(redo·alternative·decision은 그대로). `verify`는 이번 라운드를 통과시킨 리뷰(리드 리뷰, 위임 리뷰, 리드 게이트의 위임 판정)의 계열을 보고, 전부 구현자와 같은 계열이면 `SAME_FAMILY_VERIFICATION`으로 거절하며 리뷰어와 계열을 알려 준다. 이 경우를 고치도록 `delegate-review`·`consult-finish`를 VERIFY에서도 받는다(`state-actions.md` 재생성). Claude 리드가 Grok·Luna 결과를 직접 리뷰한 것은 그대로 닫히고, Sonnet·Haiku·takeover 결과는 `delegate-review`가 필요하다. 컨트롤러가 직접 돌린 수용 증거가 없을 때 구현과 검증이 같은 오해를 공유하는 길을 막는다. 수용 명령이 있는 작업은 바뀌지 않는다.
 - 위임 리뷰어가 보호된 수용 테스트 본문을 받는다(`context.acceptance_tests`: `verification.protect`에 맞는 파일의 본문·SHA-256·수용 명령, 합계 12,000자 상한). 테스트는 리드가 일꾼보다 먼저 써서 diff에 나오지 않았고, 리뷰어는 "diff가 AC를 만족하는가"만 봤다. 이제 "테스트가 objective와 모든 AC를 충실히 검사하는가"도 판정하며, AC를 검사하지 않는 테스트·동어반복 단언·잘못된 이유로 통과하는 테스트는 테스트 파일의 줄을 가리키는 지적으로 `decision`을 권고한다(보호된 테스트는 일꾼이 고칠 수 없다). AC와 테스트를 같은 모델이 쓸 때 공유하는 오해를 다른 계열이 걸러 내려는 것이다. 보호가 없는 작업과 상담(advisor·committee)은 그대로다.
 
 ## 0.30.0 — 2026-10-27

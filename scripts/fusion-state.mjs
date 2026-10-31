@@ -44,7 +44,8 @@ import {resumePacket,inspectionControl} from './resume-packet.mjs';
 import {captureRoundBase,roundDelta} from './round-delta.mjs';
 import {sameFamilyIn,FAMILY_RULES_POLICY} from './review-plan.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation,PAIRED_REVIEW_POLICY} from './review-plan.mjs';
-import {apexMember,specialistMember,reservedMembers,delegableOwners} from './team-roles.mjs';
+import {apexMember,specialistMember,reservedMembers,delegableOwners,memberFamilyOf} from './team-roles.mjs';
+import {independent} from './model-registry.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 // 상담 위원에게 직접 넣어 주는 diff의 최대 길이. 12,000자로는 리뷰어가 변경 대부분을 보지 못했다.
@@ -1404,6 +1405,11 @@ function review(c,input) {
   const overridden=c.s.pending_review
     ?{overrode:c.s.pending_review.reviewed_by,overrode_verdict:c.s.pending_review.verdict}
     :{};
+  // 수용 명령이 없고 리드가 구현자와 같은 계열이면(Claude 리드의 Sonnet·Haiku·takeover 라운드) 리드의 pass는 독립 증거가 아니다. 여기서 막아 REVIEW에 머물게 한다.
+  if(input.verdict==='pass'&&!c.optional(`brief-${s.iteration}.json`)?.acceptance_commands?.length){
+    const implementer=s.owner??'lead',cfg=s.configuration;
+    if(!independent(memberFamilyOf(cfg,'lead'),memberFamilyOf(cfg,implementer)))throw Error(`SAME_FAMILY_REVIEW: this task has no acceptance_commands and the lead shares the implementer's model family (${implementer}: ${memberFamilyOf(cfg,implementer)}); the lead's own pass is not independent evidence. Run delegate-review with a reviewer from another family, or give a redo/alternative/decision verdict yourself`);
+  }
   return applyReview(c,{...input,reviewed_by:'lead',...overridden});
 }
 
@@ -1414,6 +1420,20 @@ function decide(c,input) {
   s.phase=s.owner!=='lead'&&(c.canWork(s.owner)||consumedSpecialist(s))?'REDO':c.exhausted();
   c.save();
   return s;
+}
+
+// 이번 라운드를 통과시킨 리뷰어들(리드 리뷰, 위임 리뷰, 리드 게이트의 위임 판정) 중 구현자와 독립인 계열이 없으면 그 사실을 돌려준다.
+function sameFamilyApproval(c,approval,digest) {
+  const s=c.s,cfg=s.configuration,implementer=s.owner??'lead',family=memberFamilyOf(cfg,implementer);
+  const reviewers=new Set();
+  for(const r of s.reviews)if(r.verdict==='pass'&&r.round===s.iteration&&r.reviewed_digest===digest&&r.reviewed_by)reviewers.add(r.reviewed_by);
+  if(approval?.decision==='APPROVE'){
+    reviewers.add('lead');
+    for(const r of s.review_results?.[s.iteration]??[])if(r.ok&&!r.superseded&&r.verdict==='pass')reviewers.add(r.executor);
+  }
+  const names=[...reviewers].filter(r=>r!=='delegated-policy'&&r!=='controller');
+  const crossed=names.some(r=>independent(memberFamilyOf(cfg,r),family));
+  return crossed?null:{implementer,family,reviewers:names.map(r=>`${r} (${memberFamilyOf(cfg,r)})`)};
 }
 
 function verify(c,input) {
@@ -1439,6 +1459,12 @@ function verify(c,input) {
   if(unreviewed.length){
     s.phase='RECOVERY_REQUIRED';s.last_errors=[`UNREVIEWED_CHANGES: ${unreviewed.join(', ')}; recover and review the cumulative task diff`];c.save();
     throw Error(s.last_errors[0]);
+  }
+  // 수용 명령이 없으면 컨트롤러가 직접 돌린 증거가 없다. 그때는 구현자와 다른 계열의 통과 리뷰가 있어야 닫는다(R1·R3).
+  // 같은 계열(예: Claude 리드가 Haiku 결과를 직접 리뷰)은 구현과 검증이 같은 오해를 공유할 수 있다.
+  if(!auto){
+    const same=sameFamilyApproval(c,approval,now.digest);
+    if(same)throw Error(`SAME_FAMILY_VERIFICATION: without acceptance_commands the controller has no independent evidence, so CLOSE needs a passing review from a model family other than the implementer's (${same.implementer}: ${same.family}); approving reviewers: ${same.reviewers.join(', ')||'none'}. Run delegate-review with a reviewer from another family (allowed in VERIFY for this), or start a new task with acceptance_commands and a protected red-first test`);
   }
   const guarded=protectedViolations(c,now);
   if(guarded.length)throw Error(`ACCEPTANCE_TEST_MODIFIED: protected files changed since the task started (${guarded.join(', ')}); verification cannot close with them changed`);
