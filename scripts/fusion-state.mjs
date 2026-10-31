@@ -23,7 +23,7 @@ import {SCHEMA_VERSION,ARCHITECTURE,VERSION} from './versions.mjs';
 import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
 import {compactView} from './lead-view.mjs';
-import {isPreserve,checkPreserve,protectedChanges} from './preserve.mjs';
+import {isPreserve,checkPreserve,protectedChanges,acceptanceTestsContext} from './preserve.mjs';
 import {modifiedAcceptanceTests} from './acceptance-integrity.mjs';
 import {hookObservation} from './hook-observation.mjs';
 import {leadIdentity,leadPowers,assertLeadFamily} from './lead-host.mjs';
@@ -550,10 +550,13 @@ function consult(c,input) {
   // 결론을 건네면 결론의 승인이 돌아온다. 테스트 결과는 컨트롤러가 직접 돌린 controller_acceptance로 본다.
   // 상담(advisor, committee)은 원인 분석에 작업 경과가 필요하므로 그대로 준다.
   const raw=n?c.optional(`raw-result-${n}.json`):null;
+  const acceptanceTests=acceptanceTestsContext(c.root,c.optional('initial-brief.json'));
   const context={
     round:n,last_worker:s.owner,last_result:mode==='review'?reviewSubject(raw):raw,changed_files:changed,
     round_changed_files:n?(c.optional(`validation-${n}.json`)?.changed??[]):[],unattributed_changes:cumulative.unattributed_changes,
     ...(n?{controller_acceptance:acceptanceContext(c,latest,consultBase)}:{}),
+    // 위임 리뷰어는 보호된 수용 테스트 본문도 본다. 테스트는 diff 밖이라 따로 주지 않으면 읽지 않는다.
+    ...(mode==='review'&&acceptanceTests?{acceptance_tests:acceptanceTests}:{}),
     recent_reviews:s.reviews.slice(-3).map(r=>mode==='review'?{owner:r.owner,round:r.round,blocking_criteria:r.blocking_criteria}
       :{owner:r.owner,round:r.round,verdict:r.verdict,blocking_criteria:r.blocking_criteria,rationale:r.rationale}),
     ...contractCorrections(c,n)

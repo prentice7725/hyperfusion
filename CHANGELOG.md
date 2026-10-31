@@ -2,6 +2,10 @@
 
 버전 표기: 패키지 릴리스(`package.json`)와 별개로 저장 스키마(4), 아키텍처 식별자(`opus-lead-v0.3`), wire protocol(`hyperfusion-opus-lead-v0.5`)은 따로 움직인다. 날짜는 해당 버전이 `package.json`에 처음 들어간 날이다(0.10.0 이전은 기록이 없다). 병합됐지만 아직 버전이 붙지 않은 변경은 맨 위 Unreleased에 둔다.
 
+## Unreleased
+
+- 위임 리뷰어가 보호된 수용 테스트 본문을 받는다(`context.acceptance_tests`: `verification.protect`에 맞는 파일의 본문·SHA-256·수용 명령, 합계 12,000자 상한). 테스트는 리드가 일꾼보다 먼저 써서 diff에 나오지 않았고, 리뷰어는 "diff가 AC를 만족하는가"만 봤다. 이제 "테스트가 objective와 모든 AC를 충실히 검사하는가"도 판정하며, AC를 검사하지 않는 테스트·동어반복 단언·잘못된 이유로 통과하는 테스트는 테스트 파일의 줄을 가리키는 지적으로 `decision`을 권고한다(보호된 테스트는 일꾼이 고칠 수 없다). AC와 테스트를 같은 모델이 쓸 때 공유하는 오해를 다른 계열이 걸러 내려는 것이다. 보호가 없는 작업과 상담(advisor·committee)은 그대로다.
+
 ## 0.30.0 — 2026-10-27
 
 - CI: Windows 작업은 테스트 파일을 하나씩 돌려(호스트 전체 프로세스 확인이 서로 섞이지 않게) 약 35분 걸렸다. 이제 Windows 테스트를 러너 4대로 나눠 돌린다(`HF_TEST_SHARD=i/n`, `node --test --test-shard`). 러너마다 호스트가 따로라 직렬 규칙은 그대로이고, `acceptance-security` 통합 테스트와 저장소 전체 회귀 단계는 한 번씩만 돈다. 샤드 값이 `i/n` 꼴이 아니면 `npm test`가 바로 실패한다.
