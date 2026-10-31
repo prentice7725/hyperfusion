@@ -12,7 +12,7 @@ Generated from `scripts/state-policy.mjs`. Do not edit the table manually.
 | REVIEW | review, consult, delegate-review, grant-implement, consult-finish, recover, status, report, archive |
 | LEAD_DECISION_REQUIRED | lead-decision, policy-approve, auto-substitute-review, delegate-review, consult-finish, recover, status, report, archive |
 | DECISION_REQUIRED | decide, consult, grant-implement, consult-finish, status, report, archive |
-| VERIFY | verify, status, report, archive |
+| VERIFY | verify, delegate-review, consult-finish, status, report, archive |
 | RECOVERY_REQUIRED | recover, status, report, archive |
 | CLOSE | init, status, report, archive |
 | BLOCKED | init, status, report, archive |

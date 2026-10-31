@@ -380,3 +380,27 @@ test('reviewers get the controller acceptance run and a diff well past 12,000 ch
  const cut=await import('../scripts/adapters/antigravity.mjs');
  assert.equal(cut.contextDiffMax,12000);
 });
+
+// 리드가 쓴 수용 테스트를 다른 계열의 리뷰어가 본다. AC와 테스트를 같은 모델이 썼을 때의 오해를 걸러 내기 위해서다.
+test('the delegated reviewer receives the protected acceptance tests, which never appear in the diff',async t=>{
+ const f=fixture(t,{initialize:false,executor:'grok'});
+ fs.writeFileSync(path.join(f.root,'check.test.mjs'),"import fs from 'node:fs';import assert from 'node:assert/strict';assert.equal(fs.readFileSync('a.txt','utf8'),'fixed');\n");
+ f.git('add','.');f.git('commit','-m','red test');
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{by:'delegate',strategy:'lead-gated-adaptive'}}));
+ run(f.root,'init',{...f.brief,executor:'grok',acceptance_commands:['node check.test.mjs'],verification:{kind:'red-first',protect:['check.test.mjs']}});
+ f.begin();f.mode('edit');await f.bridge();
+ const c=run(f.root,'delegate-review',{});
+ const request=read(task(f,`consult-${c.consult_id}-${c.members[0].member}.json`));
+ const body=JSON.parse(request.prompt);
+ const tests=body.brief.consult.context.acceptance_tests;
+ assert.deepEqual([tests.kind,tests.commands,tests.files.map(x=>x.path)],['red-first',['node check.test.mjs'],['check.test.mjs']]);
+ assert.match(tests.files[0].content,/readFileSync\('a.txt'/);assert.match(tests.files[0].sha256,/^[0-9a-f]{64}$/);
+ assert.ok(!body.brief.consult.context.diff.includes('check.test.mjs'),'the protected test is not part of the worker diff');
+ assert.ok(body.instructions.some(x=>/context\.acceptance_tests is present/.test(x)));
+ await consult(f.root,c.consult_id);
+ assert.equal(run(f.root,'consult-finish',{quiescent:true}).review.verdict,'pass');
+ // 보호가 없거나 상담(advisor)이면 넣지 않는다.
+ const g=adaptive(t);g.begin();g.finish();
+ const c2=run(g.root,'delegate-review',{});
+ assert.equal('acceptance_tests' in JSON.parse(read(task(g,`consult-${c2.consult_id}-${c2.members[0].member}.json`)).prompt).brief.consult.context,false);
+});

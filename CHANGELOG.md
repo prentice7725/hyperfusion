@@ -5,6 +5,8 @@
 ## Unreleased
 
 - 선택적 Herdr 관측 pane: Herdr pane 안에서 실행하면 작업자마다 별도 pane에 읽기 전용 모니터 화면(`scripts/herdr-observer.mjs view`)을 연다. `HYPERFUSION_HERDR`는 없으면 자동 감지(Herdr 안이면 켜고 밖이면 조용히 건너뜀), `0`이면 항상 끔, `1`이면 강제(Herdr 밖이면 건너뛴 이유를 기록)다. pane을 열기 전에 `herdr pane get`으로 현재 pane이 살아 있는지 확인하고, 방금 나눈 pane의 셸이 뜰 때까지 잠시 기다린다. 리드 pane마다 관측 pane 목록을 상태 폴더에 남겨, 라운드마다 새 프로세스로 도는 브리지도 셸 프롬프트에서 쉬는 관측 pane을 다시 쓴다(리드 pane은 한 번만 나뉜다). pane 하나를 붙이는 데 최대 10초만 쓰고, 화면은 작업자 출력의 터미널 제어 문자를 지우고 pane 폭에 맞게 줄을 잘라 표시하며, 컨트롤러가 최종 상태 없이 사라지면 멈춘다. HyperFusion 자체 시험은 `HYPERFUSION_HERDR=0`으로 돈다. 작업자 실행·종료 증명·결과 검증은 바뀌지 않고, Herdr 호출이 실패해도 라운드는 영향받지 않는다. Windows(PowerShell·cmd)와 POSIX 셸을 지원한다. [references/herdr.md](references/herdr.md)
+- `acceptance_commands`가 없는 작업은 구현자와 다른 계열의 통과 리뷰가 있어야 닫힌다. 리드가 구현자와 같은 계열이면(Claude 리드의 Sonnet·Haiku·takeover 라운드) 리드의 pass를 REVIEW에서 `SAME_FAMILY_REVIEW`로 거절한다(redo·alternative·decision은 그대로). `verify`는 이번 라운드를 통과시킨 리뷰(리드 리뷰, 위임 리뷰, 리드 게이트의 위임 판정)의 계열을 보고, 전부 구현자와 같은 계열이면 `SAME_FAMILY_VERIFICATION`으로 거절하며 리뷰어와 계열을 알려 준다. 이 경우를 고치도록 `delegate-review`·`consult-finish`를 VERIFY에서도 받는다(`state-actions.md` 재생성). Claude 리드가 Grok·Luna 결과를 직접 리뷰한 것은 그대로 닫히고, Sonnet·Haiku·takeover 결과는 `delegate-review`가 필요하다. 컨트롤러가 직접 돌린 수용 증거가 없을 때 구현과 검증이 같은 오해를 공유하는 길을 막는다. 수용 명령이 있는 작업은 바뀌지 않는다.
+- 위임 리뷰어가 보호된 수용 테스트 본문을 받는다(`context.acceptance_tests`: `verification.protect`에 맞는 파일의 본문·SHA-256·수용 명령, 합계 12,000자 상한). 테스트는 리드가 일꾼보다 먼저 써서 diff에 나오지 않았고, 리뷰어는 "diff가 AC를 만족하는가"만 봤다. 이제 "테스트가 objective와 모든 AC를 충실히 검사하는가"도 판정하며, AC를 검사하지 않는 테스트·동어반복 단언·잘못된 이유로 통과하는 테스트는 테스트 파일의 줄을 가리키는 지적으로 `decision`을 권고한다(보호된 테스트는 일꾼이 고칠 수 없다). AC와 테스트를 같은 모델이 쓸 때 공유하는 오해를 다른 계열이 걸러 내려는 것이다. 보호가 없는 작업과 상담(advisor·committee)은 그대로다.
 
 ## 0.30.0 — 2026-10-27
 

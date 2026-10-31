@@ -4,7 +4,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {run} from '../scripts/fusion-state.mjs';
 import {read} from '../scripts/artifact.mjs';
-import {execute} from '../scripts/executor-bridge.mjs';
+import {execute,consult} from '../scripts/executor-bridge.mjs';
 import {repoId} from '../scripts/control-dir.mjs';
 
 // 테스트는 Claude Code 리드를 흉내 낸다. Claude Code 셸이 넣는 표시를 기본으로 둔다(다른 호스트 시험은 env를 직접 준다).
@@ -175,8 +175,10 @@ export function fixture(t,{initialize=true,executor='grok'}={}) {
  const result=(files=[])=>({task_id:brief.task_id,round:state().iteration,status:'complete',summary:'Test result',files_read:[],files_changed:files,commands_run:[],tests:[],unresolved:[],risks:[],needs_lead_decision:false,recommended_next_action:'review'});
  const finish=(r=result())=>run(root,'finish',{token:state().writer.token,quiescent:true,result:r});
  const review=(verdict='pass',criteria=['AC1'])=>run(root,'review',{verdict,rationale:'Inspected source',blocking_criteria:verdict==='pass'?[]:criteria,commands_run:['git diff'],independent_diff_review:true});
+ // 다른 계열의 위임 리뷰로 라운드를 통과시킨다. 수용 명령이 없는 작업은 같은 계열의 리드 리뷰만으로는 닫히지 않는다.
+ const delegatedPass=async(input={})=>{const c=run(root,'delegate-review',input);await consult(root,c.consult_id);return run(root,'consult-finish',{quiescent:true});};
  const mode=v=>fs.writeFileSync(path.join(temp,'fake-mode'),v);
  const bridge=async()=>{const out=await execute(root);finish(read(out.result_file));return out;};
  if(initialize)run(root,'init',{...brief,...(executor?{executor}:{})});
- return {root,temp,control,brief,state,begin,result,finish,review,mode,bridge,git};
+ return {root,temp,control,brief,state,begin,result,finish,review,delegatedPass,mode,bridge,git};
 }
