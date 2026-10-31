@@ -19,6 +19,10 @@
 | decision | 리드가 설계/요구사항 결정 후 같은 일꾼 REDO |
 | takeover | 모든 일꾼이 소진됐을 때만. 아니면 거절 |
 
+## 수용 명령 없는 작업의 닫기 조건
+
+`acceptance_commands`가 없으면 컨트롤러가 직접 돌린 증거가 없고, `verify`의 `tests`는 리드가 돌렸다고 적은 목록일 뿐이다. 그때는 이번 라운드를 통과시킨 리뷰(리드 리뷰, 위임 리뷰, 리드 게이트의 위임 판정) 가운데 구현자와 다른 계열이 하나는 있어야 닫힌다(R1·R3). 리드가 구현자와 같은 계열이면 리드의 pass는 REVIEW에서 바로 `SAME_FAMILY_REVIEW`로 거절되고(redo·alternative·decision은 그대로 낼 수 있다), 그래도 같은 계열의 승인만으로 VERIFY에 닿은 라운드는 `verify`가 `SAME_FAMILY_VERIFICATION`으로 거절하며 통과시킨 리뷰어와 계열을 알려 준다. 이 경우를 위해 `delegate-review`와 `consult-finish`는 VERIFY에서도 받는다. Claude 리드가 Grok·Luna 결과를 직접 리뷰한 것은 다른 계열이므로 그대로 닫히고, Sonnet·Haiku 결과나 takeover 결과는 `delegate-review`로 다른 계열의 통과를 받아야 한다. 구현과 검증을 같은 계열이 맡으면 같은 오해를 공유할 수 있어서다. 수용 명령이 있는 작업은 컨트롤러 실행이 증거라 이 조건이 붙지 않는다.
+
 ## 자동 교체 규칙
 
 같은 일꾼이 연속 두 라운드에서 같은 `blocking_criteria`를 받으면, 예산 있는 다른 일꾼이 있을 경우 `redo`여도 ALTERNATIVE_REQUIRED로 넘어간다. 같은 실수를 세 번 시키지 않는다. 일꾼이 한 명뿐이면 예산 끝까지 같은 일꾼을 돌린다.

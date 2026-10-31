@@ -164,7 +164,7 @@ const blockTask=f=>{
 };
 const taskStatus=(f,id)=>project.loadProject(f.root).milestones.flatMap(m=>m.tasks).find(x=>x.id===id).status;
 
-test('begin settles a saved BLOCKED transition even when it throws, before the next project task',t=>{
+test('begin settles a saved BLOCKED transition even when it throws, before the next project task',async t=>{
  const f=approved(t);task(f,'T1');
  const file=path.join(f.control,'state.json'),s=f.state();
  s.configuration.lead_takeover=false;
@@ -175,7 +175,8 @@ test('begin settles a saved BLOCKED transition even when it throws, before the n
  assert.throws(()=>f.begin(),/phase is now BLOCKED/);
  assert.equal(taskStatus(f,'T1'),'blocked');
  assert.ok(fs.existsSync(path.join(f.control,'metrics/T1.json')));
- task(f,'T2');closeTask(f);
+ // Codex가 없어 T2가 Sonnet에게 가므로, 다른 계열(Grok)의 위임 리뷰로 닫는다.
+ task(f,'T2');f.begin();f.finish();await f.delegatedPass({executors:['grok'],substitution_reason:'codex binary unavailable'});run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'t',status:'pass'}]});
  assert.deepEqual(project.status(f.root).checkpoint_due,['M1']);
 });
 
@@ -312,7 +313,7 @@ test('reaching BLOCKED through decide or recover also records metrics and settle
  assert.equal(taskStatus(b,'T1'),'blocked');
  assert.ok(fs.existsSync(path.join(b.control,'metrics/T1.json')));
 });
-test('a failing memory ledger cannot break finish or leave a closed task active in the project',t=>{
+test('a failing memory ledger cannot break finish or leave a closed task active in the project',async t=>{
  memDir(t);
  const f=approved(t);
  writeConfig(f,{memory:{workspace:'regression'}});
@@ -323,7 +324,7 @@ test('a failing memory ledger cannot break finish or leave a closed task active 
  const r=f.result();r.memory_candidates=[{type:'error',content:'A failed because B'}];
  assert.equal(f.finish(r).phase,'REVIEW');
  assert.match(f.state().memory_error,/./);
- f.review('pass');
+ await f.delegatedPass();
  const s=run(f.root,'verify',{acceptance_satisfied:true,tests:[{command:'t',status:'pass'}]});
  assert.equal(s.phase,'CLOSE');
  assert.equal(taskStatus(f,'T1'),'closed');

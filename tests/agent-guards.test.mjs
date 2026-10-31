@@ -142,7 +142,7 @@ test('fresh Bash observations survive init and appear in report/metrics without 
 });
 
 test('dangerous Bash commands are blocked only while a task or lease is active, including explicit Git targets',t=>{
- const f=fixture(t,{initialize:false});assert.equal(bash(f,'git push'),null);run(f.root,'init',f.brief);
+ const f=fixture(t,{initialize:false});assert.equal(bash(f,'git push'),null);run(f.root,'init',{...f.brief,executor:'grok'});
  for(const cmd of ['git push','git -C . push','git -c core.pager=cat commit -m done','git reset --hard','git clean -fd','rm -r -f build','rm --recursive --force build','Remove-Item build -Recurse -Force'])assert.ok(denied(bash(f,cmd)),cmd);
  assert.ok(denied(bash(f,`git -C "${f.root}" push`,f.temp)));
  assert.ok(denied(bash(f,`cd "${f.root}" && git push`,f.temp)));
