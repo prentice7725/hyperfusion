@@ -110,6 +110,36 @@ node scripts/benchmark.mjs compare BASELINE.json HYPERFUSION.json
 node scripts/benchmark.mjs compare BASELINE.json HYPERFUSION.json --pricing PRICES.json
 ```
 
+## Large suite (historical feature commits)
+
+The ten core cases are single-file fixtures that Opus finishes alone in a few
+turns, so they cannot show where delegation pays off. The `large` suite
+(`references/benchmark-large-cases.json`, `HF-L01`–`HF-L05`) rebuilds real
+HyperFusion feature commits: the tree just before the commit plus that commit's
+tests, with no Git history, `.claude/` or `.github/`. The brief carries the
+commit's behaviour as AC1…ACn, the editable paths, and the commit's test file as
+the acceptance command. Everything under `tests/` is protected.
+
+```sh
+node scripts/benchmark.mjs cases --suite large
+node scripts/benchmark.mjs prepare HF-L01 /tmp/hf-l01-base --source /path/to/hyperfusion-clone
+node scripts/benchmark.mjs compare BASELINE.json HYPERFUSION.json --suite large
+```
+
+`--source` (or `HF_BENCHMARK_SOURCE`) must be a full clone that contains the
+source commit; an installed copy that is itself a full clone works without it.
+CI checkouts are shallow, so the shipped cases are not prepared in CI. Each
+acceptance run uses the case's `acceptance_timeout_ms` (300 s), and the
+reference commit of every shipped case passes its acceptance file on Windows in
+6–82 s.
+
+Calibrate before comparing. Run the baseline arm once per case and keep a case
+only when Opus alone spends at least 150k reference lead input-equivalents or 10
+turns. A lighter case cannot show a delegation benefit and is dropped or
+replaced. Calibration runs are not comparison trials; prepare fresh fixtures for
+the paired runs. `compare --suite large` and `compare-repeated --suite large`
+expect only large-suite records and never mix them with the core suite.
+
 ## Usage and price assumptions
 
 Raw `lead_tokens` remains available. `components`, `by_model`, `by_role` and

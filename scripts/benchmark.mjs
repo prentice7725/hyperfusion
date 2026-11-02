@@ -3,14 +3,17 @@ import {isMain} from './platform.mjs';
 import {read} from './artifact.mjs';
 import {aggregate} from './metrics.mjs';
 import {weightedUsage,weightedClaude,validatePricing} from './usage-weights.mjs';
-import {prepareFixture} from './benchmark-fixtures.mjs';
+import {prepareFixture,LARGE_CASES} from './benchmark-fixtures.mjs';
 import {startWindow,stopWindow,recoverWindow} from './benchmark-window.mjs';
 
 export const CASES=JSON.parse(fs.readFileSync(new URL('../references/benchmark-cases.json',import.meta.url),'utf8'));
+// core는 기존 10개 고정 과제, large는 실제 기능 커밋으로 만든 큰 과제다. 묶음끼리 섞어 비교하지 않는다.
+export const SUITES={core:CASES,large:LARGE_CASES};
+const suiteCases=suite=>{if(!Object.hasOwn(SUITES,suite))throw Error('Unknown benchmark suite: '+suite);return SUITES[suite];};
 const known=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
-function index(records) {
+function index(records,cases=CASES) {
  if(!Array.isArray(records))throw Error('Benchmark input must be an array of actual metric records');
- const expected=new Set(CASES.map(c=>c.case_id)),out=new Map();
+ const expected=new Set(cases.map(c=>c.case_id)),out=new Map();
  for(const record of records){
   if(!expected.has(record?.case_id)||out.has(record.case_id))throw Error('Unknown or duplicate benchmark case_id');
   if(typeof record.success!=='boolean')throw Error('Benchmark success must be explicit');
@@ -18,10 +21,11 @@ function index(records) {
  }
  return out;
 }
-export function comparePilot(baseline,hyperfusion,pricing=null) {
+export function comparePilot(baseline,hyperfusion,pricing=null,{suite='core'}={}) {
  if(pricing)validatePricing(pricing);
- const a=index(baseline),b=index(hyperfusion),gaps=[];
- const pairs=CASES.map(c=>{
+ const cases=suiteCases(suite);
+ const a=index(baseline,cases),b=index(hyperfusion,cases),gaps=[];
+ const pairs=cases.map(c=>{
   const left=a.get(c.case_id),right=b.get(c.case_id);
   if(!left||!right){gaps.push(c.case_id+': missing paired result');return {case_id:c.case_id,status:'not_measured'};}
   const scope=left.lead_usage?.scope??'manual-task-total';
@@ -44,7 +48,7 @@ export function comparePilot(baseline,hyperfusion,pricing=null) {
  const perSuccess=records=>{const values=records.map(r=>(pricing?weightedClaude(r,pricing):weightedUsage(r.lead_usage))[primaryKey]);const count=records.filter(r=>r.success).length;return count&&values.every(known)?values.reduce((a,b)=>a+b,0)/count:null;};
  base.weighted_usage_per_success=perSuccess([...a.values()]);hf.weighted_usage_per_success=perSuccess([...b.values()]);
  const reduction=(left,right)=>complete&&known(left)&&left>0&&known(right)?1-right/left:null;
- return {status:complete?'measured-pilot':'incomplete',expected_pairs:CASES.length,
+ return {status:complete?'measured-pilot':'incomplete',suite,expected_pairs:cases.length,
   recorded_pairs:pairs.filter(p=>p.status==='recorded').length,gaps,pairs,
  primary_metric:pricing?'estimated_total_claude_usd_per_success':'reference_lead_input_equivalent_per_success',
   primary_reduction:reduction(base.weighted_usage_per_success,hf.weighted_usage_per_success),
@@ -56,7 +60,8 @@ export function comparePilot(baseline,hyperfusion,pricing=null) {
 // The protocol digest is operator-supplied: it identifies the approved task,
 // team, models/efforts, acceptance definitions and measurement scope together.
 // Matching metadata is a prerequisite, not proof of experimental equivalence.
-export function compareRepeated(current,candidate,pricing=null,{repetitions=3}={}) {
+export function compareRepeated(current,candidate,pricing=null,{repetitions=3,suite='core'}={}) {
+ const cases=suiteCases(suite);
  if(!Number.isInteger(repetitions)||repetitions<1||repetitions>10)throw Error('Benchmark repetitions must be 1..10');
  const group=(records,arm)=>{
   if(!Array.isArray(records))throw Error('Repeated benchmark input must be an array');
@@ -72,10 +77,10 @@ export function compareRepeated(current,candidate,pricing=null,{repetitions=3}={
  };
  const left=group(current,'current'),right=group(candidate,'candidate'),gaps=[],trials=[];
  for(const [arm,records] of [['current',current],['candidate',candidate]])if(new Set(records.map(r=>r.comparison.implementation_ref)).size>1)gaps.push(`${arm}: implementation ref changed between repetitions`);
- for(const c of CASES)if(new Set([...current,...candidate].filter(r=>r.case_id===c.case_id).map(r=>r.comparison.protocol_digest)).size>1)gaps.push(`${c.case_id}: approved protocol changed between repetitions`);
+ for(const c of cases)if(new Set([...current,...candidate].filter(r=>r.case_id===c.case_id).map(r=>r.comparison.protocol_digest)).size>1)gaps.push(`${c.case_id}: approved protocol changed between repetitions`);
  const text=v=>typeof v==='string'&&v.trim().length>0;
  for(let n=0;n<repetitions;n++){
-  const pilot=comparePilot(left[n],right[n],pricing);
+  const pilot=comparePilot(left[n],right[n],pricing,{suite});
   gaps.push(...pilot.gaps.map(g=>`repetition ${n+1}: ${g}`));
   for(const row of pilot.pairs){
    const a=left[n].find(r=>r.case_id===row.case_id),b=right[n].find(r=>r.case_id===row.case_id);
@@ -105,7 +110,7 @@ export function compareRepeated(current,candidate,pricing=null,{repetitions=3}={
  const detection=rows=>{const known=rows.filter(r=>typeof r.buried_defect_detected==='boolean');
   return known.length?{planted:known.length,detected:known.filter(r=>r.buried_defect_detected).length,missed:known.filter(r=>!r.buried_defect_detected).length,unknown:rows.length-known.length}:null;};
  const providerReduction=reduction(provider(current),provider(candidate));
- return {status:complete?'recorded-repeated-comparison':'incomplete',expected_pairs:CASES.length*repetitions,
+ return {status:complete?'recorded-repeated-comparison':'incomplete',suite,expected_pairs:cases.length*repetitions,
   recorded_pairs:trials.filter(r=>r.status==='recorded').length,gaps,trials,
   current:{successes:successes(current),lead_weighted_per_success:weighted(current),provider_cost_per_success:provider(current),p95_wall_ms:aWall,quality:aQuality,defect_detection:detection(current)},
   candidate:{successes:successes(candidate),lead_weighted_per_success:weighted(candidate),provider_cost_per_success:provider(candidate),p95_wall_ms:bWall,quality:bQuality,defect_detection:detection(candidate)},
@@ -119,13 +124,14 @@ if(isMain(import.meta.url)){
  try{
   const [cmd,left,right,...extra]=process.argv.slice(2);
   const flag=name=>{const i=extra.indexOf(name);return i<0?undefined:extra[i+1];};
-  if(cmd==='cases')console.log(JSON.stringify(CASES,null,2));
-  else if(cmd==='prepare'&&left&&right)console.log(JSON.stringify(prepareFixture(left,right),null,2));
+  const suite=flag('--suite')??'core';
+  if(cmd==='cases')console.log(JSON.stringify(suiteCases(left==='--suite'?right:'core'),null,2));
+  else if(cmd==='prepare'&&left&&right)console.log(JSON.stringify(prepareFixture(left,right,{source:flag('--source')}),null,2));
   else if(cmd==='start'&&left&&right)console.log(JSON.stringify(startWindow(left,right,{arm:flag('--arm')??'baseline',sessionId:flag('--session')}),null,2));
   else if(cmd==='recover'&&left&&right)console.log(JSON.stringify(recoverWindow(left,right,{quiescent:extra.includes('--quiescent'),reason:flag('--reason')}),null,2));
   else if(cmd==='stop'&&left&&right)console.log(JSON.stringify(stopWindow(left,right,{success:extra.includes('--success')?true:extra.includes('--failed')?false:undefined,sessionId:flag('--session'),transcriptPath:flag('--transcript')}),null,2));
-  else if(cmd==='compare'&&left&&right)console.log(JSON.stringify(comparePilot(read(left),read(right),flag('--pricing')?read(flag('--pricing')):null),null,2));
-  else if(cmd==='compare-repeated'&&left&&right)console.log(JSON.stringify(compareRepeated(read(left),read(right),flag('--pricing')?read(flag('--pricing')):null,{repetitions:flag('--repetitions')?Number(flag('--repetitions')):3}),null,2));
-  else throw Error('Usage: benchmark.mjs cases | prepare CASE NEW_REPO | start CASE REPO [--arm baseline|hyperfusion] [--session ID] | stop CASE REPO --success|--failed [--session ID --transcript FILE] | compare BASELINE.json HYPERFUSION.json [--pricing PRICES.json] | compare-repeated CURRENT.json CANDIDATE.json [--repetitions 3] [--pricing PRICES.json]');
+  else if(cmd==='compare'&&left&&right)console.log(JSON.stringify(comparePilot(read(left),read(right),flag('--pricing')?read(flag('--pricing')):null,{suite}),null,2));
+  else if(cmd==='compare-repeated'&&left&&right)console.log(JSON.stringify(compareRepeated(read(left),read(right),flag('--pricing')?read(flag('--pricing')):null,{repetitions:flag('--repetitions')?Number(flag('--repetitions')):3,suite}),null,2));
+  else throw Error('Usage: benchmark.mjs cases [--suite core|large] | prepare CASE NEW_REPO [--source HYPERFUSION_CLONE] | start CASE REPO [--arm baseline|hyperfusion] [--session ID] | stop CASE REPO --success|--failed [--session ID --transcript FILE] | compare BASELINE.json HYPERFUSION.json [--suite core|large] [--pricing PRICES.json] | compare-repeated CURRENT.json CANDIDATE.json [--suite core|large] [--repetitions 3] [--pricing PRICES.json]');
  }catch(e){console.error(e.message);process.exitCode=1;}
 }
