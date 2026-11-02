@@ -169,7 +169,7 @@ Reference documents are primarily Korean. Start with [runtime](references/runtim
 |---|---|
 | State and commands | [runtime](references/runtime.md), [state-actions](references/state-actions.md), [state-schema](references/state-schema.json), [operations](references/operations.md) |
 | Configuration | [configuration](references/configuration.md), [codex-runtime](references/codex-runtime.md) |
-| Workers and routing | [executor-runtime](references/executor-runtime.md), [routing](references/routing.md) |
+| Workers and routing | [executor-runtime](references/executor-runtime.md), [routing](references/routing.md), [herdr](references/herdr.md) (optional observer panes) |
 | Contracts | [delegation-protocol](references/delegation-protocol.md), [result-protocol](references/result-protocol.md) |
 | Review | [review-protocol](references/review-protocol.md), [review-pairs](references/review-pairs.md), [finding-ledger](references/finding-ledger.md), [consult](references/consult.md), [read-only-work](references/read-only-work.md), [universal-supervisor](references/universal-supervisor.md) |
 | Failure and recovery | [failure-protocol](references/failure-protocol.md), [recovery-protocol](references/recovery-protocol.md), [reconciliation](references/reconciliation.md) |
