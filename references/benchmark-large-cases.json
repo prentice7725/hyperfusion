@@ -1,0 +1,135 @@
+[
+ {
+  "case_id": "HF-L01",
+  "suite": "large",
+  "kind": "code",
+  "difficulty": "high",
+  "source_commit": "8de1ecd54ee80cd931ebb29e9ead565a8de1744c",
+  "objective": "Add a read-only evidence packet and evidence search for the lead",
+  "criteria": [
+   "AC1: `evidence` returns risk signals for the current round (acceptance failure, skipped/unquiet/tree-changing runs, truncated output, environment failures, worker-reported failures and open items, changed-file mismatches, acceptance test changes, controller errors, verdict splits and single-reviewer blocking findings), each with the raw artifact name and SHA-256; per-code caps become explicit omitted counts with source pointers",
+   "AC2: `evidence-search` runs an in-memory BM25 search over controller-written evidence on every call, with redaction, byte budgets, whole-hit omission and symlink/size limits; dispatch prompts and state are excluded",
+   "AC3: `compare-repeated` reports optional `buried_defect_detected` per arm without changing guardrail completeness or reduction figures",
+   "AC4: both commands use the inspection path: no lock, state change, writes, model launch or code execution, and neither participates in approval"
+  ],
+  "acceptance": "The protected evidence-index tests pass",
+  "acceptance_command": "node --test tests/evidence-index.test.mjs",
+  "acceptance_tests": [
+   "tests/evidence-index.test.mjs"
+  ],
+  "editable": [
+   "scripts",
+   "references",
+   "README.md",
+   "CHANGELOG.md"
+  ],
+  "acceptance_timeout_ms": 300000
+ },
+ {
+  "case_id": "HF-L02",
+  "suite": "large",
+  "kind": "code",
+  "difficulty": "high",
+  "source_commit": "bfee12d90b51932b7a1523d72a4b69d8aa063ada",
+  "objective": "Route controller decisions through lead-family roles instead of hard-coded Sol, Sonnet and Haiku",
+  "criteria": [
+   "AC1: a new team-roles module derives the APEX member, the specialist, grant-only members, reserved members and delegable owners from the lead model",
+   "AC2: an Opus lead keeps the previous member names and every existing test passes unchanged",
+   "AC3: non-Claude leads review under family-rules-v1 with the team recorded in the assignment and must use lead-gated-adaptive review",
+   "AC4: strategy names and state records are unchanged; the lead is still the configured Opus"
+  ],
+  "acceptance": "The protected team-roles tests pass",
+  "acceptance_command": "node --test tests/team-roles.test.mjs",
+  "acceptance_tests": [
+   "tests/team-roles.test.mjs"
+  ],
+  "editable": [
+   "scripts",
+   "references",
+   "CHANGELOG.md"
+  ],
+  "acceptance_timeout_ms": 300000
+ },
+ {
+  "case_id": "HF-L03",
+  "suite": "large",
+  "kind": "code",
+  "difficulty": "high",
+  "source_commit": "3423105b315ef1734ae417a61cd5ccc5db605346",
+  "objective": "Let the host decide the lead model and lock its family for the task",
+  "criteria": [
+   "AC1: a lead-host module resolves the lead model from host hooks, then the operator's HF_LEAD_MODEL, then the configured Opus, and refuses conflicting families; a repository config can only keep lead:'opus'",
+   "AC2: the lead identity and grade are fixed at init and begin refuses a lead family change",
+   "AC3: non-Claude leads stay at grade C until their host is verified, which turns off delegation and takeover",
+   "AC4: Claude Code guard hooks block on failure, PreModelSwitch refuses cross-family switches during a task, and the Bash guard refuses lead-set HF_ALLOW_*/HF_LEAD_* relaxations",
+   "AC5: project plans check non-Claude teams by family rules"
+  ],
+  "acceptance": "The protected lead-host tests pass",
+  "acceptance_command": "node --test tests/lead-host.test.mjs",
+  "acceptance_tests": [
+   "tests/lead-host.test.mjs",
+   "tests/state.test.mjs"
+  ],
+  "editable": [
+   "scripts",
+   "references",
+   "SKILL.md",
+   "README.md",
+   "README.ko.md",
+   "README.ja.md",
+   "CHANGELOG.md",
+   "package.json"
+  ],
+  "acceptance_timeout_ms": 300000
+ },
+ {
+  "case_id": "HF-L04",
+  "suite": "large",
+  "kind": "code",
+  "difficulty": "high",
+  "source_commit": "501f3fbb1c04e5a65c333c90805bba26bf55ec62",
+  "objective": "Add a model registry and a family-based team composer as groundwork for host-agnostic leads",
+  "criteria": [
+   "AC1: a model registry maps models to the company family that made them; unknown models never count as independent of any other model",
+   "AC2: a team composer refuses a team with fewer than two families",
+   "AC3: the family-rules-v1 plan reproduces the cross-vendor-pairs-v1 reviewers and efforts for an Opus lead",
+   "AC4: legacy-v1 differs for Luna, Haiku and Sonnet when only AGY is present, so existing policies stay in review-plan.mjs; the new modules are not wired into the controller yet"
+  ],
+  "acceptance": "The protected team-composer tests pass",
+  "acceptance_command": "node --test tests/team-composer.test.mjs",
+  "acceptance_tests": [
+   "tests/team-composer.test.mjs"
+  ],
+  "editable": [
+   "scripts",
+   "CHANGELOG.md"
+  ],
+  "acceptance_timeout_ms": 300000
+ },
+ {
+  "case_id": "HF-L05",
+  "suite": "large",
+  "kind": "code",
+  "difficulty": "high",
+  "source_commit": "2e0a42d69af09a173025b01f5113148a323b256d",
+  "objective": "Add a read-only round-diff for re-review after REDO",
+  "criteria": [
+   "AC1: from round 2, begin stores the content of files that already differ from HEAD (text only, bounded) as round-base-N.json",
+   "AC2: a read-only round-diff command diffs that base against the current tree so the lead sees only what the redo round changed",
+   "AC3: missing or mismatched bases are reported instead of guessed",
+   "AC4: the round-diff output is not authoritative and approval still covers the cumulative diff"
+  ],
+  "acceptance": "The protected round-delta tests pass",
+  "acceptance_command": "node --test tests/round-delta.test.mjs",
+  "acceptance_tests": [
+   "tests/round-delta.test.mjs"
+  ],
+  "editable": [
+   "scripts",
+   "references",
+   "SKILL.md",
+   "CHANGELOG.md"
+  ],
+  "acceptance_timeout_ms": 300000
+ }
+]

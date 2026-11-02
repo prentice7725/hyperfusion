@@ -34,7 +34,7 @@ export function startWindow(caseId,root,{arm='baseline',sessionId}={}) {
   if(fs.existsSync(file))throw Error('BENCHMARK: this case already has a window; prepare a fresh fixture');
   const now=new Date().toISOString();
   const window={task_id:caseId,session,sessions:[session],started_at:now,controller_started_at:now,ended_at:null,
-   scope:'benchmark-window',benchmark:{case_id:caseId,arm,initial_tree:tree,fixture_id:manifest.fixture_id,acceptance_command:manifest.acceptance_command,protected_files:manifest.protected_files}};
+   scope:'benchmark-window',benchmark:{case_id:caseId,arm,initial_tree:tree,fixture_id:manifest.fixture_id,acceptance_command:manifest.acceptance_command,acceptance_timeout_ms:manifest.acceptance_timeout_ms??120000,protected_files:manifest.protected_files}};
   atomic(file,window);return window;
  }finally{unlock();}
 }
@@ -58,7 +58,7 @@ export function stopWindow(caseId,root,{success,sessionId,transcriptPath}={}) {
   }
   let acceptance=null;
   if(window.benchmark.arm==='baseline'&&success){
-   acceptance=runCommands(root,[window.benchmark.acceptance_command],{timeout_ms:120000});
+   acceptance=runCommands(root,[window.benchmark.acceptance_command],{timeout_ms:window.benchmark.acceptance_timeout_ms??120000});
    atomic(controlPath(root,'tasks',caseId,'benchmark-acceptance.json'),acceptance);
    if(acceptance.some(r=>!r.quiescence?.quiescent)){
     atomic(controlPath(root,'locks/acceptance.json'),{task_id:caseId,source:'benchmark',results:acceptance});
