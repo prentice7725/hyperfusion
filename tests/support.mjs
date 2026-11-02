@@ -9,6 +9,8 @@ import {repoId} from '../scripts/control-dir.mjs';
 
 // 테스트는 Claude Code 리드를 흉내 낸다. Claude Code 셸이 넣는 표시를 기본으로 둔다(다른 호스트 시험은 env를 직접 준다).
 process.env.CLAUDECODE??='1';
+// Herdr 안에서 테스트를 돌려도 픽스처 라운드마다 실제 관측 pane이 열리지 않게 끈다. 관측 시험은 값을 직접 넣는다.
+process.env.HYPERFUSION_HERDR='0';
 
 // 테스트 전용 대역 CLI. 실제 Grok/Antigravity 모델을 호출하지 않는다.
 const FAKE_COMMON=`#!/usr/bin/env node
