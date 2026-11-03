@@ -4,9 +4,17 @@
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.29.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.30.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 最近の変更
+
+**Unreleased**（mainにマージ済み、未リリース）
+
+- **すべての難易度でオートパイロット。** 受け入れコマンドがinitでredと確認された作業なら、`low`でなくても`next`が最初のラウンドに`autopilot`を勧めます。リードゲートとVERIFYで止まる点は変わりません。
+- **受け入れコマンドのない作業は別系統のレビューで閉じる。** `acceptance_commands`のない作業は、実装者とは別系統のモデルによる合格レビューがあって初めてCLOSEします（`SAME_FAMILY_REVIEW`、`SAME_FAMILY_VERIFICATION`）。
+- **レビュアーが保護された受け入れテストを見る。** 委任レビュアーは、テストがobjectiveとすべてのACを正しく検査しているかも判定します。
+- **任意のHerdr観測pane。** Herdr内で実行すると、ワーカーごとに読み取り専用のモニターpaneが開きます。→ [herdr](references/herdr.md)
+- **大きなベンチマーク課題セット。** `--suite large`（HF-L01〜L05）は実際の機能コミットから課題を作ります。→ [ベンチマーク](references/benchmark-pilot.md#large-suite-historical-feature-commits)
 
 **0.30.0**
 
@@ -116,7 +124,7 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 ## 測定
 
 - **リードの使用量。** 生成したフックがStop/SessionEnd/StopFailure時にローカルClaude Code transcriptから実際のモデルごとの使用量を収集します。証拠がなければ未測定とし、明示的な`TASK_USAGE.json`の観測を優先します。クライアントの報告値であり、課金APIではありません。→ [指標ポリシー](references/metrics-policy.md)
-- **ベンチマーク。** `benchmark.mjs cases`は固定パイロット課題を、`compare BASELINE.json HYPERFUSION.json`は実測のペア指標を比較します。失敗のコストも分子に入れ、ペア欠落・未測定があれば削減率を出しません。実モデルのパイロットは未実施なので、削減効果は主張しません。→ [反復ベンチマーク](references/benchmark-pilot.md)
+- **ベンチマーク。** `benchmark.mjs cases`は固定パイロット課題を、`compare BASELINE.json HYPERFUSION.json`は実測のペア指標を比較します。失敗のコストも分子に入れ、ペア欠落・未測定があれば削減率を出しません。`--suite large`は実際の機能コミットから作った課題を選びます。課題ごとに1回ずつヘッドレスで初めて実行した結果、小さな基本課題ではHyperFusionのリードが単独リードの1.75〜3倍のトークンを使い、大きな課題1件（HF-L01）ではリードのトークンが22%少ない一方、確認できた総コストは約1.5倍、時間は1.8倍でした。1回ずつの結果なので、削減効果は主張しません。→ [反復ベンチマーク](references/benchmark-pilot.md)
 
 ## セキュリティ
 
@@ -155,7 +163,7 @@ Claude CodeでOpus 5.5を選び：
 
 **リードガードフックの導入（推奨）。** `npm run guard:settings`が、このPCの絶対パスで書かれたフック設定（PreToolUse、Stop、SessionStart、UserPromptSubmit、PreModelSwitch、PostModelSwitch、SessionEnd、StopFailure）を出力します。ブロックするガードコマンドには`onFailure: "block"`（Claude Code v2.1.295以降）が付き、ガードが落ちたりタイムアウトしたりするとツール呼び出しがブロックされます。その`hooks`の項目を`~/.claude/settings.json`（または対象リポジトリの`.claude/settings.json`）にマージします。既存の導入でも各イベントの新しい使用量収集コマンド、MCPツールガード（`mcp__.*`）の項目、モデル切り替えの項目をマージしてください。他のフックを保持し、既存コマンドの重複を避けます。
 
-**オートパイロット。** 初期化済みの作業は`node scripts/fusion-state.mjs autopilot <リポジトリ>`でラウンド実行と独立した委任レビューを自動進行できます。リードが承認した`acceptance_commands`が必要で、基準ツリーで失敗が確認された（red）コマンドでなければなりません（保存検証の作業は逆に、すでに通ることが確認されている必要があります）。classicのレビューでは`review.auto_apply:true`も必要です（`lead-gated-adaptive`はどのみちリードゲートで止まるため要求しません）。VERIFY・設計判断・BLOCKED・takeoverではリードに制御を返し、プロセス停止・スナップショット・予算・検証の確認に失敗した場合も停止します。リードが裁量権を与えた作業は、コントローラが承認したラウンドのverifyまで進みます（[運用説明（韓国語）](references/operations.md#오토파일럿)）。
+**オートパイロット。** 初期化済みの作業は`node scripts/fusion-state.mjs autopilot <リポジトリ>`でラウンド実行と独立した委任レビューを自動進行できます。以下の条件を満たせば、難易度に関係なく`next`が最初のラウンドにこれを勧めます。リードが承認した`acceptance_commands`が必要で、基準ツリーで失敗が確認された（red）コマンドでなければなりません（保存検証の作業は逆に、すでに通ることが確認されている必要があります）。classicのレビューでは`review.auto_apply:true`も必要です（`lead-gated-adaptive`はどのみちリードゲートで止まるため要求しません）。VERIFY・設計判断・BLOCKED・takeoverではリードに制御を返し、プロセス停止・スナップショット・予算・検証の確認に失敗した場合も停止します。リードが裁量権を与えた作業は、コントローラが承認したラウンドのverifyまで進みます（[運用説明（韓国語）](references/operations.md#오토파일럿)）。
 
 受け入れテストでも子プロセスの停止を確認します。停止の証拠がなければRECOVERY_REQUIREDで止まり、リードの停止確認を待ちます。タスクの時間上限は受け入れテストと最終検証にも適用されます。
 
@@ -183,7 +191,7 @@ Claude CodeでOpus 5.5を選び：
 npm test
 ```
 
-自動テストが、状態機械、ワーカーアダプタ、配置、レビュー委任、裁量権と自動復旧、記憶層、プロジェクトの流れ、セキュリティ、マスキングとオートパイロットを確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 24で実行する構成です。Windowsではテストファイルを順次実行し（他のOSは並列度2）、実際に孤児プロセスを作る回帰テストは並列テストの後に別途実行します。`npm run spawns`がテスト（または指定したコマンド）の作る子プロセスをコマンド別・呼び出し箇所別に数えます。
+自動テストが、状態機械、ワーカーアダプタ、配置、レビュー委任、裁量権と自動復旧、記憶層、プロジェクトの流れ、セキュリティ、マスキングとオートパイロットを確認します。実際のCLIを使うスモーク1件は`HF_LIVE=1`の時だけ実行します。GitHub ActionsはUbuntu・Windows × Node 24で実行する構成です。Windowsではテストファイルを順次実行するため（Windows 1台で全体を回すと数時間かかります）、CIはWindowsのジョブをランナー4台に分けて実行し（`HF_TEST_SHARD`、他のOSは並列度2）、実際に孤児プロセスを作る回帰テストは並列テストの後に別途実行します。`npm run spawns`がテスト（または指定したコマンド）の作る子プロセスをコマンド別・呼び出し箇所別に数えます。
 
 **テストの`grok`/`agy`/`claude`/`codex`は代役のCLIです。** 実際のモデル呼び出し、認証、画像生成は、このリポジトリのテストでは検証されていません。インストール済みCLIに必要なフラグがない場合は、実行前に`ADAPTER_UNAVAILABLE`で拒否します。CLIフラグは[Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md)、[Antigravity CLI](https://antigravity.google/docs/cli/headless)、[Claude Code](https://code.claude.com/docs/en/headless)のドキュメントを基準にしています。裁量権の自動復旧が「やり直しても同じ失敗」を見分ける文言判定も代役CLIが基準なので、実際のCLIでは最初の数回、`recovery-*.json`の`reason`を確認することをおすすめします。実モデルの費用・時間削減は未測定です。
 
