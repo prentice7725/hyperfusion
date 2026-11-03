@@ -152,15 +152,19 @@ test('short review and finish inputs take flags; flags never silently override o
  assert.deepEqual(f.state().reviews.at(-1).commands_run,['git diff']);
 });
 
-test('next prefers autopilot only for a low task whose acceptance commands were proven red',t=>{
- for(const [difficulty,expected] of [['low','autopilot'],['medium',undefined]]){
+test('next prefers autopilot at any difficulty once acceptance commands were proven red',t=>{
+ for(const difficulty of ['low','medium','high']){
   const f=fixture(t,{initialize:false});
   run(f.root,'init',{...f.brief,executor:'grok',difficulty,acceptance_commands:['node -e "process.exit(1)"']});
   assert.equal(f.state().acceptance_baseline.status,'red');
   const n=run(f.root,'next',{});
-  assert.equal(n.prefer?.action,expected,difficulty);
-  if(expected)assert.match(n.prefer.command_line,/ autopilot "[^"]+"$/);
+  assert.equal(n.prefer?.action,'autopilot',difficulty);
+  assert.match(n.prefer.command_line,/ autopilot "[^"]+"$/);
  }
+ // 수용 명령이 없으면 오토파일럿이 거절하므로 권하지 않는다.
+ const f=fixture(t,{initialize:false});
+ run(f.root,'init',{...f.brief,executor:'grok',difficulty:'high'});
+ assert.equal(run(f.root,'next',{}).prefer,undefined);
 });
 
 test('next in a classic task points to review, and after a rejection to begin with the review findings',t=>{

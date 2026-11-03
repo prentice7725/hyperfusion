@@ -1937,14 +1937,15 @@ function nextStep(c) {
   case 'PLAN':case 'REDO':case 'ALTERNATIVE_REQUIRED':case 'TAKEOVER_REQUIRED':{
     const brief=c.optional(`brief-${s.iteration}.json`)?files(`brief-${s.iteration}.json`):files('initial-brief.json');
     const redo=s.phase!=='PLAN';
-    // 쉬운 작업이고 수용 명령이 기준 트리에서 실패한 것이 확인됐으면, 오토파일럿이 begin부터 독립 리뷰까지 한 명령으로 돈다.
-    // 단계마다 리드가 한 턴씩 쓰는 고정 비용을 줄이려는 것이다. 오토파일럿 자체의 조건 검사는 그대로다.
+    // 수용 명령이 기준 트리에서 실패한 것이 확인됐으면 난이도와 상관없이 오토파일럿이 begin부터 독립 리뷰까지 한 명령으로 돈다.
+    // 단계마다 리드가 한 턴씩 쓰는 고정 비용을 줄이려는 것이다(큰 과제 HF-L01에서 리드 호출 32번 중 10번 넘게가 단계 호출이었다).
+    // 승인은 여전히 리드 게이트·VERIFY에서 리드가 하고, 오토파일럿 자체의 조건 검사도 그대로다.
     const review=s.configuration.review??{};
-    const auto=!redo&&c.optional('initial-brief.json')?.difficulty==='low'&&s.acceptance_baseline?.status==='red'
+    const auto=!redo&&s.acceptance_baseline?.status==='red'
       &&(review.strategy==='lead-gated-adaptive'||review.auto_apply===true);
     return step({step:'begin: send the brief to the worker',action:'begin',command_line:line('begin',redo),
       ...(auto?{prefer:{action:'autopilot',command_line:`node "${SELF}" autopilot "${root}"`,
-        note:'Low difficulty with red-proven acceptance: autopilot runs begin, the worker, finish and the independent review in one command, then stops at VERIFY or a lead gate.'}}:{}),
+        note:'Red-proven acceptance: autopilot runs begin, the worker, finish and the independent review in one command, then stops at VERIFY or a lead gate.'}}:{}),
       input_from:brief,input_note:redo?'Add lead_feedback to that brief: "@review" forwards the review findings, or write concrete orders ({file,line,comment} allowed).':'Without input, begin uses the init brief as is.',
       ...(s.phase==='ALTERNATIVE_REQUIRED'?{choose:'executor: name a different worker, or omit to let the router pick'}:{}),
       ...(s.phase==='TAKEOVER_REQUIRED'?{choose:'takeover_reason is required'}:{}),
