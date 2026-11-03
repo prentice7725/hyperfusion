@@ -4,9 +4,17 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.29.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
+> **Versions.** The package release is `0.30.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
 
 ## Recent changes
+
+**Unreleased** (on main, not yet in a release)
+
+- **Autopilot at any difficulty.** `next` now suggests `autopilot` for the first round of any task whose acceptance commands init proved red, not only `low` tasks. It still stops at the lead gate and VERIFY.
+- **Cross-family close without acceptance commands.** A task without `acceptance_commands` closes only after a passing review from a model family other than the implementer's (`SAME_FAMILY_REVIEW`, `SAME_FAMILY_VERIFICATION`).
+- **Reviewers see the protected acceptance tests.** Delegated reviewers also judge whether the tests check the objective and every AC.
+- **Optional Herdr observer panes.** Inside Herdr, each worker gets a read-only monitor pane. See [herdr](references/herdr.md).
+- **Large benchmark suite.** `--suite large` (HF-L01–L05) builds cases from real feature commits. See [benchmark](references/benchmark-pilot.md#large-suite-historical-feature-commits).
 
 **0.30.0**
 
@@ -116,7 +124,7 @@ The lead sets criticality/strategy in the approved brief at init and checks `rev
 ## Measurement
 
 - **Lead usage.** Generated hooks collect actual per-model usage from the local Claude Code transcript on Stop/SessionEnd/StopFailure. Missing evidence stays unknown; explicit `TASK_USAGE.json` observations take precedence. This is client-reported usage, not a billing API. See [metrics policy](references/metrics-policy.md).
-- **Benchmarks.** `benchmark.mjs cases` lists fixed pilot cases; `compare BASELINE.json HYPERFUSION.json` compares actual paired metrics. Failed tasks stay in cost numerators, and missing pairs or unknown usage suppress savings claims. The pilot has not been run with live models, so no savings are claimed. See [repeated benchmark](references/benchmark-pilot.md).
+- **Benchmarks.** `benchmark.mjs cases` lists fixed pilot cases; `compare BASELINE.json HYPERFUSION.json` compares actual paired metrics. Failed tasks stay in cost numerators, and missing pairs or unknown usage suppress savings claims. `--suite large` selects cases built from real feature commits. First headless runs, one per case: on the small core cases the HyperFusion lead used 1.75–3× the solo lead tokens; on one large case (HF-L01) it used 22% fewer lead tokens but about 1.5× the known total cost and 1.8× the time. These are single runs, so no savings are claimed. See [repeated benchmark](references/benchmark-pilot.md).
 
 ## Security
 
@@ -155,7 +163,7 @@ The lead follows [SKILL.md](SKILL.md). From the installed skill directory, run `
 
 **Lead guard hooks.** Run `npm run guard:settings` in the skill directory and merge the printed `hooks` into `~/.claude/settings.json` or the target repository's `.claude/settings.json`. The output uses absolute paths and includes PreToolUse, Stop, SessionStart, UserPromptSubmit, PreModelSwitch, PostModelSwitch, SessionEnd and StopFailure. Blocking guard commands carry `onFailure: "block"` (Claude Code v2.1.295+), so a crashed or timed-out guard blocks the tool call. Existing installs must merge the new usage commands, the MCP tool guard (`mcp__.*`) entry and the model-switch entries as well; preserve unrelated hooks and avoid duplicating existing commands.
 
-**Autopilot.** Run `node scripts/fusion-state.mjs autopilot <repository>` for an initialized task. Acceptance commands must have a recorded red baseline, or a recorded green baseline for preserve verification. Classic review also requires `review.auto_apply:true`; adaptive review stops at the lead gate regardless of that setting. VERIFY, design decisions, recovery, BLOCKED, and takeover return control to the lead. Explicit discretion can continue eligible policy-approved work through verification to CLOSE. See [operations](references/operations.md#오토파일럿).
+**Autopilot.** Run `node scripts/fusion-state.mjs autopilot <repository>` for an initialized task; `next` suggests it for the first round at any difficulty when these conditions hold. Acceptance commands must have a recorded red baseline, or a recorded green baseline for preserve verification. Classic review also requires `review.auto_apply:true`; adaptive review stops at the lead gate regardless of that setting. VERIFY, design decisions, recovery, BLOCKED, and takeover return control to the lead. Explicit discretion can continue eligible policy-approved work through verification to CLOSE. See [operations](references/operations.md#오토파일럿).
 
 Acceptance execution also requires child-process shutdown proof. Missing proof stops at RECOVERY_REQUIRED. Time limits cover acceptance and final verification too.
 
@@ -183,7 +191,7 @@ Reference documents are primarily Korean. Start with [runtime](references/runtim
 npm test
 ```
 
-Automated tests cover state transitions, adapters, routing, reviews, discretion/recovery, memory, project workflows, security, redaction, and autopilot. Live CLI tests require `HF_LIVE=1`. CI is configured for Ubuntu/Windows × Node 24. Windows runs test files serially; other platforms use concurrency 2. Tests creating actual orphan processes run separately after the main suite. `npm run spawns` counts subprocesses by command and calling site.
+Automated tests cover state transitions, adapters, routing, reviews, discretion/recovery, memory, project workflows, security, redaction, and autopilot. Live CLI tests require `HF_LIVE=1`. CI is configured for Ubuntu/Windows × Node 24. Windows runs test files serially (a full run on one Windows machine takes hours), so CI splits the Windows job across four runners (`HF_TEST_SHARD`); other platforms use concurrency 2. Tests creating actual orphan processes run separately after the main suite. `npm run spawns` counts subprocesses by command and calling site.
 
 **The test `grok`/`agy`/`claude`/`codex` executables are fake CLIs.** These tests do not validate live model quality, authentication, or image generation. Missing required CLI flags cause `ADAPTER_UNAVAILABLE` before execution. Adapter flags follow the cited [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), and [Claude Code](https://code.claude.com/docs/en/headless) documentation. Transient-error classification is based on fake-CLI coverage; inspect early live `recovery-*.json` reasons. Real-model cost/time savings are unmeasured.
 

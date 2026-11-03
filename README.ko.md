@@ -4,9 +4,17 @@
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.29.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.30.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 최근 변경
+
+**Unreleased** (main에 머지됨, 아직 릴리스 전)
+
+- **모든 난이도에서 오토파일럿.** 수용 명령이 init에서 red로 확인된 작업이면 `low`가 아니어도 `next`가 첫 라운드에 `autopilot`을 권한다. 리드 게이트와 VERIFY에서 멈추는 것은 그대로다.
+- **수용 명령 없는 작업은 다른 계열 리뷰로 닫힌다.** `acceptance_commands`가 없는 작업은 구현자와 다른 계열 모델의 통과 리뷰가 있어야 CLOSE된다(`SAME_FAMILY_REVIEW`, `SAME_FAMILY_VERIFICATION`).
+- **리뷰어가 보호된 수용 테스트를 본다.** 위임 리뷰어가 테스트가 objective와 모든 AC를 제대로 검사하는지도 판정한다.
+- **선택적 Herdr 관측 pane.** Herdr 안에서 실행하면 일꾼마다 읽기 전용 모니터 pane이 열린다. → [herdr](references/herdr.md)
+- **큰 벤치마크 과제 묶음.** `--suite large`(HF-L01~L05)는 실제 기능 커밋으로 과제를 만든다. → [벤치마크](references/benchmark-pilot.md#large-suite-historical-feature-commits)
 
 **0.30.0**
 
@@ -116,7 +124,7 @@ CLOSE까지 가야 성공이다. 어느 단계에서든 지금 칠 명령은 `no
 ## 측정
 
 - **리드 사용량.** 생성된 훅이 Stop/SessionEnd/StopFailure 때 로컬 Claude Code transcript의 실제 모델별 사용량을 수집한다. 증거가 없으면 미측정으로 남기며 명시적인 `TASK_USAGE.json` 관측이 우선한다. 클라이언트 보고치이며 청구 API가 아니다. → [지표 정책](references/metrics-policy.md)
-- **벤치마크.** `benchmark.mjs cases`는 고정 파일럿 과제를, `compare BASELINE.json HYPERFUSION.json`은 실제 paired 지표를 비교한다. 실패 비용도 분자에 넣고, 쌍 누락·미측정이 있으면 절감률을 내지 않는다. 실모델 파일럿은 아직 실행하지 않아 절감 효과를 주장하지 않는다. → [반복 벤치마크](references/benchmark-pilot.md)
+- **벤치마크.** `benchmark.mjs cases`는 고정 파일럿 과제를, `compare BASELINE.json HYPERFUSION.json`은 실제 paired 지표를 비교한다. 실패 비용도 분자에 넣고, 쌍 누락·미측정이 있으면 절감률을 내지 않는다. `--suite large`는 실제 기능 커밋으로 만든 과제를 고른다. 과제당 한 번씩 헤드리스로 처음 돌려 본 결과, 작은 기본 과제에서는 HyperFusion 리드가 단독 리드의 1.75~3배 토큰을 썼고, 큰 과제 하나(HF-L01)에서는 리드 토큰이 22% 적었지만 확인된 전체 비용은 약 1.5배, 시간은 1.8배였다. 한 번씩 돌린 결과라 절감 효과를 주장하지 않는다. → [반복 벤치마크](references/benchmark-pilot.md)
 
 ## 보안
 
@@ -155,7 +163,7 @@ Claude Code에서 Opus 5.5를 고르고:
 
 **리드 가드 훅 설치(권장).** `npm run guard:settings`가 이 PC의 절대 경로로 된 훅 설정(PreToolUse, Stop, SessionStart, UserPromptSubmit, PreModelSwitch, PostModelSwitch, SessionEnd, StopFailure)을 출력한다. 막는 가드 명령에는 `onFailure: "block"`(Claude Code v2.1.295 이상)이 붙어, 가드가 죽거나 시간을 넘기면 도구 호출이 막힌다. 그 `hooks` 항목을 `~/.claude/settings.json`(또는 대상 저장소의 `.claude/settings.json`)에 합친다. 기존 설치도 각 이벤트의 새 사용량 수집 명령, MCP 도구 가드(`mcp__.*`) 항목, 모델 전환 항목을 합쳐야 한다. 다른 훅은 보존하고 기존 명령은 중복 추가하지 않는다.
 
-**오토파일럿.** 초기화된 작업은 `node scripts/fusion-state.mjs autopilot <저장소>`로 라운드 실행과 독립 위임 리뷰를 자동 진행할 수 있다. 리드가 정한 `acceptance_commands`가 있어야 하고, 기준 트리에서 실패가 확인된(red) 명령이어야 한다(보존 검증 작업은 반대로 이미 통과가 확인돼야 한다). classic 리뷰에서는 `review.auto_apply:true`도 필요하다(`lead-gated-adaptive`는 어차피 리드 게이트에서 멈추므로 요구하지 않는다). VERIFY·설계 결정·BLOCKED·takeover에서 리드에게 제어를 돌려주며, 정지·스냅샷·예산·검증 확인에 실패하면 멈춘다. 리드가 재량권을 준 작업은 컨트롤러가 승인한 라운드의 verify까지 이어 간다([운영 설명](references/operations.md#오토파일럿)).
+**오토파일럿.** 초기화된 작업은 `node scripts/fusion-state.mjs autopilot <저장소>`로 라운드 실행과 독립 위임 리뷰를 자동 진행할 수 있다. 아래 조건을 갖추면 난이도와 상관없이 `next`가 첫 라운드에 이것을 권한다. 리드가 정한 `acceptance_commands`가 있어야 하고, 기준 트리에서 실패가 확인된(red) 명령이어야 한다(보존 검증 작업은 반대로 이미 통과가 확인돼야 한다). classic 리뷰에서는 `review.auto_apply:true`도 필요하다(`lead-gated-adaptive`는 어차피 리드 게이트에서 멈추므로 요구하지 않는다). VERIFY·설계 결정·BLOCKED·takeover에서 리드에게 제어를 돌려주며, 정지·스냅샷·예산·검증 확인에 실패하면 멈춘다. 리드가 재량권을 준 작업은 컨트롤러가 승인한 라운드의 verify까지 이어 간다([운영 설명](references/operations.md#오토파일럿)).
 
 수용 테스트도 자식 프로세스 종료를 확인한다. 종료 증거가 없으면 RECOVERY_REQUIRED에서 멈추고 리드의 정지 확인을 기다린다. 작업 시간 상한은 수용 테스트와 최종 검증에도 적용된다.
 
@@ -183,7 +191,7 @@ Claude Code에서 Opus 5.5를 고르고:
 npm test
 ```
 
-자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 재량권과 자동 복구, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 24에서 실행하도록 구성돼 있다. Windows에서는 테스트 파일을 순차 실행하고(다른 OS는 병렬도 2), 실제 고아 프로세스를 만드는 회귀 테스트는 병렬 테스트 뒤에 따로 돌린다. `npm run spawns`가 테스트(또는 지정한 명령)가 만드는 하위 프로세스를 명령별·호출 지점별로 센다.
+자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 재량권과 자동 복구, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 24에서 실행하도록 구성돼 있다. Windows에서는 테스트 파일을 순차 실행하므로(Windows 한 대로 전체를 돌리면 몇 시간 걸린다) CI는 Windows 작업을 러너 4대로 나눠 돌리고(`HF_TEST_SHARD`, 다른 OS는 병렬도 2), 실제 고아 프로세스를 만드는 회귀 테스트는 병렬 테스트 뒤에 따로 돌린다. `npm run spawns`가 테스트(또는 지정한 명령)가 만드는 하위 프로세스를 명령별·호출 지점별로 센다.
 
 **테스트의 `grok`/`agy`/`claude`/`codex`는 대역 CLI다.** 실제 모델 호출, 인증, 이미지 생성은 이 저장소의 테스트로 검증되지 않았다. 설치된 CLI에 필요한 플래그가 없으면 실행 전에 `ADAPTER_UNAVAILABLE`로 거절한다. CLI 플래그는 [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), [Claude Code](https://code.claude.com/docs/en/headless) 문서를 기준으로 했다. 재량권의 자동 복구가 "다시 해도 같은 실패"를 가려내는 문구 판별은 대역 CLI 기준이라, 실제 CLI에서 처음 몇 번은 `recovery-*.json`의 `reason`을 확인하는 것이 좋다. 실모델 비용·시간 절감은 미측정이다.
 
