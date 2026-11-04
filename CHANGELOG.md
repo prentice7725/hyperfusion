@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Codex 샌드박스 감지가 일꾼의 실제 문구를 잡는다. L01 run 5에서 Terra가 "could not spawn its child process: EPERM"처럼 spawn과 EPERM 사이에 말을 넣어 적었고, 정규식이 이를 놓쳐 Codex 일꾼에서 빠지지 않고 Terra에게 REDO가 다시 갔다. 이제 한 줄 안에서 80자 이내면 순서와 상관없이 잡는다.
 - Codex 샌드박스 실패 시 작업을 Codex 일꾼에서 뺀다. L01 재실행(등급제)에서 Terra가 Windows 샌드박스에 세 라운드 연속 막혀 리드가 매번 손으로 복구했고, 리드 사용량이 4.5배로 늘었다.
   - 이제 브리지의 `CODEX_WINDOWS_SANDBOX` 실패나 Codex 일꾼이 보고한 샌드박스 환경 실패(`spawn EPERM` 등)가 `sandbox-failure-N.json`으로 남는다.
   - 그 작업이 끝날 때까지 Terra와 Luna는 설치되지 않은 것처럼 다룬다. 복구 후 교체 일꾼은 Codex가 아닌 일꾼 중에서 고르고, 리드 게이트·`lead-decision`·반려 위임은 그 일꾼에게 REDO를 권하거나 받아들이지 않는다.

@@ -62,7 +62,9 @@ export const WINDOWS_SANDBOX_ENV='HF_CODEX_WINDOWS_SANDBOX';
 // 한 작업에서 Codex 샌드박스가 한 번 막히면 그대로 재시도해도 똑같이 막힌다(SANDBOX_HINT). 작업 폴더에 sandbox-failure-N.json을 남기고,
 // 컨트롤러는 그 작업이 끝날 때까지 같은 CLI를 쓰는 일꾼(Terra, Luna)을 설치 안 된 것처럼 다룬다.
 // 일꾼이 보고한 환경 실패 중 샌드박스가 하위 프로세스를 막은 흔적(spawn EPERM 등)도 같은 신호로 본다.
-export const SANDBOX_REPORT=/CODEX_WINDOWS_SANDBOX|\bspawn\w*\s+EPERM\b|\bEPERM\b.*\bspawn|windows sandbox|CreateProcess(?:AsUser|WithLogon)W failed/i;
+// 일꾼은 자기 말로 적는다: "could not spawn its child process: EPERM", "child-process spawn with EPERM"(Terra, 2026-11-05 L01).
+// 그래서 spawn과 EPERM이 한 줄 안에서 80자 이내로 붙어 있으면 순서와 상관없이 잡는다.
+export const SANDBOX_REPORT=/CODEX_WINDOWS_SANDBOX|\bspawn\w*\b[^\n]{0,80}\bEPERM\b|\bEPERM\b[^\n]{0,80}\bspawn|windows sandbox|CreateProcess(?:AsUser|WithLogon)W failed/i;
 export const sandboxFailureFile=n=>`sandbox-failure-${n}.json`;
 // 실측(Windows, codex-cli 0.162.0): 패키지판(MSIX) pwsh는 CreateProcessAsUserW failed: 5로 막히고 cmd.exe·Windows PowerShell은 뜬다.
 // `winget install --id Microsoft.PowerShell --source winget`도 이 패키지판을 설치했다(경로 WindowsApps\Microsoft.PowerShell_8wekyb3d8bbwe).

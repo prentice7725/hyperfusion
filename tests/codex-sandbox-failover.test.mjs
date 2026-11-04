@@ -8,6 +8,7 @@ import {execute} from '../scripts/executor-bridge.mjs';
 import {result as validateResult,environmentFailure} from '../scripts/contracts.mjs';
 import {ACCEPTANCE} from '../scripts/adapters/common.mjs';
 import {MEMBERS} from '../scripts/member-registry.mjs';
+import {SANDBOX_REPORT} from '../scripts/codex-sandbox.mjs';
 
 // 2026-11-04 L01: Terra가 Codex의 Windows 샌드박스에 세 라운드 연속 막혔고 리드가 매번 손으로 복구했다.
 // 한 번 막히면 그 작업에서는 같은 CLI(Codex: Terra, Luna)를 쓰지 않고 다른 일꾼으로 넘긴다.
@@ -53,6 +54,28 @@ test('a Codex worker that reports spawn EPERM is not sent back, and the lead can
  const out=run(f.root,'consult-finish',{quiescent:true}).review;
  assert.notEqual(out.recommendation,'REDO');
  assert.throws(()=>run(f.root,'lead-decision',{decision:'REDO',rationale:'AC1 fails',baseline_digest:f.state().post_digest,contract_change:false}),/CODEX_WINDOWS_SANDBOX/);
+});
+
+test('the sandbox report matches how workers actually word a blocked spawn',()=>{
+ // 2026-11-05 L01: Terra가 이렇게 적었고, 예전 정규식은 둘 다 놓쳐 리드가 Terra에게 다시 REDO했다.
+ for(const said of [
+  'The test runner could not spawn its child process: EPERM.',
+  '12 of 13 tests passed; the CLI fixture could not spawn git: EPERM (operation not permitted).',
+  "The sandbox refused the Node test runner's child-process spawn with EPERM.",
+  'Error: spawn EPERM',
+  'EPERM: operation not permitted, spawn node.exe',
+ ])assert.match(said,SANDBOX_REPORT,said);
+ for(const said of ['EPERM: operation not permitted, open C:\\x\\y.lock','spawn ENOENT git','network unreachable',
+  'spawn failed\nlater an unrelated EPERM on a file write'])assert.doesNotMatch(said,SANDBOX_REPORT,said);
+});
+
+test('Terra wording from a failed round still moves the task off Codex',t=>{
+ const f=fixture(t,{executor:'terra'});
+ f.begin();
+ const r=f.result();r.status='failed';r.tests=[{command:'node --test tests/evidence-index.test.mjs',status:'fail',environment_error:'The test runner could not spawn its child process: EPERM.'}];
+ f.finish(r);
+ assert.equal(JSON.parse(fs.readFileSync(task(f,'sandbox-failure-1.json'),'utf8')).source,'worker-report');
+ assert.match(run(f.root,'status',{}).unavailable.terra??'',/CODEX_WINDOWS_SANDBOX/);
 });
 
 test('other environment failures and non-Codex workers do not block a CLI',t=>{
