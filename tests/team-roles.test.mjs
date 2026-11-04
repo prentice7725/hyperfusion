@@ -8,11 +8,14 @@ const ALL={grok:1,antigravity:1,sonnet:1,haiku:1,luna:1};
 const conf=(lead_model,extra={})=>({lead_model,routing:{policy:'external-first'},review:{strategy:'lead-gated-adaptive',reviewers:['sol','sonnet','antigravity','grok','luna','haiku']},external:{available:Object.keys(ALL)},...extra});
 const take=(c,input)=>takeAssignment(c,{...input});
 
-test('an Opus lead keeps the old fixed names for every role',()=>{
+test('an Opus lead keeps the fixed names for every seat; A-tier Sonnet implements without a grant',()=>{
  const c=conf('claude-opus-5-5');
  assert.equal(apexMember(c),'sol');assert.equal(specialistMember(c),'sonnet');
- assert.deepEqual(grantOnlyMembers(c),['sonnet','sol']);assert.deepEqual(reservedMembers(c),['haiku']);
- assert.deepEqual(delegableOwners(c),['grok','antigravity','haiku','luna']);assert.deepEqual(excludedMembers(c),[]);
+ assert.deepEqual(grantOnlyMembers(c),['sol']);assert.deepEqual(reservedMembers(c),['haiku']);
+ assert.deepEqual(delegableOwners(c),['grok','antigravity','sonnet','haiku','luna','terra']);
+ assert.equal(automaticImplementer(c,'sonnet'),true);assert.equal(automaticImplementer(c,'terra'),true);assert.equal(automaticImplementer(c,'sol'),false);
+ // Haiku는 B급 일꾼이라 운영자가 claude_reserve를 켤 때만 자동 후보에서 빠진다.
+ assert.equal(automaticImplementer(c,'haiku'),true);assert.equal(automaticImplementer({...c,routing:{...c.routing,claude_reserve:true}},'haiku'),false);assert.deepEqual(excludedMembers(c),[]);
  assert.equal(compatibleLead(c),true);
  // 레지스트리에 없는 이전 Opus도 계열은 접두사로 anthropic이다.
  assert.equal(apexMember(conf('claude-opus-4-7')),'sol');
@@ -22,12 +25,16 @@ test('a Codex lead swaps the specialist and the APEX seat',()=>{
  const astra=conf('gpt-6.1-astra');
  assert.equal(apexMember(astra),'sonnet');assert.equal(specialistMember(astra),'sol');assert.deepEqual(reservedMembers(astra),['luna']);
  assert.equal(automaticImplementer(astra,'haiku'),true);
- for(const name of ['luna','sonnet','sol'])assert.equal(automaticImplementer(astra,name),false,name);
+ for(const name of ['sonnet','sol'])assert.equal(automaticImplementer(astra,name),false,name);
+ assert.equal(automaticImplementer(astra,'luna'),true);
  const sol=conf('gpt-6.1-sol-high');
- assert.deepEqual(excludedMembers(sol),['sol']);assert.equal(specialistMember(sol),null);
- assert.throws(()=>take(sol,{task_criticality:'important',assignment_strategy:'sonnet_implementation',assignment_reason:'x'}),/no eligible member/);
+ // Sol 리드에서는 같은 계열 frontier인 Terra가 전문가 자리다.
+ assert.deepEqual(excludedMembers(sol),['sol']);assert.equal(specialistMember(sol),'terra');
+ assert.equal(take(sol,{task_criticality:'important',assignment_strategy:'sonnet_implementation',assignment_reason:'x'}).authorized_implementer,'terra');
  const argon=conf('gemini-4-argon');
- assert.equal(automaticImplementer(argon,'antigravity'),false);assert.equal(automaticImplementer(argon,'haiku'),true);
+ // 리드 계열 일반 일꾼은 claude_reserve를 켰을 때만 자동 후보에서 빠진다.
+ assert.equal(automaticImplementer(argon,'antigravity'),true);assert.equal(automaticImplementer(argon,'haiku'),true);
+ assert.equal(automaticImplementer({...argon,routing:{...argon.routing,claude_reserve:true}},'antigravity'),false);
  assert.equal(specialistMember(argon),'sonnet');
 });
 
@@ -39,7 +46,7 @@ test('a non-Claude lead records its team and reviews by family rules',()=>{
  assert.deepEqual(a.team,{lead_model:'gpt-6.1-astra',candidates:['grok','antigravity','sonnet','haiku','luna','sol']});
  assert.equal(sameAssignment(a,{...a,team:{...a.team,candidates:['luna','sol']}}),false);
  const plan=planReview('haiku',a);
- assert.deepEqual(plan.reviewers,['sol','grok']);assert.deepEqual(plan.effort,{sol:'medium',grok:'xhigh'});
+ assert.deepEqual(plan.reviewers,['sol','grok']);assert.deepEqual(plan.effort,{sol:'xhigh',grok:'xhigh'});
  assert.equal(plan.families.haiku,'anthropic');
  // 작성자와 같은 계열은 바꿔 끼운 자리도 채우지 못한다.
  assert.throws(()=>panelSeats(plan,{asked:['sonnet','grok'],reason:'quota'}),/same-vendor/);

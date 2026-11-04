@@ -37,7 +37,7 @@ v0.3 신규 작업용 설정은 [hyperfusion.v03.config.example.json](../hyperfu
 
 ## 리뷰 주체
 
-`"review": {"by": "lead" | "delegate", "reviewers": ["sol","sonnet","antigravity","grok","luna","haiku"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. `strategy: "lead-gated-adaptive"`에서는 `auto_apply`가 판정을 VERIFY로 넘기지 않는다. Codex 팀원 설정은 `executors.sol` / `executors.luna`의 `model`과 `reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 기본 모델은 sol `gpt-6.1-sol`, luna `gpt-6-luna`이다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
+`"review": {"by": "lead" | "delegate", "reviewers": ["sol","sonnet","grok"], "auto_apply": true}`. 기본은 `lead`(Opus가 직접 리뷰)다. `delegate`면 다른 모델이 읽기 전용으로 판정하고 그 판정이 적용된다. `strategy: "lead-gated-adaptive"`에서는 `auto_apply`가 판정을 VERIFY로 넘기지 않는다. Codex 팀원 설정은 `executors.sol` / `executors.luna`의 `model`과 `reasoning_effort`(minimal|low|medium|high|xhigh)로 한다. 기본 모델은 sol `gpt-6.1-sol`, luna `gpt-6-luna`이다. 실행 파일은 `HF_CODEX_BIN`. 자세한 건 [review-protocol.md](review-protocol.md).
 
 `review.risk_paths`는 바뀌면 리드가 직접 확인해야 하는 경로 글롭이다. 기본은 `["**/auth/**","**/migrations/**","**/*.sql","**/security/**",".github/workflows/**"]`, `[]`이면 끈다. 라운드의 변경 파일이 하나라도 맞으면 classic에서는 위임 리뷰의 pass를 `auto_apply`여도 바로 적용하지 않고, adaptive에서는 그 라운드를 [중요 작업의 독립 페어](review-pairs.md)로 리뷰하며 APPROVE에 리드의 직접 리뷰(`diff_reviewed`, `tests_checked`, `changed_scope`)를 요구한다. 설정은 init 때 고정되며 기록된 작업 등급(`assignment.json`)은 바꾸지 않는다.
 
@@ -102,12 +102,12 @@ Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model 
 |---|---|---|
 | Sonnet, Haiku (Claude Code) | `--effort` | `low`, `medium`, `high`, `xhigh`, `max` |
 | Antigravity Gemini (agy) | effort를 포함한 `--model` 슬러그(모델이 없으면 보내지 않음) 또는 custom/Claude 모델의 `--effort` | `low`, `medium`, `high` |
-| Grok | `--reasoning-effort` | `low`, `medium`, `high`, `xhigh`, `max` (도움말에 값 목록이 없어 Claude와 같게 둠) |
-| Luna, Sol (Codex) | `-c model_reasoning_effort=…` | `minimal`, `low`, `medium`, `high`, `xhigh` |
+| Grok | `--reasoning-effort` | `high`, `xhigh` (Grok 4.7) |
+| Terra, Luna, Sol (Codex) | `-c model_reasoning_effort=…` | `minimal`, `low`, `medium`, `high`, `xhigh` |
 
-기본값은 Sonnet `high`, Haiku `max`, Antigravity `high`, Grok `medium`, Luna `xhigh`, Sol `medium`이다. Grok 구현과 일반 리뷰·상담은 모든 난이도(누락 포함)에서 기본 `medium`이며 난이도로 자동 상승하지 않는다. 단, 새 adaptive 페어 정책의 Grok 리뷰 자리에는 역할별 `xhigh`가 적용되며 전역 기본값이나 이후 구현 라운드는 바뀌지 않는다. 설정에 값을 적으면 일반 기본값을 덮어쓰고, `null`을 적으면 일반 플래그를 넘기지 않고 CLI 기본값을 쓴다(필수 리뷰 역할의 강도는 해제하지 않음). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
+구현 기본값은 A급 Terra `medium`, Grok `high`, Sonnet `medium`, B급 Luna `xhigh`, Haiku `max`, Antigravity `gemini-3.8-flash-high`이다. 리뷰 자리는 Sol `xhigh`, Sonnet `max`, Grok `xhigh`로 구현 강도와 따로 간다(클래식 위임 리뷰도 같다). Grok 구현과 상담은 모든 난이도에서 `high`이며, 리뷰 자리 강도는 전역 기본값이나 이후 구현 라운드를 바꾸지 않는다. 운영자가 강도를 직접 적은 일꾼은 클래식 리뷰에서도 그 값을 쓴다. 설정에 값을 적으면 일반 기본값을 덮어쓰고, `null`을 적으면 일반 플래그를 넘기지 않고 CLI 기본값을 쓴다(필수 리뷰 역할의 강도는 해제하지 않음). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
 
-기존 설정에 `executors.grok.reasoning_effort:"xhigh"`를 적었다면 그 명시값은 유지된다. 새 기본값을 사용하려면 해당 키를 지우거나 `"medium"`으로 바꾸고 새 작업을 init한다. 진행 중 작업의 고정된 설정은 변경하지 않는다. CLI 기본값으로 위임하는 `null`은 `medium` 지정과 다르다.
+기존 설정에 `executors.grok.reasoning_effort:"medium"`처럼 Grok 4.7이 받지 않는 값을 적었다면 설정 단계에서 `EFFORT_UNSUPPORTED`로 거절된다. 해당 키를 지우거나 `"high"`로 바꾸고 새 작업을 init한다. 진행 중 작업의 고정된 설정은 변경하지 않는다. CLI 기본값으로 위임하는 `null`은 `high` 지정과 다르다.
 
 ## AGY 모델 계열과 effort 분리 (Argon)
 

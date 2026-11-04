@@ -12,12 +12,13 @@ import {apexMember,specialistMember,reservedMembers,compatibleLead} from './team
 
 export const CRITICALITIES=['standard','important','apex'];
 export const ASSIGNMENT_STRATEGIES=['external_primary','dual_review','sonnet_implementation','sol_apex'];
-const OWNERS=['grok','antigravity','haiku','luna','sonnet','sol','lead'];
+const OWNERS=['grok','antigravity','haiku','luna','terra','sonnet','sol','lead'];
 
 // 이름을 받아 적기만 하면 승인된 것처럼 보이므로 아직 거절한다.
 const LATER=['explicit_repair'];
 // 기본 리뷰어의 강도. 바꿔 낀 리뷰어도 같은 값을 쓰고, 표에 없으면 설정값을 쓴다.
-export const REVIEW_EFFORT={sol:'medium',sonnet:'high'};
+// 리뷰 자리는 구현 강도와 따로 간다: Sol xhigh, Sonnet max, Grok xhigh(구현은 Sonnet medium, Grok high).
+export const REVIEW_EFFORT={sol:'xhigh',sonnet:'max',grok:'xhigh'};
 export const PAIRED_REVIEW_POLICY='cross-vendor-pairs-v1';
 export const LEGACY_REVIEW_POLICY='legacy-v1';
 // 비 Claude 리드의 일반 규칙. 배정에 기록된 팀(리드 모델·후보)으로 다시 계산한다.
@@ -39,13 +40,15 @@ export function planReview(owner,assignment={review_policy:PAIRED_REVIEW_POLICY}
  const paired=review_policy===PAIRED_REVIEW_POLICY;
  const dual=raised&&(paired?!['sol','lead'].includes(owner):(owner==='grok'||owner==='antigravity'));
  let reviewers;
- if(dual&&paired)reviewers=owner==='grok'?['sol','sonnet']:owner==='luna'?['sonnet','grok']:['sol','grok'];
- else if(dual)reviewers=['sol','sonnet'];
- else if(owner==='luna')reviewers=['sonnet'];
+ // OpenAI 일꾼(Luna·Terra)은 Sol과 같은 계열이라 Sonnet이 첫 자리다.
+ const openai=owner==='luna'||owner==='terra';
+ if(dual&&paired)reviewers=owner==='grok'?['sol','sonnet']:openai?['sonnet','grok']:['sol','grok'];
+ else if(dual)reviewers=openai?['sonnet','grok']:['sol','sonnet'];
+ else if(openai)reviewers=['sonnet'];
  else if(owner==='sol')reviewers=['lead'];
  else reviewers=['sol'];
  if(reviewers.includes(owner))throw Error('ADAPTIVE_REVIEW: self-review is refused');
- if(owner==='luna'&&reviewers.includes('sol'))throw Error('ADAPTIVE_REVIEW: Sol cannot independently review Luna');
+ if(openai&&reviewers.includes('sol'))throw Error('ADAPTIVE_REVIEW: Sol cannot independently review '+(owner==='luna'?'Luna':'Terra'));
  if(owner==='haiku'&&reviewers.includes('sonnet'))throw Error('ADAPTIVE_REVIEW: Sonnet cannot replace Sol for a Haiku round');
  if(owner==='sonnet'&&reviewers.includes('sonnet'))throw Error('ADAPTIVE_REVIEW: Sonnet cannot review its own round');
  return {owner,criticality,strategy,review_policy,reviewers,effort:reviewEffort(reviewers,{deepGrok:paired&&dual}),risk:[...risk]};
@@ -177,16 +180,17 @@ export function sameGrant(recorded,grant) {
  return fields.every(k=>recorded[k]===grant[k]);
 }
 
-// 옵트인 작업에서 grant 전용 일꾼(Opus 리드면 Sonnet/Sol) 구현은 소모되지 않은 컨트롤러 승인이 있을 때만 연다.
+// 옵트인 작업에서 grant 전용 일꾼(Opus 리드면 Sol) 구현은 소모되지 않은 컨트롤러 승인이 있을 때만 연다.
+// A급 Sonnet은 승인 없이 구현하지만, 리드가 연 승인(중요 작업·재배정)이 있으면 그 라운드가 승인을 소모하고 승인의 강도로 돈다.
 export function assertImplementRound(state,owner) {
  const c=state?.configuration;
  if(c?.review?.strategy!=='lead-gated-adaptive'){
   if(externalFirst(c)&&grantOnly(c).includes(owner))throw Error('ROLE_GATE: '+owner+' requires adaptive controller authorization');
   return null;
  }
- if(!grantOnly(c).includes(owner))return null;
  const grant=state.implement_grant;
  const open=grant&&grant.executor===owner&&grant.role==='implement'&&grant.round==null&&grant.set_by==='controller';
+ if(!grantOnly(c).includes(owner)&&!open)return null;
  if(!open)throw Error(`ROLE_GATE: ${owner} needs an unconsumed controller implement grant`);
  const profile=grantProfile(owner);
  if(owner===apexMember(c)&&!(grant.strategy==='sol_apex'&&grant.sandbox===profile.sandbox&&grant.criticality==='apex'&&grant.effort===profile.effort)){

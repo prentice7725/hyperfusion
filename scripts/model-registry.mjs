@@ -13,8 +13,10 @@ export const MODELS={
  'claude-haiku-5-5':{family:'anthropic',tier:'fast',aliases:['Claude Haiku 5.5']},
  'gpt-6.1-astra':{family:'openai',tier:'frontier',aliases:['GPT 6.1 Astra']},
  'gpt-6.1-sol':{family:'openai',tier:'frontier',aliases:['GPT 6.1 Sol']},
+ 'gpt-6.1-terra':{family:'openai',tier:'frontier',aliases:['GPT 6.1 Terra']},
  'gpt-6-luna':{family:'openai',tier:'standard',aliases:['GPT 6 Luna']},
- 'gemini-4-argon':{family:'google',tier:'frontier',aliases:['Gemini 4 Argon']}
+ 'gemini-4-argon':{family:'google',tier:'frontier',aliases:['Gemini 4 Argon']},
+ 'gemini-3.8-flash':{family:'google',tier:'fast',aliases:['Gemini 3.8 Flash']}
 };
 
 // 일꾼 프로필. 모델을 고정하지 않는 CLI(Grok, AGY)는 CLI 기본 모델의 계열을 쓴다.
@@ -22,12 +24,13 @@ export const MODELS={
 // review_rank: 두 번째 리뷰 자리를 고르는 순서(작을수록 먼저). review_effort·deep_review_effort는 지금의
 // REVIEW_EFFORT와 이중 리뷰 때 Grok xhigh 규칙을 옮긴 값이다.
 export const MEMBER_PROFILES={
- sol:{cli:'codex',model:'gpt-6.1-sol',review_rank:1,review_effort:'medium'},
- grok:{cli:'grok',model:null,default_family:'xai',tier:'standard',review_rank:2,deep_review_effort:'xhigh'},
- sonnet:{cli:'claude',model:'claude-sonnet-5-5',review_rank:3,review_effort:'high'},
+ sol:{cli:'codex',model:'gpt-6.1-sol',review_rank:1,review_effort:'xhigh'},
+ grok:{cli:'grok',model:null,default_family:'xai',tier:'standard',review_rank:2,review_effort:'xhigh',deep_review_effort:'xhigh'},
+ sonnet:{cli:'claude',model:'claude-sonnet-5-5',review_rank:3,review_effort:'max'},
  antigravity:{cli:'agy',model:null,default_family:'google',tier:'standard',review_rank:4},
  luna:{cli:'codex',model:'gpt-6-luna',review_rank:5},
- haiku:{cli:'claude',model:'claude-haiku-5-5',review_rank:6}
+ haiku:{cli:'claude',model:'claude-haiku-5-5',review_rank:6},
+ terra:{cli:'codex',model:'gpt-6.1-terra',review_rank:7}
 };
 
 const EFFORT_SUFFIX=/-(?:low|medium|high)$/;

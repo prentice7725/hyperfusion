@@ -2,7 +2,7 @@
 
 [English](README.md) | [한국어](README.ko.md) | 日本語
 
-**Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをSonnet・Haiku・Grok・Antigravity・Lunaに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
+**Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをTerra・Grok・Sonnet・Luna・Haiku・Antigravityに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
 > **バージョン。** パッケージのリリースは`0.30.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
@@ -10,6 +10,7 @@
 
 **Unreleased**（mainにマージ済み、未リリース）
 
+- **A級・B級ワーカー。** A級（Terra medium、Grok 4.7 high、Sonnet medium）がこの順で中・高難度のコード、テスト、リファクタを、B級（Luna、Haiku、Gemini 3.8 Flash highのAntigravity）が易しいコード、ドキュメント、UIを担当します。B級のラウンドが差し戻されるとA級に回します。SonnetとTerraは承認なしで実装します。レビュー席はSol xhigh、Sonnet max、Grok xhighです。→ [配置](references/routing.md)
 - **すべての難易度でオートパイロット。** 受け入れコマンドがinitでredと確認された作業なら、`low`でなくても`next`が最初のラウンドに`autopilot`を勧めます。リードゲートとVERIFYで止まる点は変わりません。
 - **受け入れコマンドのない作業は別系統のレビューで閉じる。** `acceptance_commands`のない作業は、実装者とは別系統のモデルによる合格レビューがあって初めてCLOSEします（`SAME_FAMILY_REVIEW`、`SAME_FAMILY_VERIFICATION`）。
 - **レビュアーが保護された受け入れテストを見る。** 委任レビュアーは、テストがobjectiveとすべてのACを正しく検査しているかも判定します。
@@ -37,12 +38,13 @@
 | メンバー | モデル | 基本の役割 |
 |---|---|---|
 | **Opus（リード）** | claude-opus-5-5 | チーム編成、計画、差し戻し、最終検収。ワーカーが残っている限りコードは書かない |
-| Sonnet | claude-sonnet-5-5 | 中・高難度のコード、テスト、リファクタ |
-| Haiku | claude-haiku-5-5 | 易しいコード、ドキュメント、テスト補強（Sonnetと同じClaude Code CLI） |
-| Grok | Grok CLI | 画像アセット、易しい実装 |
-| Antigravity | agy | UI・フロントエンド、ドキュメント（画像生成機能なし） |
-| Luna | gpt-6-luna（Codex） | 小規模な修正、機械的な大量編集、画像アセットの補助 |
-| Sol | gpt-6.1-sol（Codex） | 通常はレビュー・委員会相談。v0.3のAPEX承認ラウンドでのみ実装可能 |
+| Terra | gpt-6.1-terra（Codex） | A級の第一候補：中・高難度のコード、テスト、リファクタ（medium） |
+| Grok | Grok 4.7 CLI | A級の実装（high）、画像アセット。レビュー席はxhigh |
+| Sonnet | claude-sonnet-5-5 | A級の実装（medium）。レビュー席はmax |
+| Luna | gpt-6-luna（Codex） | B級：小規模な修正、機械的な大量編集、画像アセットの補助 |
+| Haiku | claude-haiku-5-5 | B級：易しいコード、ドキュメント、テスト補強（Sonnetと同じClaude Code CLI） |
+| Antigravity | agy（Gemini 3.8 Flash high） | B級：UI・フロントエンド、ドキュメント（画像生成機能なし） |
+| Sol | gpt-6.1-sol（Codex） | 通常はレビュー（xhigh）・委員会相談。v0.3のAPEX承認ラウンドでのみ実装可能 |
 
 基本の配置は出発点です。プロジェクトごとにリードが変更し、種類・難易度別の実績に時間減衰と再探索を適用して配置を調整します。未インストールのワーカーは飛ばされます。実行前のCLI確認が一時的に失敗しても試行予算を消費せず再試行でき、担当ワーカーの実行ファイルがなくなった場合は別のワーカーに交代できます。モデルIDは設定の既定値で、実際のCLI・アカウントでの利用可否は別途確認してください。
 
@@ -99,18 +101,18 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 
 `hyperfusion.v03.config.example.json`を対象リポジトリの`hyperfusion.config.json`にコピーして明示的に有効化します。既存のclassic設定と実行中のタスクは自動変更されません。詳細は[universal-supervisor](references/universal-supervisor.md)（韓国語）を参照してください。
 
-- **External-First配置。** 自動実装はGrok・Antigravity・Lunaが担当します。Sonnet（重要/再割り当てラウンド）とSol（APEXラウンド）はラウンドごとのgrantがある場合のみ実装し、自動フォールバックや新人優遇はこの2つを選びません。
+- **External-First配置。** A級・B級のワーカーはすべて自動実装の候補で、等級ごとに配置します。grantが必要なのはSol（APEXラウンド）だけで、自動フォールバックや新人優遇はSolを選びません。B級のラウンドが差し戻されるとA級に回します。
 - **作者別のレビュー。** 通常作業は独立レビュアー1名、重要・明示的な二重レビュー・リスクパスは下表のペアが独立・並列に検証します。実装者の自己レビューは禁止です。差し替えには理由が必要で、既存のNGは別のPASSで消えません。不一致・欠落はリード判断に残します。以前の割り当てと承認済みのGrokなしチームは従来の規則を維持します。
 - **最終リードゲート。** 結果は`LEAD_DECISION_REQUIRED`で止まります。`auto_apply`、レビュー採用、オートパイロットでは飛ばせず、作業単位の裁量権だけがポリシー承認を許可します。
 - **共通ローカル監視。** すべてのimplement/review/consult呼び出しを同じsupervisorが観測します（`status --monitor`、`monitor --once|--watch`）。無信号はQUIET警告にとどまり、進捗や成功を生成しません。監視でモデルは呼びません。
 - **使用量の計測とクォータ。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で、運用者が直接書き込む（`record`）か、Codexのセッション記録の`rate_limits`を読んで記録します（`collect-codex`、ネットワークもモデルも使いません）。出所と有効期限が過ぎた記録は「不明」として扱います。
-- **既定の推論強度。** Sonnet high、Haiku max、Antigravity high、Grok medium、Luna xhigh、Sol medium。Grokの実装・通常の相談は明示設定がなければmedium、指定されたadaptiveペアレビュー席だけxhighです。`reasoning_effort:null`は通常フラグの省略で、必須レビュー役割の強度は解除しません。
+- **既定の推論強度。** 実装はTerra medium、Grok high、Sonnet medium、Luna xhigh、Haiku max、Antigravity Gemini 3.8 Flash highです。レビュー席はSol xhigh、Sonnet max、Grok xhighで、実装の強度とは別です。`reasoning_effort:null`は通常フラグの省略で、必須レビュー役割の強度は解除しません。
 
 | 実装者 | 重要・二重・リスクパスのレビューペア |
 |---|---|
-| Grok medium | Sol medium + Sonnet high |
-| Luna | Sonnet high + Grok xhigh |
-| AGY / Haiku / 承認済みSonnet | Sol medium + Grok xhigh |
+| Grok | Sol xhigh + Sonnet max |
+| Luna / Terra | Sonnet max + Grok xhigh |
+| AGY / Haiku / Sonnet | Sol xhigh + Grok xhigh |
 | 承認済みAPEX Sol | ペア委任ではなくリードの直接レビュー |
 
 リードはinitの承認済み指示書で重要度・戦略を決め、`review_preview`を確認します。根拠のある全員NGだけがinitで付与された`redo_delegation`で再作業に戻り、意見の不一致はリードが判断します。全員PASSも別途適格な承認委任がなければリードに報告します。ホストが本当にOpusかは認証できないため、`authority.model_verified:false`として記録します。→ [詳細](references/review-pairs.md)

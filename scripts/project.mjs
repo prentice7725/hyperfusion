@@ -104,9 +104,9 @@ export function validatePlan(root,plan) {
  if(plan.review.strategy==='lead-gated-adaptive'){
   if(plan.review.by!=='delegate')throw Error('Adaptive project review requires delegate');
   // Claude 리드의 기존 리뷰 정책이 요구하는 리뷰어. 비 Claude 리드는 위에서 계열 규칙으로 검사했다.
-  const required=new Set(compatible?implementers.flatMap(e=>e==='luna'?['sonnet']:e==='grok'||e==='antigravity'?['sol','sonnet']:['sol']):[]);
+  const required=new Set(compatible?implementers.flatMap(e=>e==='luna'||e==='terra'?['sonnet']:e==='grok'||e==='antigravity'?['sol','sonnet']:['sol']):[]);
   if([...required].some(e=>!members.includes(e)))throw Error('Adaptive project team is missing mandatory reviewer(s): '+[...required].filter(e=>!members.includes(e)).join(', '));
-  warnings.push('Sonnet implementation requires a controller grant; Sol APEX requires a task-specific grant, never owns rules.');
+  warnings.push('Sol APEX requires a task-specific grant and never owns rules; A-tier Sonnet and Terra implement without a grant.');
  }
  if(plan.review.by==='delegate'){
   plan.review.reviewers??=members;

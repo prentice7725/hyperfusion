@@ -5,20 +5,25 @@
   "external": {
     "default": "auto",
     "available": [
+      "terra",
       "grok",
-      "antigravity",
       "sonnet",
+      "luna",
       "haiku",
-      "luna"
+      "antigravity"
     ]
   },
   "executors": {
     "antigravity": {
       "sandbox": true,
-      "reasoning_effort": "high"
+      "model": "gemini-3.8-flash-high"
     },
     "sol": {
       "model": "gpt-6.1-sol",
+      "reasoning_effort": "xhigh"
+    },
+    "terra": {
+      "model": "gpt-6.1-terra",
       "reasoning_effort": "medium"
     },
     "luna": {
@@ -37,10 +42,10 @@
       "reasoning_effort": "max"
     },
     "sonnet": {
-      "reasoning_effort": "high"
+      "reasoning_effort": "medium"
     },
     "grok": {
-      "reasoning_effort": "medium"
+      "reasoning_effort": "high"
     }
   },
   "routing": {
@@ -53,7 +58,8 @@
         "executors": [
           "grok",
           "luna"
-        ]
+        ],
+        "why": "이미지 생성 능력(image-gen)이 있는 일꾼"
       },
       {
         "kind": "code",
@@ -62,10 +68,11 @@
           "high"
         ],
         "executors": [
-          "sonnet",
+          "terra",
           "grok",
-          "antigravity"
-        ]
+          "sonnet"
+        ],
+        "why": "중·고난도 구현은 A급"
       },
       {
         "kind": "code",
@@ -73,51 +80,62 @@
           "low"
         ],
         "executors": [
-          "grok",
+          "luna",
           "haiku",
           "antigravity",
+          "terra",
+          "grok",
           "sonnet"
-        ]
+        ],
+        "why": "쉬운 구현은 B급부터"
       },
       {
         "kind": "tests",
         "executors": [
-          "sonnet",
+          "terra",
           "grok",
-          "antigravity"
-        ]
+          "sonnet"
+        ],
+        "why": "테스트 설계·디버깅은 A급"
       },
       {
         "kind": "refactor",
         "executors": [
-          "sonnet",
-          "antigravity",
-          "grok"
-        ]
+          "terra",
+          "grok",
+          "sonnet"
+        ],
+        "why": "넓은 범위 리팩터는 A급"
       },
       {
         "kind": "ui",
         "executors": [
           "antigravity",
-          "sonnet",
-          "grok"
-        ]
+          "terra",
+          "grok",
+          "sonnet"
+        ],
+        "why": "프론트엔드·UI는 Antigravity(B급)부터"
       },
       {
         "kind": "docs",
         "executors": [
           "antigravity",
           "haiku",
+          "luna",
+          "terra",
           "grok",
           "sonnet"
-        ]
+        ],
+        "why": "문서는 B급부터"
       },
       {
         "executors": [
-          "sonnet",
+          "terra",
           "grok",
-          "antigravity"
-        ]
+          "sonnet"
+        ],
+        "why": "분류 없는 작업은 A급"
       }
     ],
     "half_life_days": 90,
@@ -133,10 +151,7 @@
     "reviewers": [
       "sol",
       "sonnet",
-      "antigravity",
-      "grok",
-      "luna",
-      "haiku"
+      "grok"
     ],
     "auto_apply": true
   },

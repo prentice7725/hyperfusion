@@ -23,15 +23,19 @@ const adaptive=(t,{executor='grok',criticality,strategy,reason,executors}={})=>{
 const task=(f,...parts)=>path.join(f.control,'tasks',f.brief.task_id,...parts);
 const flag=(args,name)=>args[args.indexOf(name)+1];
 
-test('an adaptive task does not route Sonnet or Sol by itself',t=>{
+// 등급제: A급 Sonnet·Terra는 grant 없이 배치표에 오르고, 리뷰 전담 Sol은 오르지 않는다.
+test('an adaptive task routes A-tier Sonnet and Terra without a grant but never Sol',t=>{
  const f=fixture(t,{initialize:false});
  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{strategy:'lead-gated-adaptive'}}));
- run(f.root,'init',f.brief);
+ run(f.root,'init',{...f.brief,task_kind:'code',difficulty:'high'});
  const s=f.state();
- assert.equal(s.initial_executor==='sonnet'||s.initial_executor==='sol',false);
- assert.equal(s.routing.candidates.includes('sonnet'),false);
+ assert.deepEqual(s.routing.candidates.slice(0,3),['terra','grok','sonnet']);
  assert.equal(s.routing.candidates.includes('sol'),false);
- assert.throws(()=>run(f.root,'begin',{...f.brief,executor:'sonnet'}),/implement grant|alternative/);
+ assert.equal(s.implement_grant??null,null);
+ const g=fixture(t,{initialize:false});
+ fs.writeFileSync(path.join(g.root,'hyperfusion.config.json'),JSON.stringify({review:{strategy:'lead-gated-adaptive'}}));
+ run(g.root,'init',{...g.brief,executor:'sonnet'});
+ assert.equal(g.begin().executor,'sonnet');
 });
 
 test('plain executor sol and a repository config cannot grant implementation',t=>{
@@ -91,7 +95,7 @@ test('IMPORTANT-IMPLEMENT gives Sonnet one round, then the grant is gone',async 
  assert.equal(decision.consumed_usage.usage.total_cost_usd,0.01);
 });
 
-test('a rejected external round reaches Sonnet only through reassign_to_sonnet',async t=>{
+test('REASSIGN_TO_SONNET still binds the next round to Sonnet with a grant',async t=>{
  const f=adaptive(t);
  f.begin();f.finish();f.mode('review-alt');
  const first=run(f.root,'delegate-review',{});

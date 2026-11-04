@@ -45,7 +45,7 @@ test('Grok, Antigravity and Haiku standard rounds use Sol only',async t=>{
   assert.equal(fs.existsSync(task(f,'verification.json')),false);
   const codex=args(f,'codex');
   assert.equal(codex[codex.indexOf('--sandbox')+1],'read-only');
-  assert.ok(codex.includes('model_reasoning_effort="medium"'));
+  assert.ok(codex.includes('model_reasoning_effort="xhigh"'));
   const brief=read(task(f,'initial-brief.json'));
   assert.equal(brief.task_criticality,undefined);
   assert.equal(read(task(f,'assignment.json')).criticality,'standard');
@@ -77,7 +77,7 @@ test('an important round needs its cross-vendor pair on one digest',async t=>{
   assert.deepEqual(prompts[1].brief.consult.context.recent_reviews,[]);
   assert.notEqual(prompts[0].brief.consult.member,prompts[1].brief.consult.member);
   if(executor==='grok'){
-   const claude=args(f,'claude');assert.equal(claude[claude.indexOf('--effort')+1],'high');
+   const claude=args(f,'claude');assert.equal(claude[claude.indexOf('--effort')+1],'max');
    const tools=claude[claude.indexOf('--tools')+1];assert.equal(tools.includes('Edit'),false);assert.equal(tools.includes('Write'),false);
   }else{
    const grok=args(f,'grok');assert.equal(grok[grok.indexOf('--reasoning-effort')+1],'xhigh');assert.ok(grok.includes('Bash(*)'));
@@ -102,7 +102,7 @@ test('raised Luna and Haiku rounds keep the independent primary and add Grok xhi
  const lunad=await delegate(luna);
  assert.deepEqual(lunad.c.members.map(m=>m.executor),['sonnet','grok']);
  const claude=args(luna,'claude');
- assert.equal(claude[claude.indexOf('--effort')+1],'high');
+ assert.equal(claude[claude.indexOf('--effort')+1],'max');
  const haiku=adaptive(t,{executor:'haiku',criticality:'apex',strategy:'dual_review'});
  haiku.begin();haiku.finish();
  assert.throws(()=>run(haiku.root,'delegate-review',{executors:['sonnet']}),/substitution_reason/);

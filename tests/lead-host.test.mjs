@@ -133,7 +133,7 @@ test('a non-Claude lead plans projects by family rules instead of Claude presets
   milestones:[{id:'M1',title:'base',goal:'model',checkpoint:['tests pass'],tasks:[{id:'T1',title:'model',kind:'code',difficulty:'low'}]}],...over});
  const member=(m,owns=[])=>({member:m,role:'worker',owns,why:'test'});
  const all=[member('grok',['code:low']),member('sonnet'),member('luna'),member('sol')];
- const rest=[{member:'antigravity',why:'no UI'},{member:'haiku',why:'not needed'}];
+ const rest=[{member:'antigravity',why:'no UI'},{member:'haiku',why:'not needed'},{member:'terra',why:'not needed'}];
  assert.throws(()=>project.validatePlan(f.root,plan(all,rest,{preset:'claude-codex'})),/assumes a Claude lead/);
  const ok=plan(all,rest);project.validatePlan(f.root,ok);
  assert.equal(ok.review.strategy,'lead-gated-adaptive');

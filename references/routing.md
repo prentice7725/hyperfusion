@@ -35,13 +35,15 @@ v0.3은 [External-First 운영 안내](universal-supervisor.md)를 따른다. �
 | task_kind | difficulty | 투입 순서 | 이유 |
 |---|---|---|---|
 | image-asset | * | Grok → Luna | 이미지 생성 능력(`image-gen`)이 있는 일꾼 |
-| code | medium, high | Sonnet → Grok → Antigravity | 까다로운 구현은 Sonnet |
-| code | low | Grok → Haiku → Antigravity → Sonnet | 쉬운 구현은 빠른 일꾼부터 |
-| tests | * | Sonnet → Grok → Antigravity | 테스트 설계·디버깅 |
-| refactor | * | Sonnet → Antigravity → Grok | 넓은 범위 리팩터 |
-| ui | * | Antigravity → Sonnet → Grok | 프론트엔드·UI |
-| docs | * | Antigravity → Haiku → Grok → Sonnet | 가벼운 일꾼부터 |
-| (없음) | * | Sonnet → Grok → Antigravity | 기본 |
+| code | medium, high | Terra → Grok → Sonnet | 중·고난도 구현은 A급 |
+| code | low | Luna → Haiku → Antigravity → A급 | 쉬운 구현은 B급부터 |
+| tests | * | Terra → Grok → Sonnet | 테스트 설계·디버깅은 A급 |
+| refactor | * | Terra → Grok → Sonnet | 넓은 범위 리팩터는 A급 |
+| ui | * | Antigravity → A급 | 프론트엔드·UI는 Antigravity(B급)부터 |
+| docs | * | Antigravity → Haiku → Luna → A급 | 문서는 B급부터 |
+| (없음) | * | Terra → Grok → Sonnet | 기본은 A급 |
+
+**등급.** A급은 Terra(medium)·Grok 4.7(high)·Sonnet(medium), B급은 Luna·Haiku·Antigravity(Gemini 3.8 Flash high)다. External-First도 같은 표를 쓴다. B급 라운드가 반려되면 리드 게이트는 A급으로의 `REASSIGN_OTHER`를 권하고, 반려 위임은 같은 B급 일꾼에게 돌려보내지 않으며, 리드가 그 일꾼에게 다시 맡기려면 `keep_owner_reason`이 필요하다. 교체 순번(`begin` auto)도 A급을 먼저 고른다.
 
 첫 번째로 맞는 규칙만 쓴다. 배치표에 없지만 고용되고 능력이 있는 일꾼은 맨 뒤 예비 인력이 된다. 능력이 없는 일꾼은 예비 인력으로도 넣지 않는다. 이 표는 출발점일 뿐 측정된 사실이 아니다. `hyperfusion.config.json`의 `routing.rules`로 통째로 바꿀 수 있다.
 

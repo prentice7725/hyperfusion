@@ -12,7 +12,7 @@ import {codexQuotaInput} from './codex-quota.mjs';
 export const PROVIDERS=['anthropic','openai','xai','google'];
 export const QUOTA_SOURCES=['user_manual','supported_tool','unknown'];
 // 일꾼 → 공급자. Opus 리드도 anthropic이다. 잔량은 공급자 단위로만 본다.
-export const PROVIDER_OF={opus:'anthropic',lead:'anthropic',sonnet:'anthropic',haiku:'anthropic',sol:'openai',luna:'openai',grok:'xai',antigravity:'google'};
+export const PROVIDER_OF={opus:'anthropic',lead:'anthropic',sonnet:'anthropic',haiku:'anthropic',sol:'openai',luna:'openai',terra:'openai',grok:'xai',antigravity:'google'};
 // Grok은 공식 잔량 조회 근거가 없으므로 자동(supported_tool) 기록을 받지 않는다.
 const MANUAL_ONLY=new Set(['xai']);
 const MAX_TTL_MS=7*86400000;
