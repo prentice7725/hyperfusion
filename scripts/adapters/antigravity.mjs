@@ -105,7 +105,7 @@ export function commandOrders(text,rules,brief) {
  // 헤드리스 agy는 오래 걸리는 명령을 비동기로 띄우고 완료 알림을 기다리다 결과 없이 끝난 적이 있다.
  // 명령은 끝날 때까지 기다리게 하고, 수용 테스트는 직접 돌리지 말고 컨트롤러에 맡기게 한다.
  const sync='Run every command in the foreground and wait until it exits before your next step. Never start a command in the background, never leave a process running, and never wait for a completion notification: headless mode cannot deliver one, so the run ends with no result.';
- const tests='Do not run brief.acceptance_commands yourself in this headless mode. The controller runs every one of them right after you finish and sends any failure back to you with its output; list them in tests as not_run. Leave the tree clean: no new untracked files, and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
+ const tests='Do not run brief.acceptance_commands yourself in this headless mode. The controller runs every one of them right after you finish and sends any failure back to you with its output; list them in tests as not_run. Leave the tree clean: no stray untracked files (scratch scripts, logs, test output; new source files the task needs are expected and stay unstaged), and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
  const p=JSON.parse(text);
  p.instructions=[...p.instructions.filter(x=>x!==ACCEPTANCE).map(x=>x===RUN_TESTS?CHECK_BY_READING:x),order,sync,...(brief.acceptance_commands?.length?[tests]:[])];
  return JSON.stringify(p);

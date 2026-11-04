@@ -13,6 +13,8 @@ import {executionAllowed} from './review-plan.mjs';
 import {controlPath,ensureControl,acquireLock} from './control-dir.mjs';
 import {settledSlots} from './read-only-plan.mjs';
 import {workerEnv} from './worker-env.mjs';
+import {MEMBERS} from './member-registry.mjs';
+import {sandboxFailureFile} from './codex-sandbox.mjs';
 import {verifyExecute,verifyConsult} from './dispatch-verify.mjs';
 import {assertBudget} from './budgets.mjs';
 import {printError} from './cli.mjs';
@@ -144,6 +146,9 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
   parsed=await supervise(root,dir,n,{...request,...verified,role:'implement',round:n,task_id:state.task_id,executor:state.owner},{timeoutMs:timeoutFor(root,state,state.owner,timeoutMs),maxBytes,proveQuiescence,signal,monitorQuietMs,monitorIntervalMs,marker:{HF_WORKER_LEASE:hash(lease.token)}});
   result=validateResult(parsed.result,request.task_id,request.round);
  }catch(e){
+  if(/CODEX_WINDOWS_SANDBOX/.test(e?.message??'')){
+   try{immutable(path.join(dir,sandboxFailureFile(n)),{executor:request.executor,cli:MEMBERS[request.executor]?.binary??null,round:n,source:'bridge',message:String(e.message).slice(0,600),at:new Date().toISOString()});}catch{/* 이미 기록됨 */}
+  }
   await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} failed`,{priority:'high'});
   throw e;
  }

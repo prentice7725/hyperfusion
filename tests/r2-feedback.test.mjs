@@ -20,8 +20,9 @@ test('a test blocked by the worker sandbox may be reported as failed with a reas
  assert.equal(environmentFailure(blocked),true);
  assert.throws(()=>validateResult(withTests([{command:'npm test',status:'fail'}]),'T',1),/Contradictory complete result/,'a failure with no reason still contradicts complete');
  assert.throws(()=>validateResult(withTests([{command:'npm test',status:'fail',environment_error:' '}]),'T',1),/Contradictory complete result/,'a blank reason is no reason: this is an ordinary failure');
- assert.throws(()=>validateResult(withTests([{command:'npm test',status:'pass',environment_error:'EPERM'}]),'T',1),/environment_error/,'only a failure can carry a reason');
- assert.throws(()=>validateResult(withTests([{command:'npm test',status:'not_run',environment_error:'EPERM'}]),'T',1),/environment_error/);
+ assert.throws(()=>validateResult(withTests([{command:'npm test',status:'pass',environment_error:'EPERM'}]),'T',1),/environment_error/,'a pass cannot carry a reason');
+ // not_run도 이유를 달 수 있다: 샌드박스가 막아 아예 못 돌린 테스트(2026-11-04 L01, Terra).
+ assert.doesNotThrow(()=>validateResult(withTests([{command:'npm test',status:'not_run',environment_error:'EPERM'}]),'T',1));
  assert.equal(environmentFailure({command:'x',status:'fail'}),false);
 });
 

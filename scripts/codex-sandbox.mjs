@@ -59,6 +59,11 @@ export function sandboxArgs({consult=false,repoRoot}={},env=process.env) {
 export const SANDBOX_FAILURE=/CreateProcess(?:AsUser|WithLogon)W failed: (?:5|1312)\b|setup refresh (?:failed|had errors)|helper_unknown_error/i;
 const SANDBOX_ERROR=/windows sandbox(?: failed)?:.*/i;
 export const WINDOWS_SANDBOX_ENV='HF_CODEX_WINDOWS_SANDBOX';
+// 한 작업에서 Codex 샌드박스가 한 번 막히면 그대로 재시도해도 똑같이 막힌다(SANDBOX_HINT). 작업 폴더에 sandbox-failure-N.json을 남기고,
+// 컨트롤러는 그 작업이 끝날 때까지 같은 CLI를 쓰는 일꾼(Terra, Luna)을 설치 안 된 것처럼 다룬다.
+// 일꾼이 보고한 환경 실패 중 샌드박스가 하위 프로세스를 막은 흔적(spawn EPERM 등)도 같은 신호로 본다.
+export const SANDBOX_REPORT=/CODEX_WINDOWS_SANDBOX|\bspawn\w*\s+EPERM\b|\bEPERM\b.*\bspawn|windows sandbox|CreateProcess(?:AsUser|WithLogon)W failed/i;
+export const sandboxFailureFile=n=>`sandbox-failure-${n}.json`;
 // 실측(Windows, codex-cli 0.162.0): 패키지판(MSIX) pwsh는 CreateProcessAsUserW failed: 5로 막히고 cmd.exe·Windows PowerShell은 뜬다.
 // `winget install --id Microsoft.PowerShell --source winget`도 이 패키지판을 설치했다(경로 WindowsApps\Microsoft.PowerShell_8wekyb3d8bbwe).
 export const SANDBOX_HINT=`If pwsh is the packaged (Store/MSIX) PowerShell under WindowsApps, remove it (Get-AppxPackage Microsoft.PowerShell | Remove-AppxPackage) `

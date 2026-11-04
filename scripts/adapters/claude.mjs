@@ -10,7 +10,7 @@ import {memberBinary,MEMBERS} from '../member-registry.mjs';
 // 헤드리스 Claude는 허용 규칙 밖의 Bash를 거부하고, 거부가 한 번이라도 있으면 결과를 받지 않는다(parse).
 // 실측에서 일꾼이 수용 명령에 파이프를 붙였다가 거부돼 맞게 고친 라운드를 두 번 잃었다. 쓸 수 있는 명령과 금지 형태를 지시문에 적는다.
 const NO_SHELL_CHECK='Do not stop at a plan or a partial patch. Write the code and check it by reading the files you changed and the tests. You have no shell in this round; the controller runs the tests.';
-const NO_SHELL_ACCEPTANCE='After you finish, the controller itself runs every command in brief.acceptance_commands. If any fails, the round comes straight back to you with the output; list them in tests as not_run. Leave the tree clean: no new untracked files, and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
+const NO_SHELL_ACCEPTANCE='After you finish, the controller itself runs every command in brief.acceptance_commands. If any fails, the round comes straight back to you with the output; list them in tests as not_run. Leave the tree clean: no stray untracked files (scratch scripts, logs, test output; new source files the task needs are expected and stay unstaged), and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
 export function commandOrders(text,rules,brief) {
  if(brief.consult||!brief.allowed_actions.includes('edit'))return text;
  const p=JSON.parse(text);
