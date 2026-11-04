@@ -53,10 +53,11 @@ test('low preset tasks use Luna and Sonnet reviews them',t=>{
  f.begin();f.finish();assert.deepEqual(run(f.root,'delegate-review',{}).members.map(m=>m.executor),['sonnet']);
 });
 
-test('repository config cannot opt a standalone task into an automatic Sonnet grant',t=>{
+test('repository config cannot opt a standalone task into an automatic grant; A-tier Sonnet starts without one, Sol is still refused',t=>{
  const f=setup(t);
  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({preset:'claude-codex',review:{by:'delegate',strategy:'lead-gated-adaptive'}}));
- assert.throws(()=>run(f.root,'init',{...f.brief,executor:'sonnet',difficulty:'high'}),/ROLE_GATE/);
+ assert.throws(()=>run(f.root,'init',{...f.brief,executor:'sol',difficulty:'high'}),/ROLE_GATE|only reviews/);
+ assert.equal(run(f.root,'init',{...f.brief,executor:'sonnet',difficulty:'high'}).implement_grant??null,null);
 });
 
 test('preset changes require reapproval and nonstructural amendments retain the preset',t=>{
