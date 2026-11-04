@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+- Codex 샌드박스 실패 시 작업을 Codex 일꾼에서 뺀다. L01 재실행(등급제)에서 Terra가 Windows 샌드박스에 세 라운드 연속 막혀 리드가 매번 손으로 복구했고, 리드 사용량이 4.5배로 늘었다.
+  - 이제 브리지의 `CODEX_WINDOWS_SANDBOX` 실패나 Codex 일꾼이 보고한 샌드박스 환경 실패(`spawn EPERM` 등)가 `sandbox-failure-N.json`으로 남는다.
+  - 그 작업이 끝날 때까지 Terra와 Luna는 설치되지 않은 것처럼 다룬다. 복구 후 교체 일꾼은 Codex가 아닌 일꾼 중에서 고르고, 리드 게이트·`lead-decision`·반려 위임은 그 일꾼에게 REDO를 권하거나 받아들이지 않는다.
+  - 결과 계약은 `environment_error`를 `fail`뿐 아니라 `not_run` 테스트에도 받는다. 전에는 형식 오류로 라운드를 버렸다.
+  - 일꾼 지침의 "새 untracked 파일 금지"는 "임시 파일·로그 같은 잔여 파일 금지, 작업에 필요한 새 소스 파일은 스테이징하지 않고 둔다"로 고쳤다. Terra가 이 지침과 스테이징 금지가 서로 모순된다고 보고했다.
 - 일꾼 등급제: A급(Terra `gpt-6.1-terra` medium → Grok 4.7 high → Sonnet medium)이 중·고난도 코드·테스트·리팩터를, B급(Luna, Haiku, Gemini 3.8 Flash high의 Antigravity)이 쉬운 코드·문서·UI를 맡는다(classic과 External-First 배치표 모두). B급 라운드가 반려되면 리드 게이트가 A급으로의 `REASSIGN_OTHER`를 권하고, 반려 위임(`redo_delegation`)은 같은 B급 일꾼에게 돌려보내지 않으며, 리드가 그 일꾼에게 다시 맡기려면 `keep_owner_reason`이 필요하다. 교체 순번도 A급을 먼저 고른다. Sonnet과 Terra는 grant 없이 구현하고(리드가 연 `sonnet_implementation` grant는 그대로 소모되고 그 강도로 돈다), grant 전용은 Sol뿐이다. 리뷰 자리 강도는 Sol xhigh, Sonnet max, Grok xhigh로 구현 강도와 따로 가며 클래식 위임 리뷰에도 적용된다(운영자가 직접 적은 강도는 유지). Grok 4.7은 `high`·`xhigh`만 받으므로 `medium` 설정은 `EFFORT_UNSUPPORTED`로 거절된다. `claude_reserve`는 이제 운영자가 `true`로 켤 때만 적용된다. 모델 레지스트리에 `gpt-6.1-terra`(openai frontier)와 `gemini-3.8-flash`(google fast)를 추가했다.
 - `next`와 SKILL.md가 `autopilot`을 쉬운(`low`) 작업뿐 아니라 모든 난이도에서 권한다(조건은 그대로: 수용 명령이 init에서 red로 확인되고 `review.auto_apply:true`이거나 `lead-gated-adaptive`). 큰 과제 실측(HF-L01, `high`)에서 리드 호출 32번 중 10번 넘게가 begin·브리지·finish·delegate-review·consult-finish를 하나씩 부르는 데 쓰였다. 오토파일럿은 리드 게이트·VERIFY에서 멈추므로 승인·결정·takeover는 여전히 리드가 한다.
 - 선택적 Herdr 관측 pane: Herdr pane 안에서 실행하면 작업자마다 별도 pane에 읽기 전용 모니터 화면(`scripts/herdr-observer.mjs view`)을 연다. `HYPERFUSION_HERDR`는 없으면 자동 감지(Herdr 안이면 켜고 밖이면 조용히 건너뜀), `0`이면 항상 끔, `1`이면 강제(Herdr 밖이면 건너뛴 이유를 기록)다. pane을 열기 전에 `herdr pane get`으로 현재 pane이 살아 있는지 확인하고, 방금 나눈 pane의 셸이 뜰 때까지 잠시 기다린다. 리드 pane마다 관측 pane 목록을 상태 폴더에 남겨, 라운드마다 새 프로세스로 도는 브리지도 셸 프롬프트에서 쉬는 관측 pane을 다시 쓴다(리드 pane은 한 번만 나뉜다). pane 하나를 붙이는 데 최대 10초만 쓰고, 화면은 작업자 출력의 터미널 제어 문자를 지우고 pane 폭에 맞게 줄을 잘라 표시하며, 컨트롤러가 최종 상태 없이 사라지면 멈춘다. HyperFusion 자체 시험은 `HYPERFUSION_HERDR=0`으로 돈다. 작업자 실행·종료 증명·결과 검증은 바뀌지 않고, Herdr 호출이 실패해도 라운드는 영향받지 않는다. Windows(PowerShell·cmd)와 POSIX 셸을 지원한다. [references/herdr.md](references/herdr.md)

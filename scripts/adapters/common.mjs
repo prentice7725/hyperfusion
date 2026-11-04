@@ -70,7 +70,7 @@ const CONSULT_ORDERS={
   'Verdict: redo when the same worker can fix it, alternative when the approach itself is wrong, decision only when requirements or architecture are ambiguous and the lead must choose.'],
  committee:['You are one member of a two-member committee hired by the lead because the task is stuck. Step back: identify the root cause of the repeated failure and propose a concrete plan the next worker can execute.','The other member is a different model. Think independently; do not assume the last attempt was on the right track.']
 };
-export const ACCEPTANCE='After you finish, the controller itself runs every command in brief.acceptance_commands. If any fails, the round comes straight back to you with the output. Run them yourself before reporting complete, and leave the tree clean: no new untracked files, and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
+export const ACCEPTANCE='After you finish, the controller itself runs every command in brief.acceptance_commands. If any fails, the round comes straight back to you with the output. Run them yourself before reporting complete, and leave the tree clean: no stray untracked files (scratch scripts, logs, test output; new source files the task needs are expected and stay unstaged), and do not touch gitignored files (node_modules, build outputs) unless the brief asks for it, or the controller will refuse to run the tests.';
 // 쓰기 금지를 "셸 금지"로 읽은 Codex 리뷰어가 파일을 하나도 열지 못한 일이 있었다. Codex에는 셸 말고 읽기 도구가 없으므로
 // Codex에게만 읽기 전용 셸 명령을 허용한다고 적는다. 쓰기는 각 CLI의 read-only 샌드박스·plan 모드와 리드의 트리 비교가 막는다.
 // Antigravity는 헤드리스에서 허용 목록 밖의 셸 명령이 자동 거부되고, 한 번이라도 거부되면 결과 없이 끝나므로 셸 문장을 주지 않는다.

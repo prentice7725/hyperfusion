@@ -116,6 +116,8 @@ if(mode==='codex-crash')process.exit(1);
 if(args.includes('resume')&&(args[1]!=='resume'||['--sandbox','--cd','--output-schema','--model','--json'].some(flag=>args.indexOf(flag)<2))){console.error('resume options must be on the probed subcommand');process.exit(2);}
 const session=args.includes('resume')?args.at(-2):'0199a213-81c0-7800-8aa1-bbab2a035a53';
 console.log(JSON.stringify({type:'thread.started',thread_id:session}));
+// codex-sandbox-denied: 샌드박스가 셸을 못 띄운 명령 실행 흔적을 남기고 턴은 정상 종료한다(실제 Codex의 Windows 동작).
+if(mode==='codex-sandbox-denied')console.log(JSON.stringify({type:'item.completed',item:{id:'c1',type:'command_execution',aggregated_output:'windows sandbox failed: CreateProcessAsUserW failed: 5 (denied) | cmd=node --test'}}));
 console.log(JSON.stringify({type:'item.completed',item:{id:'final',type:'agent_message',text:JSON.stringify(finish(request,session))}}));
 console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:20,cached_input_tokens:10,output_tokens:5}}));
 `;
