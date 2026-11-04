@@ -10,12 +10,12 @@ import {teamConfig} from '../scripts/project.mjs';
 import {route} from '../scripts/router.mjs';
 import {recordQuota} from '../scripts/quota-policy.mjs';
 
-test('external-first blocks specialists and reserved Claude before every replacement lease',t=>{
+test('external-first skips the reserved Claude worker before every replacement lease, and A-tier Sonnet needs no grant',t=>{
  const f=fixture(t,{initialize:false});
- fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({external:{default:'auto',available:['grok','sonnet','haiku','luna']},routing:{policy:'external-first'}}));
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({external:{default:'auto',available:['grok','sonnet','haiku','luna']},routing:{policy:'external-first',claude_reserve:true}}));
  run(f.root,'init',{...f.brief,executor:'grok'});f.begin();f.finish();f.review('alternative');
- assert.throws(()=>f.begin({executor:'sonnet'}),/ROLE_GATE/);
- assert.equal(f.state().writer,null);
+ assert.equal(f.begin().executor,'sonnet');
+ f.finish();f.review('alternative');
  assert.equal(f.begin().executor,'luna');
  f.finish();f.review('alternative');
  assert.equal(f.begin().executor,'grok');
@@ -23,9 +23,9 @@ test('external-first blocks specialists and reserved Claude before every replace
 
 test('explicit Haiku is an operator selection while automatic reserve remains excluded',t=>{
  const f=fixture(t,{initialize:false});
- fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({routing:{policy:'external-first'}}));
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({routing:{policy:'external-first',claude_reserve:true}}));
  assert.equal(automaticImplementer(config(f.root),'haiku'),false);
- assert.throws(()=>run(f.root,'init',{...f.brief,executor:'sonnet'}),/ROLE_GATE/);
+ assert.equal(automaticImplementer(config(f.root),'sonnet'),true);
  run(f.root,'init',{...f.brief,executor:'haiku'});
  assert.equal(f.begin().executor,'haiku');
  f.finish();f.review('redo');assert.equal(f.begin().executor,'haiku');

@@ -86,6 +86,8 @@ test('Sonnet model overrides are dispatched and new Opus IDs are accepted',t=>{
 
 test('Grok and Antigravity refuse model overrides without exact CLI support',t=>{
  fixture(t,{initialize:false});
+ // 가짜 agy는 --model을 광고하므로 이 테스트에서는 뺀다.
+ fs.writeFileSync(process.env.HF_AGY_BIN,fs.readFileSync(process.env.HF_AGY_BIN,'utf8').replace("\\n  --model'","'"));
  for(const name of ['grok','antigravity'])assert.throws(()=>adapter(name).probe({model:'custom-model'}),/missing.*--model/);
 });
 
@@ -159,17 +161,17 @@ test('timeline reports round verdict, measured duration and reported cost',async
 
 test('routing separates difficulty, decays old failures, and lets demoted workers lead again',t=>{
  const f=fixture(t,{initialize:false}),dir=controlPath(f.root,'metrics');fs.mkdirSync(dir,{recursive:true});
- const write=(id,difficulty,ended_at)=>fs.writeFileSync(path.join(dir,id+'.json'),JSON.stringify({task_kind:'code',difficulty,ended_at,initial_executor:'sonnet',review_outcomes:[{owner:'sonnet',verdict:'redo'}]}));
+ const write=(id,difficulty,ended_at)=>fs.writeFileSync(path.join(dir,id+'.json'),JSON.stringify({task_kind:'code',difficulty,ended_at,initial_executor:'terra',review_outcomes:[{owner:'terra',verdict:'redo'}]}));
  for(let i=0;i<3;i++)write('old'+i,'high','2020-01-01T00:00:00Z');
  // 이 테스트는 감쇠와 재탐색만 본다(신입 우대는 따로 테스트한다).
- const c=config(f.root);c.routing.newcomer_every=0;assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'},{probe:false}).executor,'sonnet');
+ const c=config(f.root);c.routing.newcomer_every=0;assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'},{probe:false}).executor,'terra');
  for(let i=0;i<3;i++)write('new'+i,'low',new Date().toISOString());
- assert.equal(history(f.root,'code',{difficulty:'high'}).sonnet.tasks,3);
- assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'},{probe:false}).executor,'sonnet');
+ assert.equal(history(f.root,'code',{difficulty:'high'}).terra.tasks,3);
+ assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'},{probe:false}).executor,'terra');
  for(let i=0;i<9;i++)write('hard'+i,'high',new Date().toISOString());
  c.routing.explore_every=13;
  const exploratory=route(f.root,c,{task_kind:'code',difficulty:'high'},{probe:false});
- assert.equal(exploratory.executor,'sonnet');assert.match(exploratory.reason,/exploration/);
+ assert.equal(exploratory.executor,'terra');assert.match(exploratory.reason,/exploration/);
  c.routing.explore_every=0;assert.equal(route(f.root,c,{task_kind:'code',difficulty:'high'},{probe:false}).executor,'grok');
 });
 

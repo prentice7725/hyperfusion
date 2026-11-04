@@ -83,7 +83,7 @@ export function resumePacket(root) {
    review:{...pick(s.configuration?.review,['strategy','by','auto_apply']),
     reviewers:(Array.isArray(s.configuration?.review?.reviewers)?s.configuration.review.reviewers:[]).filter(safeId).slice(0,6)},
    brief_status:initial.status,brief_ref:'initial-brief.json'},
-  budgets:{attempts:pick(s.attempts,['grok','antigravity','sonnet','haiku','luna','lead']),
+  budgets:{attempts:pick(s.attempts,['grok','antigravity','sonnet','haiku','luna','terra','lead']),
    limits:pick(s.limits,['max_wall_ms','max_cost_usd']),apex_rounds:Number.isSafeInteger(s.apex_rounds)?s.apex_rounds:null},
   process:{lease_status:lease.status,shutdown:'unverified',launch_present:!!launch,consult_open:!!s.open_consult},
   rejection_history:{count:(Array.isArray(s.reviews)?s.reviews:[]).filter(r=>['redo','alternative'].includes(r.verdict)).length,

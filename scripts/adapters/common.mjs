@@ -78,7 +78,7 @@ const READ_ONLY_BASE='This is a READ-ONLY consultation. Do not create, edit, mov
 const READ_SHELL='Reading is expected, not optional: open every changed file before you judge it. If your only way to read files is a shell, you MAY run read-only commands such as cat, type, head, tail, sed -n, ls, dir, find, rg, grep, wc, git diff, git show, git log, git status and git ls-files. Never redirect their output into a file.';
 const READ_TOOLS='Reading is expected, not optional: open every changed file before you judge it, using only your file view tools. Run no shell commands at all (not even git diff, cat or ls): headless mode auto-denies them and one denied command ends this run with no result.';
 const READ_GENERIC='Reading is expected, not optional: open every changed file with your file read tools before you judge it.';
-const SHELL_READERS=['sol','luna'];
+const SHELL_READERS=['sol','luna','terra'];
 export function readOnlyOrders(owner) {
  return [READ_ONLY_BASE,SHELL_READERS.includes(owner)?READ_SHELL:owner==='antigravity'?READ_TOOLS:READ_GENERIC];
 }

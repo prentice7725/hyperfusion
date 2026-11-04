@@ -88,7 +88,7 @@ test('line-level feedback from a consult can be handed straight to the next work
 });
 test('a worker that breaks read-only consults loses rank for that task kind and difficulty',t=>{
  const f=fixture(t,{initialize:false});const dir=path.join(f.control,'metrics');fs.mkdirSync(dir,{recursive:true});
- for(let i=0;i<3;i++)fs.writeFileSync(path.join(dir,`old-${i}.json`),JSON.stringify({task_kind:'code',difficulty:'high',review_outcomes:[],consults:[{violated:true,members:[{executor:'sonnet'}]}]}));
+ for(let i=0;i<3;i++)fs.writeFileSync(path.join(dir,`old-${i}.json`),JSON.stringify({task_kind:'code',difficulty:'high',review_outcomes:[],consults:[{violated:true,members:[{executor:'terra'}]}]}));
  assert.equal(route(f.root,config(f.root),{task_kind:'code',difficulty:'high'}).executor,'grok');
 });
 test('HF_NOTIFY_URL receives a push when a worker finishes',async t=>{

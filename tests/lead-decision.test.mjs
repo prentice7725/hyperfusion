@@ -37,7 +37,7 @@ test('a unanimous delegated pass stops for a lead decision and APPROVE does not 
  assert.equal(JSON.stringify(packet).includes('"base"'),false);
  assert.throws(()=>decide(f,{baseline_digest:'0'.repeat(64)}),/does not match/);
  assert.throws(()=>decide(f,{contract_change:true}),/contract changed/);
- assert.throws(()=>decide(f,{decision:'REASSIGN_OTHER',executor:'sol',rationale:'not a general writer'}),/grok, antigravity, haiku, or luna/);
+ assert.throws(()=>decide(f,{decision:'REASSIGN_OTHER',executor:'sol',rationale:'not a general writer'}),/grok, antigravity, sonnet, haiku, luna, or terra/);
  assert.throws(()=>decide(f,{decision:'REASSIGN_OTHER',executor:'grok',rationale:'same owner'}),/different executor/);
  assert.equal(f.state().phase,'LEAD_DECISION_REQUIRED');
  assert.equal(fs.existsSync(task(f,'lead-decision-1.json')),false);

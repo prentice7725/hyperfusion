@@ -45,6 +45,7 @@ import {captureRoundBase,roundDelta} from './round-delta.mjs';
 import {sameFamilyIn,FAMILY_RULES_POLICY} from './review-plan.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation,PAIRED_REVIEW_POLICY} from './review-plan.mjs';
 import {apexMember,specialistMember,reservedMembers,delegableOwners,memberFamilyOf} from './team-roles.mjs';
+import {gradeOf} from './member-registry.mjs';
 import {independent} from './model-registry.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
@@ -581,7 +582,7 @@ function consult(c,input) {
     const d=a.dispatch(brief,{token:'consult',owner:m.executor},{
       session:a.newSession(),resume:false,probe:m.cli,
       promptFile:path.join(c.taskdir(),`prompt-consult-${id}-${m.member}.txt`),
-      options:consultExecutorOptions(s.configuration,m.executor,{reasoning_effort:panel?.effort?.[m.executor]})
+      options:consultExecutorOptions(s.configuration,m.executor,{reasoning_effort:panel?.effort?.[m.executor],mode})
     });
     return [m.member,{transport:'executor-cli',kind:'consult',executor:m.executor,...d,task_id:s.task_id,consult_id:id,member:m.member}];
   });
@@ -742,6 +743,7 @@ function autoRedoEvaluation(c,records,now) {
   if(!need(sameRedoDelegation(c.optional('redo-delegation.json'),d),'redo delegation record matches','the redo delegation record does not match the controller record'))return {eligible:false,unmet,passed};
   need(sameAssignment(c.optional('assignment.json'),s.assignment)&&s.assignment?.criticality==='standard'&&s.assignment?.strategy==='external_primary','standard task','the task is not a STANDARD external_primary task');
   need(delegableOwners(s.configuration).includes(s.owner),'automatic implementer',`${s.owner} is not an automatic implementer`);
+  need(gradeOf(s.owner)!=='B','A-tier owner',`${s.owner} is a B-tier worker; a rejected B-tier round goes to an A-tier worker`);
   const used=(s.auto_redos??[]).length;
   need(used<d.max_redos,'within the delegated rejection limit',`${used} delegated rejections already used (limit ${d.max_redos})`);
   need(!c.writerHeld(),'no writer','a writer is still present');
@@ -808,7 +810,17 @@ function repeatedCriteria(s,blocking) {
 }
 const panelBlocking=records=>[...new Set(records.filter(r=>r.ok&&r.verdict!=='pass').flatMap(r=>r.blocking_criteria??[]).filter(x=>typeof x==='string'&&x.trim()))];
 // APEX는 외부 최상위(Opus 리드면 Sol)에 남는다. 그 밖에는 REASSIGN_OTHER로 넘길 수 있는 일꾼이 있을 때만 교체를 권한다.
-const swapTargets=(c,s)=>s.owner===apexMember(s.configuration)?[]:delegableOwners(s.configuration).filter(x=>x!==s.owner&&c.pool().includes(x)&&c.canWork(x));
+// B급 일꾼이 반려되면 A급으로만 넘긴다(쓸 수 있는 A급이 없을 때만 다른 일꾼).
+const swapTargets=(c,s)=>{
+  if(s.owner===apexMember(s.configuration))return [];
+  const all=delegableOwners(s.configuration).filter(x=>x!==s.owner&&c.pool().includes(x)&&c.canWork(x));
+  const upper=gradeOf(s.owner)==='B'?all.filter(x=>gradeOf(x)==='A'):[];
+  return upper.length?upper:all;
+};
+// 배치표 순번에서 다음 일꾼을 고른다. 방금 반려된 일꾼이 B급이면 A급을 먼저 고른다.
+const promote=(owner,rotation)=>gradeOf(owner)==='B'?rotation.find(e=>gradeOf(e)==='A')??rotation[0]:rotation[0];
+// 반려된 B급 라운드: 같은 일꾼 REDO 대신 A급 승급을 권하고, REDO는 리드가 이유를 남길 때만 받는다.
+const promotion=(c,s)=>gradeOf(s.owner)==='B'?swapTargets(c,s).filter(x=>gradeOf(x)==='A'):[];
 // 일꾼이 라운드 상한에 닿았을 때 리드에게 남은 길. 같은 일꾼 REDO는 다음 begin에서 'round cap reached'로 막히므로 후보에서 뺀다.
 // 순서는 권하는 순서다: 다른 외부 일꾼 → Sonnet(승인 grant가 필요) → 리드 판단/중단.
 const exhaustedOptions=(c,s)=>{
@@ -841,6 +853,9 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
   if(repeated.length&&recommendation==='REDO'&&swapTargets(c,s).length){
     recommendation='REASSIGN_OTHER';
     note+=`; ${s.owner} was rejected again on ${repeated.join(', ')}, so another worker is recommended`;
+  } else if(recommendation==='REDO'&&promotion(c,s).length){
+    recommendation='REASSIGN_OTHER';
+    note+=`; ${s.owner} is a B-tier worker, so the rejected round is promoted to an A-tier worker (${promotion(c,s).join(', ')})`;
   }
   // 상한에 닿은 일꾼에게 REDO를 권하지 않는다. lead-decision도 어차피 거절하므로 패킷 단계에서 처음부터 교체를 권한다.
   if(recommendation==='REDO'&&!c.budget(s.owner)){
@@ -981,7 +996,7 @@ function begin(c,input) {
     owner=decided
       ?pickExecutor(s.configuration,adaptive,decided)
       :pick
-        ?c.rotation().find(e=>e!==s.owner&&c.canWork(e))
+        ?promote(s.owner,c.rotation().filter(e=>e!==s.owner&&c.canWork(e)))
         :pickExecutor(s.configuration,adaptive,input.executor);
     if(!owner&&pick){
       // 예산이 남은 일꾼이 있어도 설치돼 있지 않으면 쓸 수 없다. 이 단계에 갇히지 않게 다음 단계(takeover 또는 BLOCKED)로 옮긴다.
@@ -1679,6 +1694,9 @@ function leadDecision(c,input) {
     if(repeated.length&&swapTargets(c,s).length){
       keep_owner=typeof input.keep_owner_reason==='string'?input.keep_owner_reason.trim():'';
       if(!keep_owner)throw Error(`LEAD_DECISION: ${s.owner} was rejected again on ${repeated.join(', ')}; REASSIGN_OTHER (${swapTargets(c,s).join(', ')}) or give keep_owner_reason to REDO`);
+    } else if(promotion(c,s).length){
+      keep_owner=typeof input.keep_owner_reason==='string'?input.keep_owner_reason.trim():'';
+      if(!keep_owner)throw Error(`LEAD_DECISION: ${s.owner} is a B-tier worker and was rejected; REASSIGN_OTHER to an A-tier worker (${promotion(c,s).join(', ')}) or give keep_owner_reason to REDO`);
     }
     if(s.owner===apexMember(s.configuration)){
       if(s.assignment?.strategy!=='sol_apex'||s.assignment?.criticality!=='apex')throw Error(`ROLE_GATE: ${display(s.owner)} implements only an APEX round`);

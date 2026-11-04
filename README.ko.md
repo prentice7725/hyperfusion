@@ -2,7 +2,7 @@
 
 [English](README.md) | 한국어 | [日本語](README.ja.md)
 
-**Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Sonnet·Haiku·Grok·Antigravity·Luna에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
+**Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Terra·Grok·Sonnet·Luna·Haiku·Antigravity에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
 > **버전.** 패키지 릴리스는 `0.30.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
@@ -10,6 +10,7 @@
 
 **Unreleased** (main에 머지됨, 아직 릴리스 전)
 
+- **A급·B급 일꾼.** A급(Terra medium, Grok 4.7 high, Sonnet medium)이 이 순서로 중·고난도 코드, 테스트, 리팩터를 맡고, B급(Luna, Haiku, Gemini 3.8 Flash high의 Antigravity)이 쉬운 코드, 문서, UI를 맡는다. B급 라운드가 반려되면 A급으로 넘긴다. Sonnet과 Terra는 승인 없이 구현한다. 리뷰 자리는 Sol xhigh, Sonnet max, Grok xhigh다. → [배치](references/routing.md)
 - **모든 난이도에서 오토파일럿.** 수용 명령이 init에서 red로 확인된 작업이면 `low`가 아니어도 `next`가 첫 라운드에 `autopilot`을 권한다. 리드 게이트와 VERIFY에서 멈추는 것은 그대로다.
 - **수용 명령 없는 작업은 다른 계열 리뷰로 닫힌다.** `acceptance_commands`가 없는 작업은 구현자와 다른 계열 모델의 통과 리뷰가 있어야 CLOSE된다(`SAME_FAMILY_REVIEW`, `SAME_FAMILY_VERIFICATION`).
 - **리뷰어가 보호된 수용 테스트를 본다.** 위임 리뷰어가 테스트가 objective와 모든 AC를 제대로 검사하는지도 판정한다.
@@ -37,12 +38,13 @@
 | 팀원 | 모델 | 기본 역할 |
 |---|---|---|
 | **Opus (리드)** | claude-opus-5-5 | 팀 구성, 계획, 반려, 최종 검수. 일꾼이 남아 있는 한 코드를 쓰지 않는다 |
-| Sonnet | claude-sonnet-5-5 | 중·고난도 코드, 테스트, 리팩터 |
-| Haiku | claude-haiku-5-5 | 쉬운 코드, 문서, 테스트 보강 (Sonnet과 같은 Claude Code CLI) |
-| Grok | Grok CLI | 이미지 애셋, 쉬운 구현 |
-| Antigravity | agy | UI·프론트엔드, 문서 (이미지 생성 기능 없음) |
-| Luna | gpt-6-luna (Codex) | 소규모 수정, 기계적 대량 편집, 이미지 애셋 보조 |
-| Sol | gpt-6.1-sol (Codex) | 기본은 리뷰·위원회 상담. v0.3의 APEX 승인 라운드에서만 구현 가능 |
+| Terra | gpt-6.1-terra (Codex) | A급 1순위: 중·고난도 코드, 테스트, 리팩터 (medium) |
+| Grok | Grok 4.7 CLI | A급 구현(high), 이미지 애셋. 리뷰 자리는 xhigh |
+| Sonnet | claude-sonnet-5-5 | A급 구현(medium). 리뷰 자리는 max |
+| Luna | gpt-6-luna (Codex) | B급: 소규모 수정, 기계적 대량 편집, 이미지 애셋 보조 |
+| Haiku | claude-haiku-5-5 | B급: 쉬운 코드, 문서, 테스트 보강 (Sonnet과 같은 Claude Code CLI) |
+| Antigravity | agy (Gemini 3.8 Flash high) | B급: UI·프론트엔드, 문서 (이미지 생성 기능 없음) |
+| Sol | gpt-6.1-sol (Codex) | 기본은 리뷰(xhigh)·위원회 상담. v0.3의 APEX 승인 라운드에서만 구현 가능 |
 
 기본 배치는 출발점이다. 프로젝트마다 리드가 바꾸고, 종류·난이도별 실적에 시간 감쇠와 재탐색을 적용해 배치를 조정한다. 설치되지 않은 일꾼은 건너뛴다. 실행 전 CLI 확인이 일시적으로 실패하면 시도 예산을 쓰지 않고 재시도할 수 있고, 담당 일꾼의 실행 파일이 사라지면 다른 일꾼으로 교체할 수 있다. 모델 ID는 설정 기본값이며 실제 CLI·계정의 지원 여부는 따로 확인한다.
 
@@ -99,18 +101,18 @@ CLOSE까지 가야 성공이다. 어느 단계에서든 지금 칠 명령은 `no
 
 `hyperfusion.v03.config.example.json`을 대상 저장소의 `hyperfusion.config.json`으로 복사해 명시적으로 켠다. 기존 classic 설정·진행 중 작업은 자동으로 바뀌지 않는다. 자세한 내용은 [universal-supervisor](references/universal-supervisor.md).
 
-- **External-First 배치.** 자동 구현은 Grok·Antigravity·Luna가 맡는다. Sonnet(중요/재배정 라운드)과 Sol(APEX 라운드)은 라운드별 grant가 있을 때만 구현하며, 자동 폴백·신입 우대는 이 둘을 고르지 않는다.
+- **External-First 배치.** A급·B급 일꾼 모두 자동 구현 후보이며 등급별로 배치한다. grant가 필요한 일꾼은 Sol(APEX 라운드)뿐이고, 자동 폴백·신입 우대는 Sol을 고르지 않는다. B급 라운드가 반려되면 A급으로 넘긴다.
 - **작성자별 리뷰.** 일반 작업은 독립 리뷰어 1명, 중요·명시적 이중 리뷰·위험 경로는 아래 페어가 독립·병렬 검토한다. 구현자는 자기 라운드를 리뷰하지 못한다. 대체에는 사유가 필요하며 기존 반려는 다른 PASS로 지워지지 않는다. 충돌·누락은 리드 게이트에 남는다. 이전 배정과 승인된 Grok 미포함 팀은 기존 규칙을 유지한다.
 - **최종 리드 게이트.** 결과는 `LEAD_DECISION_REQUIRED`에서 멈춘다. `auto_apply`, 리뷰 채택, 오토파일럿으로 건너뛸 수 없고, 작업 단위 재량권만 정책 승인을 허가한다.
 - **범용 로컬 감시.** 모든 implement/review/consult 호출을 같은 supervisor가 관측한다(`status --monitor`, `monitor --once|--watch`). 무신호는 QUIET 경고일 뿐이며 진행률·성공을 만들어 내지 않는다. 감시는 모델을 부르지 않는다.
 - **사용량 계측과 쿼터.** 구현·검수·상담·실패 호출과 APEX Sol을 포함해 기록하고, 미측정은 `null`로 둔다. 쿼터는 `scripts/quota-policy.mjs`로 운영자가 직접 적거나(`record`), Codex 세션 기록의 `rate_limits`를 읽어 기록한다(`collect-codex`, 네트워크·모델 없음). 출처와 유효 시간이 지나면 '모름'으로 취급한다.
-- **기본 추론 강도.** Sonnet high, Haiku max, Antigravity high, Grok medium, Luna xhigh, Sol medium. Grok 구현·일반 상담은 명시적 설정이 없으면 medium이며, 지정된 adaptive 페어 리뷰 자리만 xhigh다. `reasoning_effort:null`은 일반 플래그 생략이며 필수 리뷰 역할의 강도를 해제하지 않는다.
+- **기본 추론 강도.** 구현은 Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 3.8 Flash high다. 리뷰 자리는 Sol xhigh, Sonnet max, Grok xhigh로 구현 강도와 따로 간다. `reasoning_effort:null`은 일반 플래그 생략이며 필수 리뷰 역할의 강도를 해제하지 않는다.
 
 | 구현자 | 중요·이중·위험 경로 리뷰 페어 |
 |---|---|
-| Grok medium | Sol medium + Sonnet high |
-| Luna | Sonnet high + Grok xhigh |
-| AGY / Haiku / 승인된 Sonnet | Sol medium + Grok xhigh |
+| Grok | Sol xhigh + Sonnet max |
+| Luna / Terra | Sonnet max + Grok xhigh |
+| AGY / Haiku / Sonnet | Sol xhigh + Grok xhigh |
 | 승인된 APEX Sol | 페어 위임 대신 리드 직접 리뷰 |
 
 리드는 init의 승인된 작업지시서에 중요도·전략을 정하고 `review_preview`를 확인한다. 근거 있는 전원 NG만 init에 부여한 `redo_delegation`으로 재작업시킬 수 있고, 의견 충돌은 리드가 판단한다. 전원 PASS도 별도의 적격 승인 위임이 없으면 리드에게 보고한다. 호스트가 실제 Opus인지는 인증할 수 없으므로 `authority.model_verified:false`로 기록한다. → [상세 규칙](references/review-pairs.md)

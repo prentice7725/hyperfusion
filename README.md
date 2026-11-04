@@ -2,7 +2,7 @@
 
 English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
-**Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Sonnet, Haiku, Grok, Antigravity, or Luna, with independent reviews available through Sol.
+**Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Terra, Grok, Sonnet, Luna, Haiku, or Antigravity, with independent reviews available through Sol.
 
 > **Versions.** The package release is `0.30.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
 
@@ -10,6 +10,7 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Unreleased** (on main, not yet in a release)
 
+- **A-tier and B-tier workers.** A-tier (Terra medium, Grok 4.7 high, Sonnet medium) takes medium/high code, tests and refactors, in that order. B-tier (Luna, Haiku, Antigravity on Gemini 3.8 Flash high) takes low code, docs and UI. A rejected B-tier round is promoted to an A-tier worker. Sonnet and Terra implement without a grant. Review seats run Sol xhigh, Sonnet max and Grok xhigh. → [routing](references/routing.md)
 - **Autopilot at any difficulty.** `next` now suggests `autopilot` for the first round of any task whose acceptance commands init proved red, not only `low` tasks. It still stops at the lead gate and VERIFY.
 - **Cross-family close without acceptance commands.** A task without `acceptance_commands` closes only after a passing review from a model family other than the implementer's (`SAME_FAMILY_REVIEW`, `SAME_FAMILY_VERIFICATION`).
 - **Reviewers see the protected acceptance tests.** Delegated reviewers also judge whether the tests check the objective and every AC.
@@ -37,12 +38,13 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 | Member | Configured model / CLI | Default role |
 |---|---|---|
 | **Opus (lead)** | claude-opus-5-5 | Team selection, planning, rejection, final review; no implementation while workers remain available |
-| Sonnet | claude-sonnet-5-5 | Medium/high-complexity code, tests, refactoring |
-| Haiku | claude-haiku-5-5 | Small code changes, documentation, test additions through the Claude Code CLI |
-| Grok | Grok CLI | Image assets and straightforward implementation |
-| Antigravity | agy | UI, frontend, documentation; no image-generation capability |
-| Luna | gpt-6-luna (Codex) | Small fixes, mechanical bulk edits, image-asset assistance |
-| Sol | gpt-6.1-sol (Codex) | Reviews and committee advice by default; implementation only in a granted v0.3 APEX round |
+| Terra | gpt-6.1-terra (Codex) | A-tier, first pick: medium/high code, tests, refactoring (medium) |
+| Grok | Grok 4.7 CLI | A-tier implementation (high), image assets; review seat xhigh |
+| Sonnet | claude-sonnet-5-5 | A-tier implementation (medium); review seat max |
+| Luna | gpt-6-luna (Codex) | B-tier: small fixes, mechanical bulk edits, image-asset assistance |
+| Haiku | claude-haiku-5-5 | B-tier: small code changes, documentation, test additions through the Claude Code CLI |
+| Antigravity | agy (Gemini 3.8 Flash high) | B-tier: UI, frontend, documentation; no image-generation capability |
+| Sol | gpt-6.1-sol (Codex) | Reviews (xhigh) and committee advice by default; implementation only in a granted v0.3 APEX round |
 
 These assignments are starting points. Routing filters by capabilities and task kind/difficulty, then uses local history, time decay, and exploration. Uninstalled workers are skipped. A temporary preflight failure consumes no attempt; a missing worker executable can trigger reassignment. Model IDs are configuration defaults whose availability must be checked against the installed CLI and account.
 
@@ -99,18 +101,18 @@ Only `CLOSE` means success. Run `node scripts/fusion-state.mjs next <repository>
 
 Copy `hyperfusion.v03.config.example.json` to the target repository as `hyperfusion.config.json` to select the profile explicitly. Existing classic tasks are not migrated automatically. See [universal-supervisor](references/universal-supervisor.md).
 
-- **External-First implementation.** Grok, Antigravity, and Luna are automatic implementation candidates. Sonnet needs an important/reassignment grant; Sol needs an APEX grant. Automatic fallback and exploration cannot select either grant-only implementer.
+- **External-First implementation.** All A-tier and B-tier workers are automatic implementation candidates, routed by tier. Only Sol needs a grant (APEX). Automatic fallback and exploration cannot select Sol. A rejected B-tier round goes to an A-tier worker.
 - **Owner-aware review.** Standard tasks keep one independent reviewer. Important/explicit-dual/risk-raised tasks use the pairs below, independently in parallel. Substitution needs a recorded reason; a supported rejection is not erased by another PASS. Conflicts and missing results stay at the lead gate. Existing assignments and approved Grok-free teams retain their previous rules.
 - **Final lead gate.** Results stop at `LEAD_DECISION_REQUIRED`; `auto_apply`, review adoption, and autopilot cannot skip it. Only an explicit task-level discretion grant can authorize policy approval, and unattributed changes block that approval.
 - **Local universal monitoring.** Implementation, review, and consultation share supervision (`status --monitor`, `monitor --once|--watch`). Silence is a QUIET warning, not progress or success. Monitoring makes no model calls.
 - **Usage and quota.** Include failed calls, reviews, consultations, and APEX implementation; unknown values remain `null`. `quota-policy.mjs record` accepts operator records; `collect-codex` reads local Codex `rate_limits` without a network/model call. Expired records become unknown.
-- **Default reasoning effort.** Sonnet high, Haiku max, Antigravity high, Grok medium, Luna xhigh, Sol medium. Grok implementation and ordinary consultation stay at medium unless explicitly overridden; a designated adaptive dual-review seat uses xhigh. Override `reasoning_effort`; `null` omits the normal flag, not a mandatory role's effort.
+- **Default reasoning effort.** Implementation: Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 3.8 Flash high. Review seats: Sol xhigh, Sonnet max, Grok xhigh, separate from implementation effort. Override `reasoning_effort`; `null` omits the normal flag, not a mandatory role's effort.
 
 | Implementer | Important / dual / risk-raised pair |
 |---|---|
-| Grok medium | Sol medium + Sonnet high |
-| Luna | Sonnet high + Grok xhigh |
-| AGY / Haiku / authorized Sonnet | Sol medium + Grok xhigh |
+| Grok | Sol xhigh + Sonnet max |
+| Luna / Terra | Sonnet max + Grok xhigh |
+| AGY / Haiku / Sonnet | Sol xhigh + Grok xhigh |
 | Authorized APEX Sol | Direct lead review, not a delegated pair |
 
 The lead sets criticality/strategy in the approved brief at init and checks `review_preview`. Unanimous evidence-backed NG can use an init-granted `redo_delegation`; disagreement cannot. A unanimous PASS goes to the lead unless a separate eligible approval policy was granted. Host model identity is not authenticated: `authority.model_verified:false` records this limitation. See [review-pairs](references/review-pairs.md).

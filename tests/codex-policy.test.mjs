@@ -77,7 +77,7 @@ test('Codex writable cache/network options are operator-only, implementation-onl
 });
 test('vendor policy narrows routing and explicit selection before a writer exists',t=>{
  const f=fixture(t,{initialize:false});write(f,{allowed_vendors:['openai']});
- const c=config(f.root);assert.deepEqual(route(f.root,c,{task_kind:'code',difficulty:'low'}).candidates,['luna']);
+ const c=config(f.root);assert.deepEqual(route(f.root,c,{task_kind:'code',difficulty:'low'}).candidates,['luna','terra']);
  assert.throws(()=>run(f.root,'init',{...f.brief,executor:'grok'}),/VENDOR_POLICY/);
  assert.ok(!fs.existsSync(path.join(f.control,'locks/writer.json')));
  assert.throws(()=>assertVendor(c,'sonnet'),/VENDOR_POLICY/);
@@ -99,7 +99,7 @@ test('vendor policy blocks consult/review and a newly denied bridge before spawn
  assert.ok(!fs.existsSync(path.join(f.control,'tasks/HF-test/launch-2.json')));
 });
 test('built-in registry is the source for roles, capabilities, vendors and budgets',()=>{
- assert.equal(Object.keys(MEMBERS).length,6);
+ assert.equal(Object.keys(MEMBERS).length,7);
  for(const n of EXECUTORS){assert.deepEqual(CATALOG[n].owns,MEMBERS[n].owns);assert.deepEqual(DEFAULT_CAPS[n],MEMBERS[n].caps);assert.equal(CAP[n],MEMBERS[n].rounds);assert.ok(vendorOf(n));}
  assert.equal(EXECUTORS.includes('sol'),false);
 });

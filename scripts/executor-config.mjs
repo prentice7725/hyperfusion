@@ -8,8 +8,9 @@ import {validateVendors,assertVendor,vendorAllowed} from './vendor-policy.mjs';
 import {modelEffort,supportedAgyEfforts,selectAgyModel} from './adapters/agy-model.mjs';
 import {validCodingPolicy} from './coding-policy.mjs';
 import {grantOnlyMembers,reservedMembers,excludedMembers} from './team-roles.mjs';
+import {MEMBER_PROFILES} from './model-registry.mjs';
 
-// 구현 일꾼 명단(Grok, Antigravity, Sonnet·Haiku, Luna). 누가 grant 없이 자동 구현하는지는 리드 계열에 따른 역할(team-roles)이 정한다.
+// 구현 일꾼 명단(A급 Terra·Grok·Sonnet, B급 Luna·Haiku·Antigravity). 누가 grant 없이 자동 구현하는지는 리드 계열에 따른 역할(team-roles)이 정한다.
 export const EXECUTORS=Object.keys(MEMBERS).filter(n=>MEMBERS[n].implement);
 // 리뷰·상담까지 포함한 명단. Sol은 이 구현 명단에 넣지 않는다. APEX 구현은 라운드 승인으로만 연다.
 export const REVIEWERS=['sol',...EXECUTORS];
@@ -20,7 +21,7 @@ export const APEX_ROUND_CAP=3;
 // 상담(advisor 1명, committee 2명) 위원 실행 총량. 구현 예산과 별도다.
 export const CONSULT_CAP=4;
 // 추론 강도(reasoning_effort)로 받는 값. CLI마다 다르다(각 CLI --help 기준).
-// Codex: codex exec -c model_reasoning_effort=…, Claude Code·agy: --effort, Grok: --reasoning-effort(값 목록은 도움말에 없어 Claude와 같게 둔다).
+// Codex: codex exec -c model_reasoning_effort=…, Claude Code·agy: --effort, Grok: --reasoning-effort(Grok 4.7은 high·xhigh).
 // 기본 추론 강도. 설정에 reasoning_effort가 없으면 이 값을 쓰고, null이면 플래그를 넘기지 않는다(CLI 기본값).
 export const DEFAULT_EFFORT=Object.fromEntries(Object.entries(MEMBERS).map(([n,m])=>[n,m.effort]));
 export const EFFORT_LEVELS=Object.fromEntries(Object.entries(MEMBERS).map(([n,m])=>[n,m.efforts]));
@@ -40,33 +41,28 @@ export const IMAGE_EXECUTORS=EXECUTORS.filter(e=>DEFAULT_CAPS[e].includes('image
 
 // 기본 배치표: 능력으로 거른 후보의 처음 순서(선호)다. 규칙에 없는 일꾼도 능력이 있으면 뒤에 붙는다.
 // 실측이 아니라 출발점이다. 실적이 쌓이면 router가 성적 나쁜 일꾼을 뒤로 밀고, 새 일꾼은 가끔 먼저 시켜 본다.
+// 등급제: 중·고난도 코드·테스트·리팩터는 A급(구독형 Terra → Grok → API 비용이 드는 Sonnet), 쉬운 코드·문서·UI는 B급부터 맡긴다.
+// B급이 반려되면 같은 B급에게 다시 맡기지 않고 A급으로 넘긴다(fusion-state의 승급 규칙).
+const A_TIER=['terra','grok','sonnet'];
 export const DEFAULT_RULES=[
  {kind:'image-asset',executors:['grok','luna'],why:'이미지 생성 능력(image-gen)이 있는 일꾼'},
- {kind:'code',difficulty:['medium','high'],executors:['sonnet','grok','antigravity'],why:'까다로운 구현은 Sonnet'},
- {kind:'code',difficulty:['low'],executors:['luna','grok','haiku','antigravity','sonnet'],why:'쉬운 구현은 Luna·빠른 일꾼부터'},
- {kind:'tests',executors:['sonnet','grok','antigravity'],why:'테스트 설계·디버깅은 Sonnet'},
- {kind:'refactor',executors:['sonnet','antigravity','grok'],why:'넓은 범위 리팩터는 Sonnet'},
- {kind:'ui',executors:['antigravity','sonnet','grok'],why:'프론트엔드·UI는 Antigravity부터'},
- {kind:'docs',executors:['antigravity','haiku','grok','sonnet'],why:'문서는 가벼운 일꾼부터'},
- {executors:['sonnet','grok','antigravity'],why:'분류 없는 작업의 기본 순서'}
+ {kind:'code',difficulty:['medium','high'],executors:A_TIER,why:'중·고난도 구현은 A급'},
+ {kind:'code',difficulty:['low'],executors:['luna','haiku','antigravity',...A_TIER],why:'쉬운 구현은 B급부터'},
+ {kind:'tests',executors:A_TIER,why:'테스트 설계·디버깅은 A급'},
+ {kind:'refactor',executors:A_TIER,why:'넓은 범위 리팩터는 A급'},
+ {kind:'ui',executors:['antigravity',...A_TIER],why:'프론트엔드·UI는 Antigravity(B급)부터'},
+ {kind:'docs',executors:['antigravity','haiku','luna',...A_TIER],why:'문서는 B급부터'},
+ {executors:A_TIER,why:'분류 없는 작업은 A급'}
 ];
-// External-First 배치표: Sonnet·Sol은 자동 구현 후보가 아니다. Haiku는 claude_reserve가 꺼졌을 때만 뒤에 붙는다.
-export const EXTERNAL_FIRST_RULES=[
- {kind:'image-asset',executors:['grok','luna'],why:'검증된 image-gen 능력이 있는 외부 일꾼'},
- {kind:'code',executors:['grok','antigravity','luna'],why:'External-First: 코드는 Grok부터'},
- {kind:'tests',executors:['grok','antigravity','luna'],why:'External-First: 테스트는 Grok부터'},
- {kind:'refactor',executors:['grok','antigravity','luna'],why:'External-First: 리팩터는 Grok부터'},
- {kind:'ui',executors:['antigravity','grok','luna'],why:'External-First: UI는 Antigravity부터'},
- {kind:'docs',executors:['antigravity','grok','luna'],why:'External-First: 문서는 Antigravity부터'},
- {executors:['grok','antigravity','luna'],why:'External-First 기본 순서'}
-];
+// External-First 배치표도 같은 등급제다. Sol은 리뷰 전담이라 자동 구현 후보가 아니다.
+export const EXTERNAL_FIRST_RULES=structuredClone(DEFAULT_RULES);
 export const ROUTING_POLICIES=['classic','external-first'];
 // 승인 없이는 자동 구현자가 될 수 없는 일꾼. 승인은 lead-gated-adaptive의 컨트롤러 grant뿐이다.
-// 리드 계열 frontier와 외부 frontier가 여기에 든다(Opus 리드면 Sonnet·Sol).
+// 외부 최상위만 든다(Opus 리드면 Sol). A급 Sonnet·Terra는 승인 없이 구현한다.
 export const grantOnly=c=>grantOnlyMembers(c);
 // 난이도별 시작 강도(작업지시서 v0.3 §5). 운영자가 reasoning_effort를 직접 적은 일꾼에는 적용하지 않는다.
-// Grok stays at medium across difficulties; stronger reasoning is operator opt-in.
-export const DIFFICULTY_EFFORT={grok:{low:'medium',medium:'medium',high:'medium'},antigravity:{low:'low',medium:'medium',high:'high'}};
+// Grok 4.7 implements at high across difficulties; xhigh is the review seat's effort.
+export const DIFFICULTY_EFFORT={grok:{low:'high',medium:'high',high:'high'},antigravity:{low:'low',medium:'medium',high:'high'}};
 // Routing preflight and controller dispatch must inspect the same task profile.
 export function taskExecutorOptions(configuration,owner,difficulty) {
  const options={...(configuration?.executors?.[owner]??{})};
@@ -80,17 +76,20 @@ export function taskExecutorOptions(configuration,owner,difficulty) {
 // 상담·리뷰(읽기 전용) 실행의 옵션. consult_max_turns가 있으면 그 값이 리뷰 실행의 턴 상한이다.
 // 리뷰어는 바뀐 파일을 모두 읽느라 구현보다 턴이 더 들 수 있다(KF3: stop_reason tool_use로 끝난 Sonnet·Haiku·Grok 리뷰).
 // effort는 적응형 리뷰 계획이 정한 강도다. 브리지 검증도 같은 함수로 같은 값을 다시 만든다.
-export function consultExecutorOptions(configuration,executor,{reasoning_effort}={}) {
+// 계획이 없는 리뷰(클래식 위임 리뷰)는 리뷰 자리 강도(Sol xhigh, Sonnet max, Grok xhigh)를 쓴다. 운영자가 직접 적은 강도는 그대로 둔다.
+export function consultExecutorOptions(configuration,executor,{reasoning_effort,mode}={}) {
  const options={...(configuration?.executors?.[executor]??{})};
  if(options.consult_max_turns!==undefined)options.max_turns=options.consult_max_turns;
  if(reasoning_effort)options.reasoning_effort=reasoning_effort;
+ else if(mode==='review'&&configuration?.effort_source?.[executor]==='default'&&MEMBER_PROFILES[executor]?.review_effort)options.reasoning_effort=MEMBER_PROFILES[executor].review_effort;
  return options;
 }
 // 설정에 policy가 없으면 adaptive 리뷰 전략일 때만 External-First다. 둘 다 없으면 이전 동작 그대로.
 export const routingPolicy=c=>c?.routing?.policy??(c?.review?.strategy==='lead-gated-adaptive'?'external-first':'classic');
 export const externalFirst=c=>routingPolicy(c)==='external-first';
-// External-First에서 claude_reserve는 기본 true: 리드 계열의 일반 일꾼(Opus 리드면 Haiku)을 자동으로 고르지 않는다(명시 지정은 허용, 기록됨).
-export const claudeReserve=c=>externalFirst(c)&&c?.routing?.claude_reserve!==false;
+// claude_reserve는 운영자가 true로 켰을 때만: 리드 계열의 일반 일꾼(Opus 리드면 Haiku)을 자동으로 고르지 않는다(명시 지정은 허용, 기록됨).
+// 등급제에서 Haiku는 B급 일꾼이라 기본으로는 자동 후보다.
+export const claudeReserve=c=>externalFirst(c)&&c?.routing?.claude_reserve===true;
 // The same eligibility applies before routing, fallback and lease acquisition.
 export function automaticImplementer(c,name) {
  if(!vendorAllowed(c,name))return false;
@@ -105,11 +104,12 @@ export const RISK_PATHS=['**/auth/**','**/migrations/**','**/*.sql','**/security
 const validGlob=g=>typeof g==='string'&&g.length>0&&g.length<=200&&!g.startsWith('/')&&!g.includes('\\')&&!g.split('/').includes('..')&&!/^(?:\*\*\/)*\*{1,2}$/.test(g);
 
 export const DEFAULT_CONFIG={lead:'opus',lead_model:'claude-opus-5-5',lead_takeover:true,
- external:{default:'auto',available:['grok','antigravity','sonnet','haiku','luna']},
- executors:{antigravity:{sandbox:true}},
+ external:{default:'auto',available:['terra','grok','sonnet','luna','haiku','antigravity']},
+ // B급 agy는 Gemini 3.8 Flash high로 돈다(agy는 모델 ID의 접미사가 강도다).
+ executors:{antigravity:{sandbox:true,model:'gemini-3.8-flash-high'}},
  routing:{rules:DEFAULT_RULES,learn:true,min_samples:3,demote_below:0.4,half_life_days:90,explore_every:10,newcomer_every:4},
  // 리뷰 주체. lead는 Opus가 직접, delegate는 다른 모델(기본 Codex 우선)이 읽기 전용으로 판정하고 그 판정을 적용한다.
- review:{by:'lead',reviewers:['sol','sonnet','antigravity','grok','luna','haiku'],auto_apply:true,risk_paths:RISK_PATHS}};
+ review:{by:'lead',reviewers:['sol','sonnet','grok'],auto_apply:true,risk_paths:RISK_PATHS}};
 
 // 규칙은 선호 순서일 뿐이고 능력이 없는 일꾼은 router가 거른다. 사용자가 직접 쓴 규칙에 능력 없는 일꾼을 적으면 실수로 보고 거절한다
 // (예: 이미지 작업에 Sonnet). 기본 규칙은 능력을 좁혀도 고칠 필요가 없도록 거르기만 한다.
@@ -131,7 +131,7 @@ export function config(root) {
  if(v.lead!==undefined&&v.lead!=='opus')throw Error('Invalid HyperFusion configuration: the lead is chosen by the host or the operator (HF_LEAD_MODEL), not by hyperfusion.config.json');
  v.lead_model_source=fs.existsSync(file)&&v.lead_model!==undefined?'config':'default';
  v.lead??='opus';v.lead_model??='claude-opus-5-5';v.lead_takeover??=true;v.external??=structuredClone(DEFAULT_CONFIG.external);
- v.executors??={};v.executors.antigravity??={sandbox:true};
+ v.executors??={};v.executors.antigravity??=structuredClone(DEFAULT_CONFIG.executors.antigravity);
  // 운영자가 직접 적은 강도인지 기록한다. 파일에 같은 키가 있어도 컨트롤러가 다시 계산해 덮어쓴다.
  const effortSource={};
  for(const [k,e] of Object.entries(DEFAULT_EFFORT)){
@@ -194,9 +194,9 @@ export function config(root) {
 export function selectExecutor(c,requested) {
  const name=requested??c.external.default;
  if(name==='auto')return 'auto';
- if(['claude','opus'].includes(name))throw Error('Opus is the lead, not a worker. Executor must be grok, antigravity, sonnet, haiku, luna or auto');
+ if(['claude','opus'].includes(name))throw Error('Opus is the lead, not a worker. Executor must be '+EXECUTORS.join(', ')+' or auto');
  if(name==='sol')throw Error('Executor must be an implementer; sol only reviews and advises');
- if(!EXECUTORS.includes(name))throw Error('Executor must be grok, antigravity, sonnet, haiku, luna or auto');
+ if(!EXECUTORS.includes(name))throw Error('Executor must be '+EXECUTORS.join(', ')+' or auto');
  if(!c.external.available.includes(name))throw Error('Executor not enabled in configuration: '+name);
  assertVendor(c,name);
  return name;

@@ -15,18 +15,23 @@ test('owner and criticality choose the reviewer and never the writer',()=>{
     assert.equal(planReview(owner).reviewers.includes(owner),false);
   }
   assert.deepEqual(planReview('luna').reviewers,['sonnet']);
+  // Terra도 Sol과 같은 OpenAI 계열이라 Sonnet이 리뷰한다.
+  assert.deepEqual(planReview('terra').reviewers,['sonnet']);
+  assert.deepEqual(planReview('terra',{criticality:'important',review_policy:'cross-vendor-pairs-v1'}).reviewers,['sonnet','grok']);
   assert.deepEqual(planReview('sol').reviewers,['lead']);
-  assert.equal(planReview('grok').effort.sol,'medium');
-  assert.equal(planReview('luna').effort.sonnet,'high');
+  // 리뷰 자리의 강도: Sol xhigh, Sonnet max, Grok xhigh.
+  assert.equal(planReview('grok').effort.sol,'xhigh');
+  assert.equal(planReview('luna').effort.sonnet,'max');
+  assert.deepEqual(planReview('terra',{criticality:'important',review_policy:'cross-vendor-pairs-v1'}).effort,{sonnet:'max',grok:'xhigh'});
   for(const owner of ['grok','antigravity']){
     assert.deepEqual(planReview(owner,{criticality:'important'}).reviewers,['sol','sonnet']);
     assert.deepEqual(planReview(owner,{criticality:'apex'}).reviewers,['sol','sonnet']);
     assert.deepEqual(planReview(owner,{strategy:'dual_review'}).reviewers,['sol','sonnet']);
   }
-  for(const owner of ['haiku','luna','sonnet']){
+  for(const owner of ['haiku','luna','terra','sonnet']){
     const raised=planReview(owner,{criticality:'important',strategy:'dual_review'});
     assert.equal(raised.reviewers.includes(owner),false);
-    assert.equal(owner==='luna'?raised.reviewers.includes('sol'):raised.reviewers.includes('sonnet'),false);
+    assert.equal(owner==='luna'||owner==='terra'?raised.reviewers.includes('sol'):raised.reviewers.includes('sonnet'),false);
   }
 });
 

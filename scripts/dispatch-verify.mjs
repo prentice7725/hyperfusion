@@ -63,7 +63,7 @@ export function verifyConsult(root,state,dir,request,{id,member,executor}) {
  const a=adapter(executor);
  // 옵트인 리뷰 계획이 강도를 정하면 그 값이 설정 파일보다 우선이다. 검증도 같은 값을 다시 만든다.
  const planned=state.open_consult?.plan?.effort?.[executor];
- const options=consultExecutorOptions(state.configuration,executor,{reasoning_effort:state.open_consult?.adaptive?planned:undefined});
+ const options=consultExecutorOptions(state.configuration,executor,{reasoning_effort:state.open_consult?.adaptive?planned:undefined,mode:c?.mode});
  const expected=a.dispatch(brief,{token:'consult',owner:executor},{session:request.cli?.session_id??null,resume:false,probe:a.probe(options),
   promptFile:path.join(dir,`prompt-consult-${id}-${member}.txt`),options});
  compare(`consult-${id}-${member}.json`,expected,request);

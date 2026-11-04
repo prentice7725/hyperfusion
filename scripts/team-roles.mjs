@@ -20,15 +20,18 @@ const named=(c,...roles)=>Object.keys(MEMBERS).filter(n=>roles.includes(roleTeam
 // APEX 구현자: 리드와 계열이 다른 frontier 중 1순위. 리드가 판정한다.
 export const apexMember=c=>named(c,'external_top')[0]??null;
 // 전문가 구현(sonnet_implementation·REASSIGN_TO_SONNET이 여는 자리): 리드 계열 frontier, 없으면 외부 전문가.
-export const specialistMember=c=>named(c,'lead_family_specialist')[0]??named(c,'external_specialist')[0]??null;
-// 컨트롤러 grant 없이는 구현하지 못하는 일꾼.
-export const grantOnlyMembers=c=>named(c,'external_top','external_specialist','lead_family_specialist');
+// 같은 역할이 여럿이면 리뷰 순번이 앞선 일꾼이다(Codex 리드면 Terra가 아니라 Sol).
+const byRank=(c,list)=>[...list].sort((a,b)=>(roleTeam(c).members[a].review_rank??99)-(roleTeam(c).members[b].review_rank??99));
+export const specialistMember=c=>byRank(c,named(c,'lead_family_specialist'))[0]??byRank(c,named(c,'external_specialist'))[0]??null;
+// 컨트롤러 grant 없이는 구현하지 못하는 일꾼: 외부 최상위(Opus 리드면 Sol)와, 평소 구현 명단에 없는 전문가(Codex 리드의 Sol)다.
+// 등급제에서 구현 명단에 있는 frontier 전문가(Sonnet·Terra)는 A급 일꾼이라 grant 없이 구현한다.
+export const grantOnlyMembers=c=>named(c,'external_top','external_specialist','lead_family_specialist').filter(n=>roleTeam(c).roles[n]==='external_top'||!MEMBERS[n].implement);
 // 비용 정책으로 자동 선택에서 빼는 리드 계열 일반 일꾼(claude_reserve).
 export const reservedMembers=c=>named(c,'lead_family_general');
 // 리드와 같은 모델이라 일꾼 자리를 내놓은 일꾼.
 export const excludedMembers=c=>named(c,'excluded');
 // 위임 자동 승인을 받을 수 있는 작성자: grant 없이 구현하는 일꾼.
-export const delegableOwners=c=>named(c,'external_general','lead_family_general');
+export const delegableOwners=c=>named(c,'external_specialist','external_general','lead_family_specialist','lead_family_general');
 export const leadFamily=c=>roleTeam(c).lead.family;
 // 구현자·리뷰어의 계열. 'lead'는 리드 계열, 명단에 없는 이름(controller 등)은 unknown.
 export const memberFamilyOf=(c,name)=>name==='lead'?leadFamily(c):roleTeam(c).members[name]?.family??'unknown';

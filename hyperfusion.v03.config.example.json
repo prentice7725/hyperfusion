@@ -2,13 +2,14 @@
   "lead": "opus",
   "lead_model": "claude-opus-5-5",
   "lead_takeover": false,
-  "external": {"default": "auto", "available": ["grok", "antigravity", "luna", "haiku", "sonnet"]},
+  "external": {"default": "auto", "available": ["terra", "grok", "sonnet", "luna", "haiku", "antigravity"]},
   "executors": {
-    "grok": {"reasoning_effort": "medium"},
-    "antigravity": {"sandbox": true},
-    "sol": {"model": "gpt-6.1-sol", "reasoning_effort": "medium"},
-    "sonnet": {"model": "claude-sonnet-5-5", "reasoning_effort": "high"}
+    "terra": {"model": "gpt-6.1-terra", "reasoning_effort": "medium"},
+    "grok": {"reasoning_effort": "high"},
+    "antigravity": {"sandbox": true, "model": "gemini-3.8-flash-high"},
+    "sol": {"model": "gpt-6.1-sol", "reasoning_effort": "xhigh"},
+    "sonnet": {"model": "claude-sonnet-5-5", "reasoning_effort": "medium"}
   },
-  "routing": {"policy": "external-first", "claude_reserve": true},
+  "routing": {"policy": "external-first"},
   "review": {"by": "delegate", "strategy": "lead-gated-adaptive", "reviewers": ["sol", "sonnet", "grok"], "auto_apply": false}
 }

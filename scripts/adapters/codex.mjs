@@ -4,8 +4,9 @@ import {sandboxArgs,windowsSandboxSelfTest,SANDBOX_FAILURE,SANDBOX_HINT,WINDOWS_
 
 // OpenAI Codex CLI(codex exec) 하나로 두 팀원을 만든다. 모델과 권한만 다르다.
 // - sol: GPT-6.1 Sol. 리뷰·상담은 읽기 전용이다. workspace-write와 writer lease는 컨트롤러의 APEX 구현 승인이 있는 라운드만 받는다.
-// - luna: Luna. 빠르고 가벼운 모델. 작은 수정·기계적 대량 편집·리뷰 지적 반영 같은 구현을 맡는다.
-// 모델 ID는 executors.<sol|luna>.model로 바꿀 수 있다. 기본값은 설치 환경에서 확인해야 한다.
+// - luna: Luna. 빠르고 가벼운 모델. 작은 수정·기계적 대량 편집·리뷰 지적 반영 같은 구현을 맡는다(B급).
+// - terra: GPT-6.1 Terra. A급 구현 1순위로 중·고난도 코드를 맡는다.
+// 모델 ID는 executors.<sol|luna|terra>.model로 바꿀 수 있다. 기본값은 설치 환경에서 확인해야 한다.
 // 플래그 출처: https://developers.openai.com/codex/noninteractive
 export const binary=()=>memberBinary('luna');
 export const requiredFlags=['--sandbox','--output-schema','--cd','--json'];
@@ -113,3 +114,4 @@ export function parseEvents(stdout,request) {
 }
 export const sol=member('sol',{model:MEMBERS.sol.model,canWrite:false});
 export const luna=member('luna',{model:MEMBERS.luna.model,canWrite:true});
+export const terra=member('terra',{model:MEMBERS.terra.model,canWrite:true});
