@@ -1,6 +1,6 @@
 import {schemaFor,prompt,probe as probeCli,extractResult} from './common.mjs';
 import {memberBinary,MEMBERS} from '../member-registry.mjs';
-import {sandboxArgs,windowsSandboxSelfTest,SANDBOX_FAILURE,SANDBOX_HINT,WINDOWS_SANDBOX_ENV} from '../codex-sandbox.mjs';
+import {sandboxArgs,windowsSandboxSelfTest,windowsChildSpawnTest,SANDBOX_FAILURE,SANDBOX_HINT,WINDOWS_SANDBOX_ENV} from '../codex-sandbox.mjs';
 
 // OpenAI Codex CLI(codex exec) 하나로 두 팀원을 만든다. 모델과 권한만 다르다.
 // - sol: GPT-6.1 Sol. 리뷰·상담은 읽기 전용이다. workspace-write와 writer lease는 컨트롤러의 APEX 구현 승인이 있는 라운드만 받는다.
@@ -64,7 +64,11 @@ const preflightMemo=new Map();
 function preflightSandbox(cli,root) {
  const key=[cli.executable,...(cli.prefix_args??[]),process.env[WINDOWS_SANDBOX_ENV]??'',root??''].join('\0');
  if(!preflightMemo.has(key)){
-  try{preflightMemo.set(key,{ok:windowsSandboxSelfTest(cli,{root})});}catch(e){preflightMemo.set(key,{error:e});}
+  try{
+   const ok=windowsSandboxSelfTest(cli,{root});
+   let child_spawn;try{child_spawn=windowsChildSpawnTest(cli,{root});}catch(e){child_spawn={status:'unverified',reason:String(e?.message??e).slice(0,200)};}
+   preflightMemo.set(key,{ok:{...ok,child_spawn}});
+  }catch(e){preflightMemo.set(key,{error:e});}
  }
  const hit=preflightMemo.get(key);
  if(hit.error)throw hit.error;

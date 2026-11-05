@@ -113,3 +113,19 @@ test('off Windows the preflight costs nothing and never blocks',()=>{
  if(process.platform==='win32')return;
  assert.deepEqual(luna.preflight({root:process.cwd()}),{status:'skipped',reason:'not Windows'});
 });
+
+// 2026-11-05: the shells started inside the sandbox, so the self-test said ok, but a child spawned by the sandboxed
+// node failed with EPERM. Terra never ran a test in L01 runs 5-7.
+test('a separate check sees whether sandboxed node can start a child process',async t=>{
+ const {windowsChildSpawnTest}=await import('../scripts/codex-sandbox.mjs');
+ const answer=out=>fakeCodex(t,`if(target===process.execPath&&a.includes('-e'))console.log(${JSON.stringify(out)});`);
+ const blocked=answer('HF_CHILD_BLOCKED_EPERM');
+ const r=windowsChildSpawnTest(blocked.cli,win);
+ assert.equal(r.status,'blocked');assert.equal(r.code,'EPERM');assert.match(r.reason,/cannot run tests/);
+ const call=blocked.calls().find(a=>a.includes('-e'));
+ assert.ok(call.includes(process.execPath),'it runs this node inside the sandbox');
+ assert.match(call[call.indexOf('-e')+1],/spawnSync\(process\.execPath/);
+ assert.equal(windowsChildSpawnTest(answer('HF_CHILD_OK').cli,win).status,'ok');
+ assert.equal(windowsChildSpawnTest(answer('').cli,win).status,'unverified','no answer is not a verdict');
+ assert.equal(windowsChildSpawnTest(answer('HF_CHILD_OK').cli,{...win,platform:'linux'}).status,'skipped');
+});
