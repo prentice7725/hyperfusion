@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- 리드가 백그라운드 autopilot에 예약 깨우기를 덧걸지 않게 한다. L01 run 6에서 리드가 30분 예약(ScheduleWakeup)을 걸어, 작업이 12.5분에 CLOSE된 뒤에도 headless `claude -p`가 20분 더 남아 있었다. SKILL.md는 완료 알림을 기다리라고 안내하고, 벤치마크 지표는 컨트롤러가 CLOSE/BLOCKED에 닿은 시각을 `controller_ended_at`으로 따로 남긴다.
 - Codex 샌드박스 감지가 일꾼의 실제 문구를 잡는다. L01 run 5에서 Terra가 "could not spawn its child process: EPERM"처럼 spawn과 EPERM 사이에 말을 넣어 적었고, 정규식이 이를 놓쳐 Codex 일꾼에서 빠지지 않고 Terra에게 REDO가 다시 갔다. 이제 한 줄 안에서 80자 이내면 순서와 상관없이 잡는다.
 - Codex 샌드박스 실패 시 작업을 Codex 일꾼에서 뺀다. L01 재실행(등급제)에서 Terra가 Windows 샌드박스에 세 라운드 연속 막혀 리드가 매번 손으로 복구했고, 리드 사용량이 4.5배로 늘었다.
   - 이제 브리지의 `CODEX_WINDOWS_SANDBOX` 실패나 Codex 일꾼이 보고한 샌드박스 환경 실패(`spawn EPERM` 등)가 `sandbox-failure-N.json`으로 남는다.
