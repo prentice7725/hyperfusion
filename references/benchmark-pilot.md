@@ -177,6 +177,12 @@ and human assistance remain separate guardrails. A ten-case pilot is not statist
 proof. No live pilot or actual savings has been measured by this change.
 
 
+HyperFusion task metrics also record `controller_ended_at`, the time the controller reached
+CLOSE or BLOCKED. `ended_at` is when the measurement window closed. The gap between them is
+time the lead session stayed open after the task ended, such as a headless `claude -p`
+waiting on a scheduled wakeup. Report wall time to `controller_ended_at` alongside
+wall time to `ended_at`. Baseline metrics leave it `null`.
+
 ## Automation observation coverage (HF-I01)
 
 Task metrics and `compare` summaries include `automation`. `observed_tasks` and

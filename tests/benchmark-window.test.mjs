@@ -128,3 +128,17 @@ test('CLOSE alone cannot fabricate a passing benchmark without canonical accepta
  atomic(controlPath(p.root,'state.json'),{task_id:'HF-B01',phase:'CLOSE'});
  assert.throws(()=>stopWindow('HF-B01',p.root,{success:true}),/canonical controller acceptance/);
 });
+
+test('the HF metric records when the controller closed, apart from when the window closed',t=>{
+ // 2026-11-05 L01 run 6: the task closed at 12.5 min, but a pending wakeup kept the lead session open until 32 min.
+ const f=fixture(t,{initialize:false}),p=prepareFixture('HF-B01',path.join(f.temp,'closed-at'));
+ startWindow('HF-B01',p.root,{arm:'hyperfusion',sessionId:'host'});
+ const closed='2026-11-05T02:24:19.000Z';
+ atomic(controlPath(p.root,'state.json'),{task_id:'HF-B01',phase:'BLOCKED',ended_at:closed});
+ const metric=stopWindow('HF-B01',p.root,{success:false});
+ assert.equal(metric.controller_ended_at,closed);
+ assert.ok(Date.parse(metric.ended_at)>Date.parse(closed));
+ const b=prepareFixture('HF-B01',path.join(f.temp,'closed-at-baseline'));
+ startWindow('HF-B01',b.root,{sessionId:'baseline'});
+ assert.equal(stopWindow('HF-B01',b.root,{success:false}).controller_ended_at,null);
+});

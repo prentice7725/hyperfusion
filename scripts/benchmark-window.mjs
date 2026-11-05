@@ -69,7 +69,10 @@ export function stopWindow(caseId,root,{success,sessionId,transcriptPath}={}) {
   }
   const ended_at=new Date().toISOString();atomic(file,{...window,ended_at});
   const runs=window.benchmark.arm==='hyperfusion'?collectRunUsage(root,state):[];
-  const metric={task_id:caseId,...window.benchmark,success,started_at:window.started_at,ended_at,run_usage:runs,
+  // controller_ended_at: 컨트롤러가 CLOSE/BLOCKED에 닿은 시각. ended_at(창을 닫은 시각)과의 차이는 작업이 끝난 뒤 리드가 남아 있던 시간이다
+  // (예: 2026-11-05 L01 run 6에서 리드가 걸어 둔 30분 예약 깨우기 때문에 headless 세션이 20분 더 살아 있었다).
+  const metric={task_id:caseId,...window.benchmark,success,started_at:window.started_at,ended_at,
+   controller_ended_at:window.benchmark.arm==='hyperfusion'?state?.ended_at??null:null,run_usage:runs,
    lead_usage:null,acceptance,lead_takeovers:state?.attempts?.lead??0,
    automation:window.benchmark.arm==='hyperfusion'?collectAutomation(root,state,runs):null};
   atomic(controlPath(root,'metrics',caseId+'.json'),metric);
