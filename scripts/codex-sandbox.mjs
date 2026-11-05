@@ -96,7 +96,14 @@ const NOT_FOUND=/CreateProcess(?:AsUser|WithLogon)W failed: 2\b/i;
 // 실패 문구가 보일 때만 막는다. 하위 명령이 없거나 시간이 초과되는 등 판단할 수 없으면 unverified로 두고 막지 않는다.
 // 하위 명령 문법이 버전마다 다르다: `codex sandbox <명령>`(이 PC의 버전) 또는 `codex sandbox windows <명령>`.
 // 잘못 고르면 "windows"를 실행할 프로그램으로 받아 파일 없음(2)으로 끝난다. 도움말에 windows 하위 명령이 있을 때만 붙인다.
+// 도움말 확인은 실행 파일마다 한 번만 한다(셸 점검과 하위 프로세스 점검이 같이 쓴다).
+const commandMemo=new Map();
 function sandboxCommand(cli,env) {
+ const key=[cli.executable,...(cli.prefix_args??[])].join('\0');
+ if(!commandMemo.has(key))commandMemo.set(key,sandboxSubcommand(cli,env));
+ return commandMemo.get(key);
+}
+function sandboxSubcommand(cli,env) {
  const r=spawnSync(cli.executable,[...(cli.prefix_args??[]),'sandbox','--help'],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:workerEnv('luna',env)});
  return /^\s+windows\b/m.test(`${r.stdout??''}\n${r.stderr??''}`)?['sandbox','windows']:['sandbox'];
 }
@@ -124,4 +131,19 @@ export function windowsSandboxSelfTest(cli,{root,platform=process.platform,env=p
   checked.push(target[0]);
  }
  return {status:'ok',checked};
+}
+
+// 셸이 뜬다고 일꾼이 테스트를 돌릴 수 있는 것은 아니다. 이 PC(2026-11-05)에서는 샌드박스 안의 node가 뜨지만
+// node가 띄우는 하위 프로세스는 spawn EPERM으로 막혔고, 위 점검은 ok였다. L01 run 5~7에서 Terra는 한 번도 테스트를 돌리지 못했다.
+// 그래서 샌드박스 안의 node가 자기 자신을 하위 프로세스로 띄울 수 있는지 따로 본다. 막혀도 편집은 되므로 설치 오류로 다루지 않고,
+// 라우터가 Codex 일꾼을 순서 맨 뒤로 보내는 데만 쓴다. 판단할 수 없으면 unverified로 두고 순서를 바꾸지 않는다.
+const CHILD=/HF_CHILD_(OK|BLOCKED_(\w+))/;
+export function windowsChildSpawnTest(cli,{root,platform=process.platform,env=process.env,node=process.execPath}={}) {
+ if(platform!=='win32')return {status:'skipped',reason:'not Windows'};
+ const code='const r=require("child_process").spawnSync(process.execPath,["-e","0"]);console.log("HF_CHILD_"+(r.error?"BLOCKED_"+r.error.code:"OK"))';
+ const r=spawnSync(cli.executable,[...(cli.prefix_args??[]),...windowsSandboxArgs(env),...sandboxCommand(cli,env),node,'-e',code],
+  {cwd:root,encoding:'utf8',timeout:30000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:workerEnv('luna',env)});
+ const m=`${r.stdout??''}\n${r.stderr??''}`.match(CHILD);
+ if(!m)return {status:'unverified',reason:`sandboxed node gave no child-spawn result (${r.error?.code??'exit '+r.status})`};
+ return m[1]==='OK'?{status:'ok'}:{status:'blocked',code:m[2],reason:`Node inside the Codex sandbox could not start a child process (${m[2]}), so Codex workers cannot run tests on this host`};
 }

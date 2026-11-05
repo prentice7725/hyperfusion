@@ -43,7 +43,8 @@ export function history(root,kind,{difficulty,halfLifeDays=90,now=Date.now()}={}
  return stats;
 }
 
-export function route(root,c,brief,{probe=true}={}) {
+// preflight는 테스트가 바꿔 끼울 수 있다(실제 점검은 Windows에서만 돈다).
+export function route(root,c,brief,{probe=true,preflight=e=>adapter(e).preflight?.({root})}={}) {
  const rule=matchRule(c.routing.rules,brief);
  if(!rule)throw Error('No routing rule matches; add a fallback rule without kind');
  const notes=[`rule: ${rule.kind??'*'}/${rule.difficulty?.join('|')??'*'} → ${rule.executors.join(' > ')}${rule.why?' ('+rule.why+')':''}`];
@@ -70,6 +71,13 @@ export function route(root,c,brief,{probe=true}={}) {
  if(demoted.length){order=[...order.filter(e=>!demoted.includes(e)),...demoted];notes.push('demoted by track record: '+demoted.map(e=>`${e} ${stats[e].passed}/${stats[e].tasks}`).join(', '));}
  const unavailable={};
  if(probe)for(const e of order){try{adapter(e).probe(taskExecutorOptions(c,e,brief.difficulty));}catch(err){unavailable[e]=err.message;}}
+ // 이 PC의 샌드박스가 하위 프로세스를 막아 테스트를 못 돌리는 일꾼(Codex on Windows)은 맨 뒤로 보낸다. 빼지는 않는다: 편집은 되고,
+ // 다른 일꾼이 모두 안 될 때는 여전히 쓸 수 있다. 점검이 실패하면(설치 오류 등) 여기서는 순서를 바꾸지 않고 설치 확인에 맡긴다.
+ const spawnBlocked=probe?order.filter(e=>{
+  if(e in unavailable)return false;
+  try{return preflight(e)?.child_spawn?.status==='blocked';}catch{return false;}
+ }):[];
+ if(spawnBlocked.length&&spawnBlocked.length<order.length){order=[...order.filter(e=>!spawnBlocked.includes(e)),...spawnBlocked];notes.push('sandbox blocks child processes on this host (tests cannot run), moved last: '+spawnBlocked.join(', '));}
  const candidates=order.filter(e=>!(e in unavailable));
  const every=c.routing.explore_every;
  if(c.routing.learn&&every>0&&(stats.sample_count+1)%every===0){
@@ -90,6 +98,8 @@ export function route(root,c,brief,{probe=true}={}) {
  }
  // Quota exhaustion must not be undone by exploration/newcomer promotion.
  if(drained.length)candidates.sort((a,b)=>Number(drained.includes(a))-Number(drained.includes(b)));
+ // 샌드박스 강등도 탐색·신입 우대가 되돌리지 못한다.
+ if(spawnBlocked.length&&spawnBlocked.length<candidates.length)candidates.sort((a,b)=>Number(spawnBlocked.includes(a))-Number(spawnBlocked.includes(b)));
  if(Object.keys(unavailable).length)notes.push('skipped (not installed or unsupported): '+Object.keys(unavailable).join(', '));
  if(!candidates.length)throw Error('ADAPTER_UNAVAILABLE: no routed executor is installed: '+JSON.stringify(unavailable));
  const out={executor:candidates[0],candidates,task_kind:brief.task_kind??null,difficulty:brief.difficulty??null,stats,unavailable,reason:notes.join('; ')};
