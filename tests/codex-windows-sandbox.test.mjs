@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {windowsSandboxSelfTest,windowsSandboxArgs,sandboxArgs,SANDBOX_FAILURE} from '../scripts/codex-sandbox.mjs';
-import {luna,parseEvents,diagnose} from '../scripts/adapters/codex.mjs';
+import {luna,parseEvents,diagnose,windowsOrders} from '../scripts/adapters/codex.mjs';
 import {NON_RETRYABLE} from '../scripts/delegation.mjs';
 
 // Codex의 Windows 샌드박스가 셸을 띄우지 못하는 문제(CreateProcessAsUserW failed: 5). 실제 Windows가 아니므로
@@ -86,7 +86,8 @@ test('when the result cannot be judged the worker is not blocked',t=>{
 test('the operator chooses the Windows sandbox mode; anything else is refused',t=>{
  assert.deepEqual(windowsSandboxArgs({}),[]);
  assert.deepEqual(windowsSandboxArgs({HF_CODEX_WINDOWS_SANDBOX:'unelevated'}),['-c','windows.sandbox="unelevated"']);
- assert.throws(()=>windowsSandboxArgs({HF_CODEX_WINDOWS_SANDBOX:'off'}),/must be elevated or unelevated/);
+ assert.deepEqual(windowsSandboxArgs({HF_CODEX_WINDOWS_SANDBOX:'mxc'}),['-c','windows.sandbox="mxc"']);
+ assert.throws(()=>windowsSandboxArgs({HF_CODEX_WINDOWS_SANDBOX:'off'}),/must be mxc, elevated or unelevated/);
  // 읽기 전용 상담·리뷰도 같은 샌드박스로 셸을 띄운다
  assert.deepEqual(sandboxArgs({consult:true},{HF_CODEX_WINDOWS_SANDBOX:'unelevated'}),['-c','windows.sandbox="unelevated"']);
  const seen=fakeCodex(t,`console.log('HF_SANDBOX_OK');`);
@@ -128,4 +129,16 @@ test('a separate check sees whether sandboxed node can start a child process',as
  assert.equal(windowsChildSpawnTest(answer('HF_CHILD_OK').cli,win).status,'ok');
  assert.equal(windowsChildSpawnTest(answer('').cli,win).status,'unverified','no answer is not a verdict');
  assert.equal(windowsChildSpawnTest(answer('HF_CHILD_OK').cli,{...win,platform:'linux'}).status,'skipped');
+});
+
+// 2026-11-06: under mxc, Codex points TEMP at the container's own folder, where renames fail (git init cannot write .git/config).
+// A folder inside the repository works, so Windows implementation rounds say how to get around it.
+test('Windows implementation rounds tell Codex how to get around a sandbox TEMP that refuses renames',()=>{
+ const text=JSON.stringify({protocol:'p',instructions:['a']});
+ const win=JSON.parse(windowsOrders(text,{platform:'win32'}));
+ assert.equal(win.instructions.length,2);
+ assert.match(win.instructions[1],/TEMP and TMP set to a \.hf-tmp folder in the repository root/);
+ assert.match(win.instructions[1],/AppData\\Local\\Packages\\sandbox\.\*\\AC\\Temp/);
+ assert.equal(windowsOrders(text,{platform:'win32',consult:true}),text,'read-only reviews and consults are unchanged');
+ assert.equal(windowsOrders(text,{platform:'linux'}),text);
 });

@@ -70,13 +70,14 @@ export const sandboxFailureFile=n=>`sandbox-failure-${n}.json`;
 // `winget install --id Microsoft.PowerShell --source winget`도 이 패키지판을 설치했다(경로 WindowsApps\Microsoft.PowerShell_8wekyb3d8bbwe).
 export const SANDBOX_HINT=`If pwsh is the packaged (Store/MSIX) PowerShell under WindowsApps, remove it (Get-AppxPackage Microsoft.PowerShell | Remove-AppxPackage) `
  +`and install the MSI build from the PowerShell GitHub releases (plain winget may install the package again). `
- +`Or the operator may set ${WINDOWS_SANDBOX_ENV}=unelevated (weaker isolation; the controller still checks scope) and retry. Retrying unchanged fails the same way; use another worker meanwhile`;
+ +`On a compatible Windows 11 host the operator may set ${WINDOWS_SANDBOX_ENV}=mxc (no administrator setup), or ${WINDOWS_SANDBOX_ENV}=unelevated (weaker isolation; the controller still checks scope), and retry. Retrying unchanged fails the same way; use another worker meanwhile`;
 
-// 운영자 환경변수로만 고른다(저장소 설정·일꾼 출력으로는 바꾸지 못한다). 읽기 전용 상담·리뷰도 같은 샌드박스로 셸을 띄우므로 모두에 적용한다.
+// 운영자 환경변수로만 고른다(저장소 설정·일꾼 출력으로는 바꾸지 못한다). mxc는 관리자 설정 없이 쓰는 Windows 11 컨테이너 격리이고 공식 문서가 호환 기기에서 먼저 권한다.
+// 2026-11-06 이 PC(build 26300): unelevated에서는 이름 있는 파이프를 만들지 못해 node의 파이프 연결 spawn이 EPERM이었고, mxc에서는 됐다. 읽기 전용 상담·리뷰도 같은 샌드박스로 셸을 띄우므로 모두에 적용한다.
 export function windowsSandboxArgs(env=process.env) {
  const v=env[WINDOWS_SANDBOX_ENV];
  if(v===undefined||v==='')return [];
- if(!['elevated','unelevated'].includes(v))throw Error(`CODEX_SANDBOX: ${WINDOWS_SANDBOX_ENV} must be elevated or unelevated`);
+ if(!['mxc','elevated','unelevated'].includes(v))throw Error(`CODEX_SANDBOX: ${WINDOWS_SANDBOX_ENV} must be mxc, elevated or unelevated`);
  return ['-c',`windows.sandbox="${v}"`];
 }
 
@@ -147,3 +148,7 @@ export function windowsChildSpawnTest(cli,{root,platform=process.platform,env=pr
  if(!m)return {status:'unverified',reason:`sandboxed node gave no child-spawn result (${r.error?.code??'exit '+r.status})`};
  return m[1]==='OK'?{status:'ok'}:{status:'blocked',code:m[2],reason:`Node inside the Codex sandbox could not start a child process (${m[2]}), so Codex workers cannot run tests on this host`};
 }
+
+// mxc는 TEMP를 컨테이너 전용 폴더(AppData\Local\Packages\sandbox.*\AC\Temp)로 바꾸는데, 그 폴더에서는 이름 바꾸기가 막혀
+// git init(config.lock → config) 같은 잠금 파일 방식이 실패한다. 저장소 밖 폴더는 쓰기가 안 되고, 저장소 안 폴더는 된다(2026-11-06 실측).
+export const WINDOWS_TEMP_ORDER='On Windows the Codex sandbox may point TEMP and TMP at a folder that refuses writes or renames (EPERM or "Permission denied" under AppData\\Local\\Packages\\sandbox.*\\AC\\Temp; git init and lock-file renames fail there). If a command fails that way, rerun it with TEMP and TMP set to a .hf-tmp folder in the repository root, delete that folder before you finish, and say so in risks.';

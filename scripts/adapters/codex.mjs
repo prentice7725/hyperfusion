@@ -1,6 +1,6 @@
 import {schemaFor,prompt,probe as probeCli,extractResult} from './common.mjs';
 import {memberBinary,MEMBERS} from '../member-registry.mjs';
-import {sandboxArgs,windowsSandboxSelfTest,windowsChildSpawnTest,SANDBOX_FAILURE,SANDBOX_HINT,WINDOWS_SANDBOX_ENV} from '../codex-sandbox.mjs';
+import {sandboxArgs,windowsSandboxSelfTest,windowsChildSpawnTest,SANDBOX_FAILURE,SANDBOX_HINT,WINDOWS_SANDBOX_ENV,WINDOWS_TEMP_ORDER} from '../codex-sandbox.mjs';
 
 // OpenAI Codex CLI(codex exec) 하나로 두 팀원을 만든다. 모델과 권한만 다르다.
 // - sol: GPT-6.1 Sol. 리뷰·상담은 읽기 전용이다. workspace-write와 writer lease는 컨트롤러의 APEX 구현 승인이 있는 라운드만 받는다.
@@ -36,7 +36,7 @@ function member(name,{model,canWrite}) {
   if(!consult&&!canWrite&&!apexGrant)throw Error(`${name} is a reviewer/adviser only; it never holds the writer lease`);
   // --output-schema는 파일을 받는다. 브리지가 실행 직전에 이 파일을 만든다.
   const schemaFile=promptFile.replace(/\.txt$/,'')+'.schema.json';
-  const text=prompt(brief,lease);
+  const text=windowsOrders(prompt(brief,lease),{consult});
   // 상담·리뷰는 읽기 전용, 구현은 작업 폴더 쓰기만. 커밋 등은 HEAD/index 스냅샷 검사로 잡는다.
   const sandbox=consult?'read-only':'workspace-write';
   if(resume&&(!cli.supports?.resume||!validSession(session)))throw Error('CODEX_RESUME_UNSUPPORTED: explicit session resume requires compatible CLI help and a recorded thread ID');
@@ -57,6 +57,13 @@ function member(name,{model,canWrite}) {
  // 실행 전 점검: Windows에서 샌드박스가 프로세스를 띄우는지(모델 호출 없음). 컨트롤러가 일꾼을 고를 때 설치 확인과 함께 부른다.
  const preflight=({root}={})=>process.platform==='win32'?preflightSandbox(probe(),root):{status:'skipped',reason:'not Windows'};
  return {name,binary,defaultModel:model,canWrite,probe,newSession:()=>null,dispatch,parse,preflight,diagnose};
+}
+
+// Windows 구현 라운드에는 샌드박스 TEMP 우회 지시를 덧붙인다(상담·리뷰는 명령으로 파일을 만들지 않는다).
+export function windowsOrders(text,{consult=false,platform=process.platform}={}) {
+ if(platform!=='win32'||consult)return text;
+ const p=JSON.parse(text);p.instructions=[...p.instructions,WINDOWS_TEMP_ORDER];
+ return JSON.stringify(p);
 }
 
 // 같은 실행 파일·설정·저장소에 대한 점검은 한 프로세스에서 한 번만 한다(Sol과 Luna는 같은 CLI다).
