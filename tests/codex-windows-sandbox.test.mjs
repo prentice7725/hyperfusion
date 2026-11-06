@@ -104,6 +104,12 @@ test('a round whose commands the sandbox refused fails with the cause, instead o
  // 일꾼이 글로만 언급한 것은 실패가 아니다
  const mentioned=events({type:'item.completed',item:{type:'agent_message',text:'note: windows sandbox: setup refresh failed is a known issue'}});
  assert.doesNotThrow(()=>parseEvents(mentioned,{cli:{}}));
+ // 2026-11-06: a reviewer read CHANGELOG.md, which quotes the error. The command succeeded, so it is file text, not a refusal.
+ const read=events({type:'item.completed',item:{type:'command_execution',command:'pwsh -Command "Get-Content CHANGELOG.md"',aggregated_output:`- fixed: ${DENIED}`,exit_code:0,status:'completed'}});
+ assert.doesNotThrow(()=>parseEvents(read,{cli:{}}));
+ // A failed command that prints the same text is still a refusal; so is one without an exit code.
+ assert.throws(()=>parseEvents(events({type:'item.completed',item:{type:'command_execution',aggregated_output:DENIED,exit_code:1,status:'failed'}}),{cli:{}}),/CODEX_WINDOWS_SANDBOX/);
+ assert.throws(()=>parseEvents(events({type:'item.completed',item:{type:'command_execution',aggregated_output:DENIED}}),{cli:{}}),/CODEX_WINDOWS_SANDBOX/);
  assert.match(diagnose('',`error: ${DENIED}`),/CODEX_WINDOWS_SANDBOX/);
  assert.equal(diagnose('ok','fine'),null);
  assert.ok(SANDBOX_FAILURE.test('Rejected("Failed to create unified exec process: helper_unknown_error: setup refresh had errors")'));

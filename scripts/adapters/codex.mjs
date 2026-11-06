@@ -88,7 +88,8 @@ export function parseEvents(stdout,request) {
   let e;try{e=JSON.parse(line);}catch{throw Error('Codex emitted invalid JSONL');}
   if(!e||typeof e.type!=='string')throw Error('Codex emitted an unrecognized event');
   // 샌드박스가 셸을 띄우지 못하면 턴은 정상 종료되고 일꾼은 "못 했다"고만 보고한다. 명령 실행 결과에서 직접 찾아 라운드를 실패시킨다.
-  if(e.type==='item.completed'&&e.item?.type==='command_execution'){
+  // 성공한 명령(exit_code 0)은 건너뛴다. 오류 문구가 적힌 파일을 읽기만 해도 걸린다(2026-11-06: Sol이 CHANGELOG.md를 읽은 리뷰가 버려졌다).
+  if(e.type==='item.completed'&&e.item?.type==='command_execution'&&e.item.exit_code!==0){
    const out=String(e.item.aggregated_output??'')+'\n'+String(e.item.error??'');
    const hit=out.split(/\r?\n/).find(l=>SANDBOX_FAILURE.test(l));
    if(hit&&!sandboxFailure)sandboxFailure=hit.trim().slice(0,200);
