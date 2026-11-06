@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Codex 샌드박스 감지가 성공한 명령의 출력을 오류로 보지 않는다. 2026-11-06 Ponytail 비교에서 Sol이 리뷰 중 `Get-Content CHANGELOG.md`를 읽었는데, 그 파일에 적힌 `CreateProcessAsUserW failed: 5` 문구 때문에 정상 리뷰 6건이 모두 샌드박스 실패로 버려졌다. 이제 `exit_code`가 0인 명령은 건너뛴다. 실패했거나 종료 코드가 없는 명령은 전처럼 본다.
 - 이 PC의 Codex 샌드박스가 하위 프로세스를 막으면 라우터가 Codex 일꾼을 맨 뒤로 보낸다. L01 run 5~7에서 기존 사전 점검(셸이 뜨는지)은 ok였지만, 샌드박스 안 node가 띄우는 하위 프로세스는 `spawn EPERM`으로 막혀 Terra가 한 번도 테스트를 돌리지 못했고 매번 Grok이 다시 했다. 이제 사전 점검이 샌드박스 안에서 node의 하위 프로세스를 띄워 보고, 막히면 Terra·Luna를 다른 일꾼 뒤로 보낸다. 빼지는 않으므로 Codex만 남으면 여전히 쓴다.
 - 리드가 백그라운드 autopilot에 예약 깨우기를 덧걸지 않게 한다. L01 run 6에서 리드가 30분 예약(ScheduleWakeup)을 걸어, 작업이 12.5분에 CLOSE된 뒤에도 headless `claude -p`가 20분 더 남아 있었다. SKILL.md는 완료 알림을 기다리라고 안내하고, 벤치마크 지표는 컨트롤러가 CLOSE/BLOCKED에 닿은 시각을 `controller_ended_at`으로 따로 남긴다.
 - Codex 샌드박스 감지가 일꾼의 실제 문구를 잡는다. L01 run 5에서 Terra가 "could not spawn its child process: EPERM"처럼 spawn과 EPERM 사이에 말을 넣어 적었고, 정규식이 이를 놓쳐 Codex 일꾼에서 빠지지 않고 Terra에게 REDO가 다시 갔다. 이제 한 줄 안에서 80자 이내면 순서와 상관없이 잡는다.
