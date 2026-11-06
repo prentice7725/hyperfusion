@@ -4,7 +4,7 @@
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Terra·Grok·Sonnet·Luna·Haiku·Antigravity에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.31.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.31.0`(`package.json`)이다. 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 최근 변경
 
@@ -40,7 +40,7 @@
 | Luna | gpt-6-luna (Codex) | B급: 소규모 수정, 기계적 대량 편집, 이미지 애셋 보조 |
 | Haiku | claude-haiku-5-5 | B급: 쉬운 코드, 문서, 테스트 보강 (Sonnet과 같은 Claude Code CLI) |
 | Antigravity | agy (Gemini 3.8 Flash high) | B급: UI·프론트엔드, 문서 (이미지 생성 기능 없음) |
-| Sol | gpt-6.1-sol (Codex) | 기본은 리뷰(xhigh)·위원회 상담. v0.3의 APEX 승인 라운드에서만 구현 가능 |
+| Sol | gpt-6.1-sol (Codex) | 기본은 리뷰(xhigh)·위원회 상담. APEX 승인 라운드에서만 구현 가능 |
 
 기본 배치는 출발점이다. 프로젝트마다 리드가 바꾸고, 종류·난이도별 실적에 시간 감쇠와 재탐색을 적용해 배치를 조정한다. 설치되지 않은 일꾼은 건너뛴다. 실행 전 CLI 확인이 일시적으로 실패하면 시도 예산을 쓰지 않고 재시도할 수 있고, 담당 일꾼의 실행 파일이 사라지면 다른 일꾼으로 교체할 수 있다. 모델 ID는 설정 기본값이며 실제 CLI·계정의 지원 여부는 따로 확인한다.
 
@@ -63,6 +63,7 @@ CLOSE까지 가야 성공이다. 어느 단계에서든 지금 칠 명령은 `no
 - **팀 구성 → 승인 → 마일스톤 → 체크포인트.** 기획 문서를 읽은 리드가 누가 무엇을 맡을지 팀을 짜서 보고하고, 승인 전에는 작업이 시작되지 않는다. `project.mjs draft`가 설치된 팀원으로 초안을 채우고 미설치 팀원은 거절한다. 마일스톤이 끝나면 보고하고, 확인을 받아야 다음으로 넘어간다. `project.mjs schedule`은 작업 의존성을 고정 계획으로 관리한다(구현은 직렬). → [project](references/project.md) · [작업 계획](references/workflow-plan.md)
 - **능력 기반 배치.** 이름이 아니라 능력(`caps`: code, ui, docs, image-gen…)으로 후보를 거르고, 내 저장소의 실적(반려율)으로 순서를 정한다. 실적 없는 신입은 가끔 먼저 시켜 본다. 기존 어댑터의 모델 ID·능력은 설정으로 바꾸고, 새 제공자는 별도 어댑터 구현이 필요하다. → [routing](references/routing.md)
 - **설치 상태 점검과 계약 스모크.** `setup-doctor.mjs`가 설정을 바꾸지 않고 설치된 CLI에 맞는 프리셋을 추천한다. `--smoke`는 일꾼마다 임시 저장소에서 아주 작은 작업을 실제로 시켜 CLI 플래그·출력 형식·결과 계약이 맞는지 본다. 설치 확인은 인증·잔량 검증이 아니다. → [operations](references/operations.md#doctor-계약-스모크)
+- **External-First 배치.** A급·B급 일꾼 모두 자동 구현 후보이며 등급별로 배치한다. grant가 필요한 일꾼은 Sol(APEX 라운드)뿐이고, 자동 폴백·신입 우대는 Sol을 고르지 않는다. B급 라운드가 반려되면 A급으로 넘긴다. 적응형 리뷰(`lead-gated-adaptive`)를 켜면 이 배치가 기본이 된다(`routing.policy:"external-first"`). classic 배치도 같은 등급표를 쓴다.
 
 **일꾼을 믿지 않고 확인하기**
 
@@ -91,18 +92,15 @@ CLOSE까지 가야 성공이다. 어느 단계에서든 지금 칠 명령은 `no
 - **단일 writer와 감사 기록.** 한 번에 한 일꾼만 쓰고, 라운드마다 스냅샷과 산출물이 남는다. 중단되면 복구 절차로 이어간다. 자동 commit·push·배포는 없다.
 - **리드 가드 훅.** lease가 걸려 있거나 일꾼 예산이 남은 동안 리드의 Edit/Write와 쓰기 가능한 MCP 도구를 차단하고(PreToolUse), 리드 차례인 작업을 두고 턴을 끝내려 하면 한 번 막는다(Stop). Bash 쓰기는 이 훅이 아니라 스냅샷과 라운드 사이 drift 검사가 확인한다. → [operations](references/operations.md#리드-가드-훅)
 - **독립 worktree와 작업 상한.** 작업마다 상태와 writer lease를 격리하고, 보고된 비용과 경과 시간에 상한을 둔다. 결과는 각각 검수한 뒤 통합한다. → [병렬 실행·상한](references/operations.md)
+- **범용 로컬 감시.** 모든 implement/review/consult 호출을 같은 supervisor가 관측한다(`status --monitor`, `monitor --once|--watch`). 무신호는 QUIET 경고일 뿐이며 진행률·성공을 만들어 내지 않는다. 감시는 모델을 부르지 않는다.
 - **Linux·macOS·Windows.**
 
-## v0.3: External-First와 범용 감시 (옵트인)
+## 적응형 리뷰 (옵트인)
 
-`hyperfusion.v03.config.example.json`을 대상 저장소의 `hyperfusion.config.json`으로 복사해 명시적으로 켠다. 기존 classic 설정·진행 중 작업은 자동으로 바뀌지 않는다. 자세한 내용은 [universal-supervisor](references/universal-supervisor.md).
+리뷰 전략을 `lead-gated-adaptive`로 두면 아래 리뷰 규칙과 최종 리드 게이트가 적용되고, 자동 구현 배치는 External-First가 된다. Claude·Codex가 설치돼 있을 때 `setup-doctor`가 권하는 프리셋(`claude-codex`, `external-first`)과 `hyperfusion.v03.config.example.json`이 이 전략을 쓴다. 기존 classic 설정·진행 중 작업은 자동으로 바뀌지 않는다. 자세한 내용은 [universal-supervisor](references/universal-supervisor.md).
 
-- **External-First 배치.** A급·B급 일꾼 모두 자동 구현 후보이며 등급별로 배치한다. grant가 필요한 일꾼은 Sol(APEX 라운드)뿐이고, 자동 폴백·신입 우대는 Sol을 고르지 않는다. B급 라운드가 반려되면 A급으로 넘긴다.
 - **작성자별 리뷰.** 일반 작업은 독립 리뷰어 1명, 중요·명시적 이중 리뷰·위험 경로는 아래 페어가 독립·병렬 검토한다. 구현자는 자기 라운드를 리뷰하지 못한다. 대체에는 사유가 필요하며 기존 반려는 다른 PASS로 지워지지 않는다. 충돌·누락은 리드 게이트에 남는다. 이전 배정과 승인된 Grok 미포함 팀은 기존 규칙을 유지한다.
 - **최종 리드 게이트.** 결과는 `LEAD_DECISION_REQUIRED`에서 멈춘다. `auto_apply`, 리뷰 채택, 오토파일럿으로 건너뛸 수 없고, 작업 단위 재량권만 정책 승인을 허가한다.
-- **범용 로컬 감시.** 모든 implement/review/consult 호출을 같은 supervisor가 관측한다(`status --monitor`, `monitor --once|--watch`). 무신호는 QUIET 경고일 뿐이며 진행률·성공을 만들어 내지 않는다. 감시는 모델을 부르지 않는다.
-- **사용량 계측과 쿼터.** 구현·검수·상담·실패 호출과 APEX Sol을 포함해 기록하고, 미측정은 `null`로 둔다. 쿼터는 `scripts/quota-policy.mjs`로 운영자가 직접 적거나(`record`), Codex 세션 기록의 `rate_limits`를 읽어 기록한다(`collect-codex`, 네트워크·모델 없음). 출처와 유효 시간이 지나면 '모름'으로 취급한다.
-- **기본 추론 강도.** 구현은 Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 3.8 Flash high다. 리뷰 자리는 Sol xhigh, Sonnet max, Grok xhigh로 구현 강도와 따로 간다. `reasoning_effort:null`은 일반 플래그 생략이며 필수 리뷰 역할의 강도를 해제하지 않는다.
 
 | 구현자 | 중요·이중·위험 경로 리뷰 페어 |
 |---|---|
@@ -118,11 +116,13 @@ CLOSE까지 가야 성공이다. 어느 단계에서든 지금 칠 명령은 `no
 - **AGY 모델 계열과 effort.** `executors.antigravity.model:"gemini-4-argon"`과 `reasoning_effort:"high"`를 따로 설정하면 `gemini-4-argon-high`를 고른다. 접미사로 고정한 모델은 그 강도를 유지하고, 충돌하는 effort는 실행 전에 거절한다. 최종 슬러그는 `agy models`로 검사하고 없는 변형으로 대체하지 않는다. → [설정](references/configuration.md#agy-모델-계열과-effort-분리-argon)
 - **Codex.** JSONL thread·turn 사용량을 기록하고, 호환 `exec resume` 플래그를 확인한 경우에만 작업 단위 구현 세션을 정확한 ID로 재개한다. 리뷰는 매번 새 읽기 전용 세션이다. 운영자 전용 빌드 캐시·네트워크 옵션과 Claude/Grok 턴 상한은 [Codex 운영 안내](references/codex-runtime.md)를 따른다.
 - **벤더 제한.** `allowed_vendors:["anthropic","openai"]`가 구현·리뷰·상담을 함께 제한하고, 운영자 `HF_ALLOWED_VENDORS`는 저장소가 넓힐 수 없는 상한이다. 브리지가 실행 직전에 다시 검사한다. 방화벽·DLP나 벤더 인증은 아니다. 새 CLI는 검증된 어댑터가 필요하다(`scripts/member-registry.mjs`).
+- **기본 추론 강도.** 구현은 Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 3.8 Flash high다. 리뷰 자리는 Sol xhigh, Sonnet max, Grok xhigh로 구현 강도와 따로 간다. `reasoning_effort:null`은 일반 플래그 생략이며 필수 리뷰 역할의 강도를 해제하지 않는다.
 
 ## 측정
 
 - **리드 사용량.** 생성된 훅이 Stop/SessionEnd/StopFailure 때 로컬 Claude Code transcript의 실제 모델별 사용량을 수집한다. 증거가 없으면 미측정으로 남기며 명시적인 `TASK_USAGE.json` 관측이 우선한다. 클라이언트 보고치이며 청구 API가 아니다. → [지표 정책](references/metrics-policy.md)
 - **벤치마크.** `benchmark.mjs cases`는 고정 파일럿 과제를, `compare BASELINE.json HYPERFUSION.json`은 실제 paired 지표를 비교한다. 실패 비용도 분자에 넣고, 쌍 누락·미측정이 있으면 절감률을 내지 않는다. `--suite large`는 실제 기능 커밋으로 만든 과제를 고른다. 과제당 한 번씩 헤드리스로 처음 돌려 본 결과, 작은 기본 과제에서는 HyperFusion 리드가 단독 리드의 1.75~3배 토큰을 썼고, 큰 과제 하나(HF-L01)에서는 리드 토큰이 22% 적었지만 확인된 전체 비용은 약 1.5배, 시간은 1.8배였다. 한 번씩 돌린 결과라 절감 효과를 주장하지 않는다. → [반복 벤치마크](references/benchmark-pilot.md)
+- **사용량 계측과 쿼터.** 구현·검수·상담·실패 호출과 APEX Sol을 포함해 기록하고, 미측정은 `null`로 둔다. 쿼터는 `scripts/quota-policy.mjs`로 운영자가 직접 적거나(`record`), Codex 세션 기록의 `rate_limits`를 읽어 기록한다(`collect-codex`, 네트워크·모델 없음). 출처와 유효 시간이 지나면 '모름'으로 취급한다.
 
 ## 보안
 

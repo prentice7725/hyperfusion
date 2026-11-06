@@ -4,7 +4,7 @@
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをTerra・Grok・Sonnet・Luna・Haiku・Antigravityに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.31.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.31.0`（`package.json`）です。保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 最近の変更
 
@@ -40,7 +40,7 @@
 | Luna | gpt-6-luna（Codex） | B級：小規模な修正、機械的な大量編集、画像アセットの補助 |
 | Haiku | claude-haiku-5-5 | B級：易しいコード、ドキュメント、テスト補強（Sonnetと同じClaude Code CLI） |
 | Antigravity | agy（Gemini 3.8 Flash high） | B級：UI・フロントエンド、ドキュメント（画像生成機能なし） |
-| Sol | gpt-6.1-sol（Codex） | 通常はレビュー（xhigh）・委員会相談。v0.3のAPEX承認ラウンドでのみ実装可能 |
+| Sol | gpt-6.1-sol（Codex） | 通常はレビュー（xhigh）・委員会相談。APEX承認ラウンドでのみ実装可能 |
 
 基本の配置は出発点です。プロジェクトごとにリードが変更し、種類・難易度別の実績に時間減衰と再探索を適用して配置を調整します。未インストールのワーカーは飛ばされます。実行前のCLI確認が一時的に失敗しても試行予算を消費せず再試行でき、担当ワーカーの実行ファイルがなくなった場合は別のワーカーに交代できます。モデルIDは設定の既定値で、実際のCLI・アカウントでの利用可否は別途確認してください。
 
@@ -63,6 +63,7 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 - **チーム編成 → 承認 → マイルストーン → チェックポイント。** 企画書を読んだリードが担当を決めたチームを報告し、承認前は作業が始まりません。`project.mjs draft`がインストール済みのメンバーで案を埋め、未導入のメンバーは拒否します。マイルストーンが終わると報告し、確認を受けてから次へ進みます。`project.mjs schedule`はタスクの依存関係を固定計画として管理します（実装は直列）。→ [project](references/project.md) · [作業計画](references/workflow-plan.md)
 - **能力ベースの配置。** 名前ではなく能力（`caps`：code、ui、docs、image-gen…）で候補を絞り、自分のリポジトリでの実績（差し戻し率）で順番を決めます。実績のない新人にはときどき先に任せます。既存アダプターのモデルID・能力は設定で変更でき、新しい提供元には別途アダプターの実装が必要です。→ [routing](references/routing.md)
 - **導入状況の点検と契約スモーク。** `setup-doctor.mjs`は設定を変えずに、インストール済みCLIに合うプリセットを推薦します。`--smoke`はワーカーごとに一時リポジトリで小さな作業を実際に任せ、CLIフラグ・出力形式・結果契約が合っているか確かめます。導入確認は認証や残量の検証ではありません。→ [operations](references/operations.md#doctor-계약-스모크)
+- **External-First配置。** A級・B級のワーカーはすべて自動実装の候補で、等級ごとに配置します。grantが必要なのはSol（APEXラウンド）だけで、自動フォールバックや新人優遇はSolを選びません。B級のラウンドが差し戻されるとA級に回します。適応型レビュー（`lead-gated-adaptive`）を有効にするとこの配置が既定になります（`routing.policy:"external-first"`）。classic配置も同じ等級表を使います。
 
 **ワーカーを信用せず確認する**
 
@@ -91,18 +92,15 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 - **単一writerと監査記録。** 同時に書くのは一人だけで、ラウンドごとにスナップショットと成果物が残ります。中断しても復旧手順で再開できます。自動のcommit・push・デプロイはありません。
 - **リードガードフック。** leaseが掛かっている間やワーカーの予算が残っている間はリードのEdit/Writeと書き込み可能なMCPツールをブロックし（PreToolUse）、リードの番の作業を残したままターンを終えようとすると一度止めます（Stop）。Bashの書き込みはこのフックではなく、スナップショットとラウンド間のdrift検査が確認します。→ [operations（韓国語）](references/operations.md#리드-가드-훅)
 - **独立worktreeと作業上限。** 作業ごとに状態とwriter leaseを分離し、報告された費用と経過時間に上限を設けます。結果は個別に検収してから統合します。→ [並列実行・上限（韓国語）](references/operations.md)
+- **共通ローカル監視。** すべてのimplement/review/consult呼び出しを同じsupervisorが観測します（`status --monitor`、`monitor --once|--watch`）。無信号はQUIET警告にとどまり、進捗や成功を生成しません。監視でモデルは呼びません。
 - **Linux・macOS・Windows対応。**
 
-## v0.3: External-Firstと共通監視（オプトイン）
+## 適応型レビュー（オプトイン）
 
-`hyperfusion.v03.config.example.json`を対象リポジトリの`hyperfusion.config.json`にコピーして明示的に有効化します。既存のclassic設定と実行中のタスクは自動変更されません。詳細は[universal-supervisor](references/universal-supervisor.md)（韓国語）を参照してください。
+レビュー戦略を`lead-gated-adaptive`にすると、下記のレビュー規則と最終リードゲートが適用され、自動実装の配置はExternal-Firstになります。ClaudeとCodexがインストールされているときに`setup-doctor`が勧めるプリセット（`claude-codex`、`external-first`）と`hyperfusion.v03.config.example.json`はこの戦略を使います。既存のclassic設定と実行中のタスクは自動変更されません。詳細は[universal-supervisor](references/universal-supervisor.md)（韓国語）を参照してください。
 
-- **External-First配置。** A級・B級のワーカーはすべて自動実装の候補で、等級ごとに配置します。grantが必要なのはSol（APEXラウンド）だけで、自動フォールバックや新人優遇はSolを選びません。B級のラウンドが差し戻されるとA級に回します。
 - **作者別のレビュー。** 通常作業は独立レビュアー1名、重要・明示的な二重レビュー・リスクパスは下表のペアが独立・並列に検証します。実装者の自己レビューは禁止です。差し替えには理由が必要で、既存のNGは別のPASSで消えません。不一致・欠落はリード判断に残します。以前の割り当てと承認済みのGrokなしチームは従来の規則を維持します。
 - **最終リードゲート。** 結果は`LEAD_DECISION_REQUIRED`で止まります。`auto_apply`、レビュー採用、オートパイロットでは飛ばせず、作業単位の裁量権だけがポリシー承認を許可します。
-- **共通ローカル監視。** すべてのimplement/review/consult呼び出しを同じsupervisorが観測します（`status --monitor`、`monitor --once|--watch`）。無信号はQUIET警告にとどまり、進捗や成功を生成しません。監視でモデルは呼びません。
-- **使用量の計測とクォータ。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で、運用者が直接書き込む（`record`）か、Codexのセッション記録の`rate_limits`を読んで記録します（`collect-codex`、ネットワークもモデルも使いません）。出所と有効期限が過ぎた記録は「不明」として扱います。
-- **既定の推論強度。** 実装はTerra medium、Grok high、Sonnet medium、Luna xhigh、Haiku max、Antigravity Gemini 3.8 Flash highです。レビュー席はSol xhigh、Sonnet max、Grok xhighで、実装の強度とは別です。`reasoning_effort:null`は通常フラグの省略で、必須レビュー役割の強度は解除しません。
 
 | 実装者 | 重要・二重・リスクパスのレビューペア |
 |---|---|
@@ -118,11 +116,13 @@ CLOSEまで到達して初めて成功です。どの段階でも、次に打つ
 - **AGYモデル系統とeffort。** `executors.antigravity.model:"gemini-4-argon"`と`reasoning_effort:"high"`を別々に設定すると`gemini-4-argon-high`を選びます。接尾辞で固定したモデルはその強度を維持し、矛盾するeffortは起動前に拒否します。最終slugを`agy models`で確認し、利用できない組み合わせを別モデルに置き換えません。→ [設定案内](references/configuration.md#agy-모델-계열과-effort-분리-argon)
 - **Codex。** JSONL thread・turn使用量を記録し、互換性のある`exec resume`フラグを確認できた場合だけ、タスク内の実装セッションを正確なIDで再開します。レビューは毎回新しい読み取り専用セッションです。運用者専用のビルドキャッシュ・ネットワーク設定とClaude/Grokのターン上限は[Codex運用案内](references/codex-runtime.md)を参照してください。
 - **ベンダー制限。** `allowed_vendors:["anthropic","openai"]`は実装・レビュー・相談をまとめて制限し、運用者の`HF_ALLOWED_VENDORS`はリポジトリ側で広げられない上限です。ブリッジも起動直前に再検査します。ファイアウォール・DLPやベンダー認証ではありません。新CLIには検証済みアダプターが必要です（`scripts/member-registry.mjs`）。
+- **既定の推論強度。** 実装はTerra medium、Grok high、Sonnet medium、Luna xhigh、Haiku max、Antigravity Gemini 3.8 Flash highです。レビュー席はSol xhigh、Sonnet max、Grok xhighで、実装の強度とは別です。`reasoning_effort:null`は通常フラグの省略で、必須レビュー役割の強度は解除しません。
 
 ## 測定
 
 - **リードの使用量。** 生成したフックがStop/SessionEnd/StopFailure時にローカルClaude Code transcriptから実際のモデルごとの使用量を収集します。証拠がなければ未測定とし、明示的な`TASK_USAGE.json`の観測を優先します。クライアントの報告値であり、課金APIではありません。→ [指標ポリシー](references/metrics-policy.md)
 - **ベンチマーク。** `benchmark.mjs cases`は固定パイロット課題を、`compare BASELINE.json HYPERFUSION.json`は実測のペア指標を比較します。失敗のコストも分子に入れ、ペア欠落・未測定があれば削減率を出しません。`--suite large`は実際の機能コミットから作った課題を選びます。課題ごとに1回ずつヘッドレスで初めて実行した結果、小さな基本課題ではHyperFusionのリードが単独リードの1.75〜3倍のトークンを使い、大きな課題1件（HF-L01）ではリードのトークンが22%少ない一方、確認できた総コストは約1.5倍、時間は1.8倍でした。1回ずつの結果なので、削減効果は主張しません。→ [反復ベンチマーク](references/benchmark-pilot.md)
+- **使用量の計測とクォータ。** 実装・レビュー・相談・失敗呼び出しとAPEX Solを含めて記録し、未計測は`null`のままにします。クォータは`scripts/quota-policy.mjs`で、運用者が直接書き込む（`record`）か、Codexのセッション記録の`rate_limits`を読んで記録します（`collect-codex`、ネットワークもモデルも使いません）。出所と有効期限が過ぎた記録は「不明」として扱います。
 
 ## セキュリティ
 

@@ -1,6 +1,6 @@
 # External-First + Universal Supervisor v0.3
 
-신규 작업에서 `hyperfusion.v03.config.example.json`을 `hyperfusion.config.json`으로 복사해 명시적으로 켠다. classic 설정과 진행 중 작업은 자동 이행하지 않는다. 설정은 init 때 고정된다. 설치된 전역 스킬을 이 저장소 코드로 자동 교체하지 않는다.
+리뷰 전략 `lead-gated-adaptive`(적응형 리뷰)를 쓰는 작업의 규칙이다. 신규 작업에서 `hyperfusion.v03.config.example.json`을 `hyperfusion.config.json`으로 복사하거나 `review.strategy`를 직접 적어 켠다. 이 전략을 켜면 `routing.policy`가 없을 때 External-First가 되며, 배치표는 classic과 같은 등급표다. 아래 [로컬 감시](#로컬-감시)는 이 전략과 상관없이 모든 implement/review/consult 실행에 적용된다. classic 설정과 진행 중 작업은 자동 이행하지 않는다. 설정은 init 때 고정된다. 설치된 전역 스킬을 이 저장소 코드로 자동 교체하지 않는다.
 
 ## 구현자와 판정
 
