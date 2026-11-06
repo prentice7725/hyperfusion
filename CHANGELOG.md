@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- 일꾼이 할 일을 마쳤는데 호스트 환경 때문에 일부 검사를 못 돌려 `blocked`로 보고한 결과를 승인할 수 있다. 조건은 세 가지다. 결정을 묻지 않았을 것, 통과하지 못한 테스트가 모두 `environment_error`를 적었을 것, 이 라운드에서 컨트롤러 수용 실행이 같은 트리에서 종료 증명과 함께 통과했을 것. 이 경우 autopilot은 위임 리뷰로 넘기고, 리뷰 pass와 리드 APPROVE를 받는다. 리드 없는 자동 승인은 전처럼 `complete`만 받는다. L01 run 9(MXC)에서 Terra는 1라운드에 구현을 끝냈지만, MXC가 막은 전체 `npm test` 때문에 `blocked`로 보고했다. 리드는 이를 `complete`로 바꾸려고 빈 라운드 2번과 복구 1번을 썼다.
+- Windows 샌드박스 TEMP 우회 폴더 `.hf-tmp`는 컨트롤러가 `finish`에서 지운다. 일꾼이 멈춘 뒤이고, 라운드 전부터 있던 폴더는 남긴다. run 9에서는 Codex 명령 정책이 일꾼의 재귀 삭제를 거절했고, 남은 폴더 안의 git 저장소 때문에 `finish`가 `Submodules/directories unsupported by M0`로 실패했다. 일꾼 지시도 "지우지 말고 미해결로 적지 말라"로 바꿨다.
+
 ## 0.31.0 — 2026-11-06
 
 - Windows Codex 샌드박스로 `mxc`를 고를 수 있다(`HF_CODEX_WINDOWS_SANDBOX=mxc`). 공식 문서가 호환 Windows 11에서 먼저 권하고 관리자 설정이 필요 없다. 이 PC(build 26300)에서 `unelevated`는 이름 있는 파이프를 만들지 못해 node의 파이프 연결 spawn이 모두 `EPERM`이었고(Terra가 테스트를 못 돌린 원인), `mxc`에서는 됐다. 다만 `mxc`의 임시 폴더는 이름 바꾸기를 막아 `git init`이 실패하므로, Windows 구현 라운드는 그런 명령을 저장소 안 `.hf-tmp`를 TEMP로 삼아 다시 돌리고 지우라고 지시한다.

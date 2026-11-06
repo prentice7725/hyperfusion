@@ -151,4 +151,6 @@ export function windowsChildSpawnTest(cli,{root,platform=process.platform,env=pr
 
 // mxc는 TEMP를 컨테이너 전용 폴더(AppData\Local\Packages\sandbox.*\AC\Temp)로 바꾸는데, 그 폴더에서는 이름 바꾸기가 막혀
 // git init(config.lock → config) 같은 잠금 파일 방식이 실패한다. 저장소 밖 폴더는 쓰기가 안 되고, 저장소 안 폴더는 된다(2026-11-06 실측).
-export const WINDOWS_TEMP_ORDER='On Windows the Codex sandbox may point TEMP and TMP at a folder that refuses writes or renames (EPERM or "Permission denied" under AppData\\Local\\Packages\\sandbox.*\\AC\\Temp; git init and lock-file renames fail there). If a command fails that way, rerun it with TEMP and TMP set to a .hf-tmp folder in the repository root, delete that folder before you finish, and say so in risks.';
+// 폴더는 컨트롤러가 finish에서 지운다. Codex 명령 정책이 일꾼의 재귀 삭제(Remove-Item -Recurse -Force)를 거절해 일꾼이 blocked로 끝났다(2026-11-06 L01 run 9).
+export const WORKER_TEMP_DIR='.hf-tmp';
+export const WINDOWS_TEMP_ORDER=`On Windows the Codex sandbox may point TEMP and TMP at a folder that refuses writes or renames (EPERM or "Permission denied" under AppData\\Local\\Packages\\sandbox.*\\AC\\Temp; git init and lock-file renames fail there). If a command fails that way, rerun it with TEMP and TMP set to a ${WORKER_TEMP_DIR} folder in the repository root and say so in risks. Do not delete that folder and do not list it as unresolved: the controller removes it after the round.`;
