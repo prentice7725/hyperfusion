@@ -4,11 +4,11 @@
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Terra·Grok·Sonnet·Luna·Haiku·Antigravity에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.30.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.31.0`(`package.json`)이다. **v0.3**은 그 위에 얹은 운영 프로필(External-First + 범용 감시)의 이름이고, 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 최근 변경
 
-**Unreleased** (main에 머지됨, 아직 릴리스 전)
+**0.31.0**
 
 - **A급·B급 일꾼.** A급(Terra medium, Grok 4.7 high, Sonnet medium)이 이 순서로 중·고난도 코드, 테스트, 리팩터를 맡고, B급(Luna, Haiku, Gemini 3.8 Flash high의 Antigravity)이 쉬운 코드, 문서, UI를 맡는다. B급 라운드가 반려되면 A급으로 넘긴다. Sonnet과 Terra는 승인 없이 구현한다. 리뷰 자리는 Sol xhigh, Sonnet max, Grok xhigh다. → [배치](references/routing.md)
 - **모든 난이도에서 오토파일럿.** 수용 명령이 init에서 red로 확인된 작업이면 `low`가 아니어도 `next`가 첫 라운드에 `autopilot`을 권한다. 리드 게이트와 VERIFY에서 멈추는 것은 그대로다.
@@ -16,17 +16,13 @@
 - **리뷰어가 보호된 수용 테스트를 본다.** 위임 리뷰어가 테스트가 objective와 모든 AC를 제대로 검사하는지도 판정한다.
 - **선택적 Herdr 관측 pane.** Herdr 안에서 실행하면 일꾼마다 읽기 전용 모니터 pane이 열린다. → [herdr](references/herdr.md)
 - **큰 벤치마크 과제 묶음.** `--suite large`(HF-L01~L05)는 실제 기능 커밋으로 과제를 만든다. → [벤치마크](references/benchmark-pilot.md#large-suite-historical-feature-commits)
+- **Windows의 Codex.** 샌드박스에 막힌 Codex 라운드는 그 작업이 끝날 때까지 Codex가 아닌 일꾼으로 넘어가고, 호스트 샌드박스가 하위 프로세스를 막으면(테스트를 못 돌림) 라우터가 Terra와 Luna를 맨 뒤로 보낸다. `HF_CODEX_WINDOWS_SANDBOX=mxc`로 MXC 샌드박스를 고르면 호환 Windows 11에서 Codex가 테스트를 돌린다. → [Codex 운영](references/codex-runtime.md)
 
 **0.30.0**
 
 - **Codex·Antigravity 리드(C 등급).** Claude Code뿐 아니라 Codex CLI나 agy 세션도 리드가 될 수 있다. `node scripts/lead-guard.mjs --print-settings --host codex|antigravity`가 훅 설정을 출력한다. 리드 모델은 호스트 훅이나 `HF_LEAD_MODEL`에서 정하고, 근거가 없으면 init이 `LEAD_MODEL_UNKNOWN`으로 거절한다. 비 Claude 리드는 `review.strategy: "lead-gated-adaptive"`가 필요하다. Windows에서 일부 실측했다. → [Codex](references/hosts/codex.md), [Antigravity](references/hosts/antigravity.md)
 - **역할은 리드 모델의 계열을 따른다.** 구현자·전문가·리뷰 자리를 리드 모델에서 계산한다(비 Claude 리드는 `family-rules-v1`). Opus 리드의 동작은 그대로다.
 - **실측에서 찾은 리뷰·수용 문제 수정.** agy는 결과 스키마를 파일로 받고, 그래도 Windows 명령줄에 넘치면 줄일 필드를 알려 준다. `detail`로 쓴 Grok 지적을 받는다. 계약 정정이 리뷰어에게 간다. 일꾼이 blocked로 보고해도 컨트롤러가 수용 명령을 돌린다(승인 거절은 그대로). 리뷰어 턴 상한을 따로 줄 수 있다(`consult_max_turns`).
-
-**0.29.0**
-
-- **리뷰어에게 결론을 주지 않는다.** 위임 리뷰어는 일꾼의 요약·테스트 통과 보고·위험 평가와 이전 리뷰어의 판정·사유를 받지 않는다. diff, 파일, 컨트롤러가 직접 돌린 수용 결과로만 판단한다. → [review](references/review-protocol.md)
-- **리드의 지적별 처분.** `lead-decision`에서 지적마다 `act`·`consider`·`noted`·`dismissed`·`contract_misread`와 사유를 남긴다. 기각한 지적은 다음 일꾼에게 넘어가지 않고, 지표가 리뷰어별 실효성(`actionable_rate`)을 센다. → [review](references/review-protocol.md#지적별-처분-finding_dispositions-선택)
 
 ## 왜 만들었나
 

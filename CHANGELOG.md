@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## 0.31.0 — 2026-11-06
+
 - Windows Codex 샌드박스로 `mxc`를 고를 수 있다(`HF_CODEX_WINDOWS_SANDBOX=mxc`). 공식 문서가 호환 Windows 11에서 먼저 권하고 관리자 설정이 필요 없다. 이 PC(build 26300)에서 `unelevated`는 이름 있는 파이프를 만들지 못해 node의 파이프 연결 spawn이 모두 `EPERM`이었고(Terra가 테스트를 못 돌린 원인), `mxc`에서는 됐다. 다만 `mxc`의 임시 폴더는 이름 바꾸기를 막아 `git init`이 실패하므로, Windows 구현 라운드는 그런 명령을 저장소 안 `.hf-tmp`를 TEMP로 삼아 다시 돌리고 지우라고 지시한다.
 - Codex 샌드박스 감지가 성공한 명령의 출력을 오류로 보지 않는다. 2026-11-06 Ponytail 비교에서 Sol이 리뷰 중 `Get-Content CHANGELOG.md`를 읽었는데, 그 파일에 적힌 `CreateProcessAsUserW failed: 5` 문구 때문에 정상 리뷰 6건이 모두 샌드박스 실패로 버려졌다. 이제 `exit_code`가 0인 명령은 건너뛴다. 실패했거나 종료 코드가 없는 명령은 전처럼 본다.
 - 이 PC의 Codex 샌드박스가 하위 프로세스를 막으면 라우터가 Codex 일꾼을 맨 뒤로 보낸다. L01 run 5~7에서 기존 사전 점검(셸이 뜨는지)은 ok였지만, 샌드박스 안 node가 띄우는 하위 프로세스는 `spawn EPERM`으로 막혀 Terra가 한 번도 테스트를 돌리지 못했고 매번 Grok이 다시 했다. 이제 사전 점검이 샌드박스 안에서 node의 하위 프로세스를 띄워 보고, 막히면 Terra·Luna를 다른 일꾼 뒤로 보낸다. 빼지는 않으므로 Codex만 남으면 여전히 쓴다.

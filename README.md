@@ -4,11 +4,11 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Terra, Grok, Sonnet, Luna, Haiku, or Antigravity, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.30.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
+> **Versions.** The package release is `0.31.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
 
 ## Recent changes
 
-**Unreleased** (on main, not yet in a release)
+**0.31.0**
 
 - **A-tier and B-tier workers.** A-tier (Terra medium, Grok 4.7 high, Sonnet medium) takes medium/high code, tests and refactors, in that order. B-tier (Luna, Haiku, Antigravity on Gemini 3.8 Flash high) takes low code, docs and UI. A rejected B-tier round is promoted to an A-tier worker. Sonnet and Terra implement without a grant. Review seats run Sol xhigh, Sonnet max and Grok xhigh. → [routing](references/routing.md)
 - **Autopilot at any difficulty.** `next` now suggests `autopilot` for the first round of any task whose acceptance commands init proved red, not only `low` tasks. It still stops at the lead gate and VERIFY.
@@ -16,17 +16,13 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 - **Reviewers see the protected acceptance tests.** Delegated reviewers also judge whether the tests check the objective and every AC.
 - **Optional Herdr observer panes.** Inside Herdr, each worker gets a read-only monitor pane. See [herdr](references/herdr.md).
 - **Large benchmark suite.** `--suite large` (HF-L01–L05) builds cases from real feature commits. See [benchmark](references/benchmark-pilot.md#large-suite-historical-feature-commits).
+- **Codex on Windows hosts.** A Codex round blocked by its sandbox moves the task to a non-Codex worker for the rest of the task, and the router puts Terra and Luna last when the host sandbox blocks child processes (tests cannot run). `HF_CODEX_WINDOWS_SANDBOX=mxc` selects the MXC sandbox, which lets Codex run tests on compatible Windows 11. → [Codex runtime](references/codex-runtime.md)
 
 **0.30.0**
 
 - **Codex and Antigravity leads (grade C).** A Codex CLI or agy session can now lead, not only Claude Code. `node scripts/lead-guard.mjs --print-settings --host codex|antigravity` prints the hooks. The lead model comes from host hooks or `HF_LEAD_MODEL`; without that evidence init refuses with `LEAD_MODEL_UNKNOWN`. Non-Claude leads need `review.strategy: "lead-gated-adaptive"`. Partly field-tested on Windows. See [Codex](references/hosts/codex.md) and [Antigravity](references/hosts/antigravity.md).
 - **Roles follow the lead's model family.** Implementer, specialist and reviewer seats are computed from the lead (`family-rules-v1` for non-Claude leads). Opus-led behaviour is unchanged.
 - **Review and acceptance fixes from field runs.** agy gets its result schema as a file, and a prompt that is still too long for Windows says which field to shorten. Grok findings written with `detail` are accepted. Contract corrections reach reviewers. The controller runs acceptance even when a worker reports blocked, but still refuses to approve it. Reviewers can get their own turn limit (`consult_max_turns`).
-
-**0.29.0**
-
-- **Reviewers get no conclusions.** Delegated reviewers no longer see the worker's summary, test claims or risk notes, nor earlier reviewers' verdicts and reasons. They judge from the diff, the files and controller-run acceptance results. See [review](references/review-protocol.md).
-- **Per-finding lead dispositions.** `lead-decision` can classify each finding as `act`, `consider`, `noted`, `dismissed` or `contract_misread` with a reason. Dismissed findings are not forwarded to the next worker, and metrics score each reviewer (`actionable_rate`). See [review](references/review-protocol.md#지적별-처분-finding_dispositions-선택).
 
 ## Why HyperFusion
 
