@@ -1,6 +1,6 @@
 # 설정
 
-v0.3 신규 작업용 설정은 [hyperfusion.v03.config.example.json](../hyperfusion.v03.config.example.json), 실제 동작과 한계는 [universal-supervisor.md](universal-supervisor.md)를 따른다. classic 기본값은 하위 호환용이다. 새 정책을 사용하려면 명시적으로 선택한다.
+적응형 리뷰(`lead-gated-adaptive`, External-First 배치) 설정 예시는 [hyperfusion.v03.config.example.json](../hyperfusion.v03.config.example.json), 실제 동작과 한계는 [universal-supervisor.md](universal-supervisor.md)를 따른다. 설정 파일이 없으면 아래 classic 기본값을 쓰고, 적응형 리뷰는 명시적으로 선택한다. 작업 감시는 설정과 상관없이 늘 켜져 있다.
 
 대상 저장소 루트의 `hyperfusion.config.json`(선택)을 읽는다. 없으면 다음을 쓴다.
 ```json

@@ -4,7 +4,7 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Terra, Grok, Sonnet, Luna, Haiku, or Antigravity, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.31.0` (`package.json`). **v0.3** names the optional External-First + universal supervision profile. Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
+> **Versions.** The package release is `0.31.0` (`package.json`). Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
 
 ## Recent changes
 
@@ -40,7 +40,7 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 | Luna | gpt-6-luna (Codex) | B-tier: small fixes, mechanical bulk edits, image-asset assistance |
 | Haiku | claude-haiku-5-5 | B-tier: small code changes, documentation, test additions through the Claude Code CLI |
 | Antigravity | agy (Gemini 3.8 Flash high) | B-tier: UI, frontend, documentation; no image-generation capability |
-| Sol | gpt-6.1-sol (Codex) | Reviews (xhigh) and committee advice by default; implementation only in a granted v0.3 APEX round |
+| Sol | gpt-6.1-sol (Codex) | Reviews (xhigh) and committee advice by default; implementation only in a granted APEX round |
 
 These assignments are starting points. Routing filters by capabilities and task kind/difficulty, then uses local history, time decay, and exploration. Uninstalled workers are skipped. A temporary preflight failure consumes no attempt; a missing worker executable can trigger reassignment. Model IDs are configuration defaults whose availability must be checked against the installed CLI and account.
 
@@ -63,6 +63,7 @@ Only `CLOSE` means success. Run `node scripts/fusion-state.mjs next <repository>
 - **Team → approval → milestones → checkpoints.** A project plan records responsibilities before implementation. `project.mjs draft` pre-fills installed members and rejects unavailable ones. Milestones stop at checkpoints for acknowledgment. `project.mjs schedule` manages task dependencies as a frozen plan; implementation stays serial. See [project](references/project.md) and [workflow plans](references/workflow-plan.md).
 - **Capability-based routing.** Capabilities such as `code`, `ui`, `docs`, and `image-gen` determine eligibility. Local rejection history affects order; new workers get occasional exploration attempts. Configure existing adapters' models and capabilities in `executors`; a new provider requires an adapter implementation. See [routing](references/routing.md).
 - **Setup checks and contract smoke.** `setup-doctor.mjs` recommends a preset for the installed CLIs without changing configuration. `--smoke` runs a small actual task per installed worker in a temporary repository to check flags, output, and the result contract after CLI updates. Installation checks do not verify authentication or quota. See [operations](references/operations.md#doctor-계약-스모크).
+- **External-First implementation.** All A-tier and B-tier workers are automatic implementation candidates, routed by tier. Only Sol needs a grant (APEX). Automatic fallback and exploration cannot select Sol. A rejected B-tier round goes to an A-tier worker. Adaptive review (`lead-gated-adaptive`) selects this routing by default (`routing.policy:"external-first"`); classic routing uses the same tier table.
 
 **Evidence and review**
 
@@ -91,18 +92,15 @@ Only `CLOSE` means success. Run `node scripts/fusion-state.mjs next <repository>
 - **Single writer.** One worker writes at a time, with round snapshots and artifacts. Interruptions enter recovery. There is no automatic commit, push, or deployment.
 - **Lead guard hooks.** PreToolUse blocks lead Edit/Write and non-read-only MCP tools while a worker owns the lease or worker budget remains; Stop reminds the lead about pending work. Bash writes are checked by snapshots and inter-round drift detection instead. See [operations](references/operations.md#리드-가드-훅).
 - **Worktree isolation and budgets.** Independent tasks can run in separate worktrees with isolated state and leases, reported cost limits, and time limits. Reviewed results are integrated separately. See [operations](references/operations.md).
+- **Local universal monitoring.** Implementation, review, and consultation share supervision (`status --monitor`, `monitor --once|--watch`). Silence is a QUIET warning, not progress or success. Monitoring makes no model calls.
 - **Linux, macOS, and Windows support.** CI currently covers Ubuntu and Windows.
 
-## v0.3: External-First and universal supervision (opt-in)
+## Adaptive review (opt-in)
 
-Copy `hyperfusion.v03.config.example.json` to the target repository as `hyperfusion.config.json` to select the profile explicitly. Existing classic tasks are not migrated automatically. See [universal-supervisor](references/universal-supervisor.md).
+Setting the review strategy to `lead-gated-adaptive` applies the review rules below and the final lead gate, and switches automatic assignment to External-First. The presets `setup-doctor` recommends when Claude and Codex are installed (`claude-codex`, `external-first`) and `hyperfusion.v03.config.example.json` use this strategy. Existing classic configurations and tasks in progress are not changed automatically. See [universal-supervisor](references/universal-supervisor.md).
 
-- **External-First implementation.** All A-tier and B-tier workers are automatic implementation candidates, routed by tier. Only Sol needs a grant (APEX). Automatic fallback and exploration cannot select Sol. A rejected B-tier round goes to an A-tier worker.
 - **Owner-aware review.** Standard tasks keep one independent reviewer. Important/explicit-dual/risk-raised tasks use the pairs below, independently in parallel. Substitution needs a recorded reason; a supported rejection is not erased by another PASS. Conflicts and missing results stay at the lead gate. Existing assignments and approved Grok-free teams retain their previous rules.
 - **Final lead gate.** Results stop at `LEAD_DECISION_REQUIRED`; `auto_apply`, review adoption, and autopilot cannot skip it. Only an explicit task-level discretion grant can authorize policy approval, and unattributed changes block that approval.
-- **Local universal monitoring.** Implementation, review, and consultation share supervision (`status --monitor`, `monitor --once|--watch`). Silence is a QUIET warning, not progress or success. Monitoring makes no model calls.
-- **Usage and quota.** Include failed calls, reviews, consultations, and APEX implementation; unknown values remain `null`. `quota-policy.mjs record` accepts operator records; `collect-codex` reads local Codex `rate_limits` without a network/model call. Expired records become unknown.
-- **Default reasoning effort.** Implementation: Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 3.8 Flash high. Review seats: Sol xhigh, Sonnet max, Grok xhigh, separate from implementation effort. Override `reasoning_effort`; `null` omits the normal flag, not a mandatory role's effort.
 
 | Implementer | Important / dual / risk-raised pair |
 |---|---|
@@ -118,11 +116,13 @@ The lead sets criticality/strategy in the approved brief at init and checks `rev
 - **AGY model family and effort.** Configure `executors.antigravity.model:"gemini-4-argon"` and `reasoning_effort:"high"` separately to select `gemini-4-argon-high`. A suffixed model keeps its effort; conflicting effort fails before launch. Resolved slugs are checked against `agy models`, and unavailable variants are not substituted. See [configuration](references/configuration.md#agy-모델-계열과-effort-분리-argon).
 - **Codex.** JSONL thread/turn usage is recorded, and a task-scoped implementation thread is resumed by exact ID only when compatible `exec resume` flags are confirmed. Reviews are always fresh and read-only. Operator-only build cache/network options and Claude/Grok turn ceilings are in [Codex runtime](references/codex-runtime.md).
 - **Vendor limits.** `allowed_vendors:["anthropic","openai"]` narrows implementation, review and consultation together; operator `HF_ALLOWED_VENDORS` is an upper bound repository configuration cannot widen. The bridge checks again before spawning. This is not a firewall/DLP or vendor attestation. New CLIs need audited adapters (`scripts/member-registry.mjs`).
+- **Default reasoning effort.** Implementation: Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 3.8 Flash high. Review seats: Sol xhigh, Sonnet max, Grok xhigh, separate from implementation effort. Override `reasoning_effort`; `null` omits the normal flag, not a mandatory role's effort.
 
 ## Measurement
 
 - **Lead usage.** Generated hooks collect actual per-model usage from the local Claude Code transcript on Stop/SessionEnd/StopFailure. Missing evidence stays unknown; explicit `TASK_USAGE.json` observations take precedence. This is client-reported usage, not a billing API. See [metrics policy](references/metrics-policy.md).
 - **Benchmarks.** `benchmark.mjs cases` lists fixed pilot cases; `compare BASELINE.json HYPERFUSION.json` compares actual paired metrics. Failed tasks stay in cost numerators, and missing pairs or unknown usage suppress savings claims. `--suite large` selects cases built from real feature commits. First headless runs, one per case: on the small core cases the HyperFusion lead used 1.75–3× the solo lead tokens; on one large case (HF-L01) it used 22% fewer lead tokens but about 1.5× the known total cost and 1.8× the time. These are single runs, so no savings are claimed. See [repeated benchmark](references/benchmark-pilot.md).
+- **Usage and quota.** Include failed calls, reviews, consultations, and APEX implementation; unknown values remain `null`. `quota-policy.mjs record` accepts operator records; `collect-codex` reads local Codex `rate_limits` without a network/model call. Expired records become unknown.
 
 ## Security
 
