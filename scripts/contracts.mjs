@@ -34,7 +34,7 @@ export function brief(v) {
   communication_language:'en',
   forbidden_actions:v?.forbidden_actions??['commit','push','deploy','release','scope-expansion'],
   evidence_required:v?.evidence_required??['files_changed','commands_run','test_results','remaining_risks']};
- requireThat(v&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(v.task_id),'Invalid task_id');
+ requireThat(typeof v.task_id==='string'&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(v.task_id),'Invalid task_id');
  requireThat(str(v.objective),'Missing objective');
  requireThat(v.scope&&Array.isArray(v.scope.paths)&&v.scope.paths.length&&v.scope.allowed_expansion==='ask-lead','Invalid bounded scope');
  const badPath=v.scope.paths.find(p=>!safePath(p));

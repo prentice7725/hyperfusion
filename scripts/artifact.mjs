@@ -120,7 +120,7 @@ export function agentCustomizations(root) {
  return out;
 }
 export function guardFiles(root,common,gitDir) {
- const out={};
+ const out=Object.create(null);
  const add=(file,key)=>{try{const e=entryOf(file);if(e)out[key]=e;}catch(e){if(e.code!=='ENOENT')throw e;}};
  // snapshot passes both directories from its single rev-parse. A linked worktree
  // has its own config.worktree under --git-dir, outside --git-common-dir.
@@ -155,7 +155,8 @@ function headAndCommon(root) {
 
 export function snapshot(root) {return pinGitConfig(root,()=>readSnapshot(root));}
 function readSnapshot(root) {
- const files={};
+ // 경로가 키인 맵은 프로토타입이 없어야 한다. 일반 객체에서는 루트의 `__proto__` 파일이 키가 되지 않고 프로토타입을 바꾼다.
+ const files=Object.create(null);
  const {head,common:gitCommon,gitDir}=headAndCommon(root);
  const names=[...new Set(git(root,['ls-files','-z','--cached','--others','--exclude-standard']).split('\0').filter(Boolean))].sort();
  for(const name of names) {
@@ -172,8 +173,10 @@ function readSnapshot(root) {
  const index_hash=hash(git(root,['ls-files','--stage','-z']));
  return {head,status,index_hash,files,digest:hash(JSON.stringify({head,status,index_hash,files}))};
 }
+// 저장된 스냅샷(JSON)은 일반 객체로 읽힌다. 자기 키만 보아야 없는 `__proto__`가 Object.prototype으로 읽히지 않는다.
+export const own=(o,k)=>o&&Object.hasOwn(o,k)?o[k]:undefined;
 export function changes(a,b) {
- return [...new Set([...Object.keys(a.files),...Object.keys(b.files)])].filter(k=>JSON.stringify(a.files[k]??null)!==JSON.stringify(b.files[k]??null)).sort();
+ return [...new Set([...Object.keys(a.files),...Object.keys(b.files)])].filter(k=>JSON.stringify(own(a.files,k)??null)!==JSON.stringify(own(b.files,k)??null)).sort();
 }
 
 // 저장소 설정 중 명령을 실행할 수 있는 항목과 활성 훅을 알려 준다(실행 전 점검용 경고).

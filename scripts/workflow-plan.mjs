@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {read,hash,immutable,snapshot,changes} from './artifact.mjs';
+import {read,hash,immutable,snapshot,changes,own} from './artifact.mjs';
 import {controlPath} from './control-dir.mjs';
 import {brief,safePath} from './contracts.mjs';
 import {validateLimits} from './budgets.mjs';
@@ -147,7 +147,7 @@ export function recordIntegration(root,p,{task_id,integration_task_id,reason}={}
  const changed=changes(base,post);
  for(const file of changed){
   if(!t.scope.paths.some(p=>file===p||file.startsWith(p+'/')))fail('child changed outside its frozen scope');
-  if(canonical(tree.files[file]??null)!==canonical(post.files[file]??null))fail('integrated file differs: '+file);
+  if(canonical(own(tree.files,file)??null)!==canonical(own(post.files,file)??null))fail('integrated file differs: '+file);
  }
  const file=controlPath(root,'workflow',`integration-${task_id}.json`),record={revision:1,digest:p.workflow.digest,task_id,integration_task_id,parent_digest:tree.digest,reason:reason.trim(),changed};
  if(fs.existsSync(file)){if(canonical(read(file))!==canonical(record))fail('integration receipt already exists');}
