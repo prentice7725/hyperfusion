@@ -4,11 +4,11 @@
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをTerra・Grok・Sonnet・Luna・Haiku・Antigravityに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.30.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.31.0`（`package.json`）です。**v0.3**はその上に載せた運用プロファイル（External-First＋共通監視）の名前で、保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 最近の変更
 
-**Unreleased**（mainにマージ済み、未リリース）
+**0.31.0**
 
 - **A級・B級ワーカー。** A級（Terra medium、Grok 4.7 high、Sonnet medium）がこの順で中・高難度のコード、テスト、リファクタを、B級（Luna、Haiku、Gemini 3.8 Flash highのAntigravity）が易しいコード、ドキュメント、UIを担当します。B級のラウンドが差し戻されるとA級に回します。SonnetとTerraは承認なしで実装します。レビュー席はSol xhigh、Sonnet max、Grok xhighです。→ [配置](references/routing.md)
 - **すべての難易度でオートパイロット。** 受け入れコマンドがinitでredと確認された作業なら、`low`でなくても`next`が最初のラウンドに`autopilot`を勧めます。リードゲートとVERIFYで止まる点は変わりません。
@@ -16,17 +16,13 @@
 - **レビュアーが保護された受け入れテストを見る。** 委任レビュアーは、テストがobjectiveとすべてのACを正しく検査しているかも判定します。
 - **任意のHerdr観測pane。** Herdr内で実行すると、ワーカーごとに読み取り専用のモニターpaneが開きます。→ [herdr](references/herdr.md)
 - **大きなベンチマーク課題セット。** `--suite large`（HF-L01〜L05）は実際の機能コミットから課題を作ります。→ [ベンチマーク](references/benchmark-pilot.md#large-suite-historical-feature-commits)
+- **WindowsでのCodex。** サンドボックスに阻まれたCodexのラウンドは、その作業が終わるまでCodex以外のワーカーに回ります。ホストのサンドボックスが子プロセスを止める（テストを実行できない）場合、ルーターはTerraとLunaを最後に回します。`HF_CODEX_WINDOWS_SANDBOX=mxc`でMXCサンドボックスを選ぶと、互換性のあるWindows 11でCodexがテストを実行できます。→ [Codex運用](references/codex-runtime.md)
 
 **0.30.0**
 
 - **Codex・Antigravity のリード(C 等級)。** Claude Code だけでなく、Codex CLI や agy のセッションもリードになれます。`node scripts/lead-guard.mjs --print-settings --host codex|antigravity` がフック設定を出力します。リードのモデルはホストのフックか `HF_LEAD_MODEL` から決まり、根拠がなければ init は `LEAD_MODEL_UNKNOWN` で拒否します。Claude 以外のリードには `review.strategy: "lead-gated-adaptive"` が必要です。Windows で一部を実測しました。→ [Codex](references/hosts/codex.md)、[Antigravity](references/hosts/antigravity.md)
 - **役割はリードのモデル系列に従う。** 実装者・専門家・レビュー枠をリードのモデルから計算します(Claude 以外のリードは `family-rules-v1`)。Opus リードの動作は変わりません。
 - **実測で見つかったレビュー・受け入れの問題を修正。** agy は結果スキーマをファイルで受け取り、それでも Windows のコマンドラインに収まらないときは短くすべきフィールドを示します。`detail` で書かれた Grok の指摘を受け付けます。契約の訂正がレビュアーに届きます。ワーカーが blocked と報告してもコントローラが受け入れコマンドを実行します(承認の拒否は変わりません)。レビュアーのターン上限を別に設定できます(`consult_max_turns`)。
-
-**0.29.0**
-
-- **レビュアーに結論を渡さない。** 委任レビュアーは、ワーカーの要約・テスト合格の報告・リスク評価や、以前のレビュアーの判定・理由を受け取りません。diff、ファイル、コントローラが自分で実行した受け入れ結果だけで判断します。→ [review（韓国語）](references/review-protocol.md)
-- **リードの指摘ごとの処分。** `lead-decision`で指摘ごとに`act`・`consider`・`noted`・`dismissed`・`contract_misread`と理由を残します。却下した指摘は次のワーカーに渡らず、指標がレビュアーごとの実効性（`actionable_rate`）を数えます。→ [review（韓国語）](references/review-protocol.md#지적별-처분-finding_dispositions-선택)
 
 ## 作った理由
 
