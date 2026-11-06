@@ -10,6 +10,7 @@ import {isMain} from './platform.mjs';
 import {readInput,printError,errorRecord} from './cli.mjs';
 import {SCHEMA_VERSION} from './versions.mjs';
 import {refreshAutomationMetrics} from './metrics.mjs';
+import {environmentBlocked} from './contracts.mjs';
 
 // 정지 확인이 실패하면 이유와 남은 프로세스를 메시지에 남긴다(리드와 CI 로그에서 바로 보이게).
 const proofText=q=>q?`${q.reason}${q.remaining?.length?`; remaining ${JSON.stringify(q.remaining.slice(0,5))}`:''}${q.checks?`; checks ${q.checks}`:''}`:'missing evidence';
@@ -133,7 +134,8 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
      // 미완료 결과는 승인될 수 없으므로 리뷰어를 쓰기 전에 리드에게 넘긴다. 트리를 바꾼 라운드는 컨트롤러가 수용 명령을 돌렸으니
      // 그 결과를 먼저 확인해, AUTOPILOT_ACCEPTANCE_UNVERIFIED가 실제로 돌린 증거(실패·종료 증명 누락)를 가리키게 한다.
      const raw=read(path.join(dir,`raw-result-${s.iteration}.json`));
-     const incomplete=raw.status!=='complete'?failure('AUTOPILOT_WORKER_INCOMPLETE',`The worker reported ${raw.status}${raw.needs_lead_decision?' and asked for a lead decision':''}; an incomplete result cannot be approved, so no reviewer was started. The lead answers it (REDO with lead_feedback, or another route)`):null;
+     // 환경만 막힌 blocked는 아래 수용 확인(이 라운드 통과·종료 증명·현재 트리)을 거쳐 위임 리뷰로 간다. 승인 여부는 리뷰어와 컨트롤러가 본다.
+     const incomplete=raw.status!=='complete'&&!environmentBlocked(raw)?failure('AUTOPILOT_WORKER_INCOMPLETE',`The worker reported ${raw.status}${raw.needs_lead_decision?' and asked for a lead decision':''}; an incomplete result cannot be approved, so no reviewer was started. The lead answers it (REDO with lead_feedback, or another route)`):null;
      if(incomplete&&s.acceptance?.round!==s.iteration)throw incomplete;
      const acceptance=s.acceptance?.file?read(path.join(dir,s.acceptance.file)):null;
      if(s.acceptance?.round!==s.iteration||s.acceptance.status!=='pass'||s.acceptance.quiescent!==true

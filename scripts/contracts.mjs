@@ -10,6 +10,11 @@ const strs=v=>Array.isArray(v)&&v.every(str);
 const blank=v=>v===undefined||v===null||(typeof v==='string'&&!v.trim());
 // not_run도 받는다: 샌드박스가 막아 아예 못 돌린 테스트를 일꾼이 not_run으로 적는 경우가 있다(Codex Terra, 2026-11-04 L01).
 export const environmentFailure=t=>['fail','not_run'].includes(t?.status)&&str(t.environment_error);
+// 환경만 막힌 blocked: 일꾼이 결정을 묻지 않았고, 통과하지 못한 테스트가 하나 이상 있으며 모두 환경 사유를 적었다.
+// 이것만으로 승인되지는 않는다. 이 라운드의 컨트롤러 수용 실행이 통과해야 한다(fusion-state의 approvableResult).
+// 일꾼은 할 일을 다 했는데 호스트가 전체 검사를 막은 경우다(2026-11-06 L01 run 9: 빈 라운드 2번으로 blocked를 complete로 바꿨다).
+export const environmentBlocked=v=>v?.status==='blocked'&&v.needs_lead_decision===false&&Array.isArray(v.tests)
+ &&v.tests.some(environmentFailure)&&v.tests.every(t=>t.status==='pass'||environmentFailure(t));
 // 저장소 기준 상대 경로. 일꾼이 보고하는 경로(files_changed 등)와 리뷰어의 지적 위치에 쓴다. 스냅샷과 글자 그대로 비교하므로 글롭은 따지지 않는다.
 // '.'와 './src'는 git이 돌려주는 경로와 절대 일치하지 않아 모든 변경이 범위 밖이 되므로 거절한다.
 // .git/.fusion 구분은 대소문자와 Windows의 끝 점·공백, 8.3 짧은 이름(GIT~1)까지 같은 것으로 본다.

@@ -46,7 +46,7 @@ import {sameFamilyIn,FAMILY_RULES_POLICY} from './review-plan.mjs';
 import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,samePlan,aggregateVerdicts,initialGrant,sameGrant,assertImplementRound,implementDispatch,makeGrant,explicitImplementation,PAIRED_REVIEW_POLICY} from './review-plan.mjs';
 import {apexMember,specialistMember,reservedMembers,delegableOwners,memberFamilyOf} from './team-roles.mjs';
 import {gradeOf,MEMBERS} from './member-registry.mjs';
-import {SANDBOX_REPORT,sandboxFailureFile} from './codex-sandbox.mjs';
+import {SANDBOX_REPORT,sandboxFailureFile,WORKER_TEMP_DIR} from './codex-sandbox.mjs';
 import {independent} from './model-registry.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
@@ -706,7 +706,7 @@ function applyAdaptiveReview(c,open,results,now) {
     let verdict=result.recommended_verdict;
     let blocking=Array.isArray(result.blocking_criteria)?result.blocking_criteria:[];
     let evidence=contract.rejectionEvidence(verdict,result.findings);
-    if(verdict==='pass'&&raw.status!=='complete'){
+    if(verdict==='pass'&&!approvableResult(s,raw)){
       verdict='redo';
       blocking=['worker reported '+raw.status];
       evidence=true;
@@ -923,8 +923,8 @@ function applyDelegatedReview(c,open,member,result) {
   const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
   let verdict=result.recommended_verdict;
   let blocking=result.blocking_criteria;
-  // 일꾼이 미완료라고 보고한 라운드는 리뷰어가 pass를 줘도 통과시킬 수 없다.
-  if(verdict==='pass'&&raw.status!=='complete'){
+  // 일꾼이 미완료라고 보고한 라운드는 리뷰어가 pass를 줘도 통과시킬 수 없다(환경만 막힌 blocked는 approvableResult가 따로 본다).
+  if(verdict==='pass'&&!approvableResult(s,raw)){
     verdict='redo';
     blocking=['worker reported '+raw.status];
   }
@@ -1115,6 +1115,8 @@ function begin(c,input) {
   c.save();
   c.art(`brief-${round}.json`,input);
   c.art(`base-${round}.json`,base);
+  // 라운드 전부터 있던 일꾼 임시 폴더는 사용자 것으로 보고 finish가 지우지 않는다.
+  if(fs.existsSync(path.join(c.root,WORKER_TEMP_DIR)))c.art(`worker-temp-preexisting-${round}.json`,{path:WORKER_TEMP_DIR});
   // 재검수용 라운드 diff의 기준. 보조 기록이라 실패해도 라운드를 막지 않는다(round-diff가 미기록으로 알린다).
   if(round>=2){try{c.art(`round-base-${round}.json`,captureRoundBase(c.root,base));}catch{}}
   // 수용 테스트를 돌릴 라운드는 무시된 파일의 기준선도 남긴다. 일꾼이 거기 코드를 심었는지 실행 전에 비교한다.
@@ -1132,6 +1134,24 @@ function begin(c,input) {
   return request;
 }
 
+// 승인할 수 있는 일꾼 결과: complete이거나, 환경만 막힌 blocked이면서 이 라운드의 컨트롤러 수용 실행이
+// 종료 증명과 함께 현재 트리에서 통과한 경우. 위임 자동 승인(policyEvaluation)은 여전히 complete만 받는다.
+function approvableResult(s,raw) {
+  if(raw?.status==='complete')return true;
+  const a=s.acceptance;
+  return contract.environmentBlocked(raw)&&a?.round===s.iteration&&a.status==='pass'&&a.quiescent===true&&!!s.post_digest&&a.tree_digest===s.post_digest;
+}
+
+// 일꾼 임시 폴더(Windows 샌드박스 TEMP 우회)는 일꾼이 멈춘 뒤 컨트롤러가 지운다. 라운드 전부터 있던 폴더, 링크는 건드리지 않는다.
+// 남겨 두면 안의 git 저장소가 스냅샷을 깨뜨린다("Submodules/directories unsupported by M0", 2026-11-06 L01 run 9).
+function clearWorkerTemp(c,n) {
+  const dir=path.join(c.root,WORKER_TEMP_DIR);
+  let st;try{st=fs.lstatSync(dir);}catch{return;}
+  if(!st.isDirectory()||c.optional(`worker-temp-preexisting-${n}.json`))return;
+  try{fs.rmSync(dir,{recursive:true,force:true,maxRetries:3});c.art(`worker-temp-${n}.json`,{path:WORKER_TEMP_DIR,removed:true});}
+  catch(e){c.art(`worker-temp-${n}.json`,{path:WORKER_TEMP_DIR,removed:false,error:String(e?.message??e).slice(0,300)});}
+}
+
 function finish(c,input) {
   const s=c.s;
   assertLease(c.root,input.token);
@@ -1143,6 +1163,7 @@ function finish(c,input) {
     input={...input,result:read(path.join(c.taskdir(),`result-${n}.json`))};
   }
   const base=read(path.join(c.taskdir(),`base-${n}.json`));
+  clearWorkerTemp(c,n);
   const post=snapshot(c.root);
   c.art(`raw-result-${n}.json`,input.result??null);
   c.art(`post-${n}.json`,post);
@@ -1384,7 +1405,7 @@ function applyReview(c,input,treeDigest=null) {
     throw Error('Tree drift before review');
   }
   const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
-  if(input.verdict==='pass'&&raw.status!=='complete')throw Error('Incomplete result cannot pass');
+  if(input.verdict==='pass'&&!approvableResult(s,raw))throw Error('Incomplete result cannot pass');
 
   const verdict=input.verdict==='escalate'?'alternative':input.verdict;
   if(verdict==='takeover'&&input.reviewed_by!=='lead')throw Error('Only the lead can order a takeover');
@@ -1677,7 +1698,7 @@ function leadDecision(c,input) {
   if(normalized==='APPROVE'){
     if(input.contract_change===true)throw Error('LEAD_DECISION: APPROVE is refused when the contract changed');
     const raw=read(path.join(c.taskdir(),`raw-result-${s.iteration}.json`));
-    if(raw.status!=='complete')throw Error('LEAD_DECISION: an incomplete result cannot be approved');
+    if(!approvableResult(s,raw))throw Error('LEAD_DECISION: an incomplete result cannot be approved');
     if(direct){
       if(input.diff_reviewed!==true)throw Error('LEAD_DECISION: APPROVE requires diff_reviewed:true after reading the diff');
       if(!namedEvidence(input.tests_checked))throw Error('LEAD_DECISION: APPROVE requires tests_checked naming the tests that were read');
