@@ -3,7 +3,7 @@
 // 판정은 컨트롤러가 실행한 결과로만 정한다. 일꾼이나 리뷰어의 말로 PASS가 되지 않는다.
 import fs from 'node:fs';
 import path from 'node:path';
-import {read,changes} from './artifact.mjs';
+import {read,changes,own} from './artifact.mjs';
 
 const AC_ID=/^AC\d+$/;
 export const criterionIds=list=>[...new Set((list??[]).flatMap(t=>String(t).match(/\bAC\d+\b/gi)??[]).map(x=>x.toUpperCase()))];
@@ -88,10 +88,10 @@ export function taskChangeEvidence(dir,state,current) {
  for(let n=1;n<=state.iteration;n++){
   const validation=optional(`validation-${n}.json`),post=optional(`post-${n}.json`);
   if(!validation||validation.errors?.length||!post)continue;
-  for(const file of validation.changed??[])workerEntries.set(file,post.files[file]??null);
+  for(const file of validation.changed??[])workerEntries.set(file,own(post.files,file)??null);
  }
  const unattributed_changes=changed.filter(file=>!workerEntries.has(file)
-  ||JSON.stringify(workerEntries.get(file))!==JSON.stringify(end.files[file]??null));
+  ||JSON.stringify(workerEntries.get(file))!==JSON.stringify(own(end.files,file)??null));
  return {changed,unattributed_changes};
 }
 

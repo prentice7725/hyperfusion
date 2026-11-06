@@ -38,6 +38,19 @@ export function checkPreserve(root,brief) {
  const res=protect.map(g=>[g,globRegex(g)]);
  const empty=res.filter(([,re])=>!files.some(f=>re.test(f))).map(([g])=>g);
  if(empty.length)throw Error(`VERIFICATION: protect matches no file (${empty.join(', ')}); verification needs real tests or fixtures to protect`);
+ const escaped=files.filter(f=>res.some(([,re])=>re.test(f))).map(f=>[f,repoFile(root,f)]).filter(([,r])=>!r.ok);
+ if(escaped.length)throw Error(`VERIFICATION: protected file is not a regular file inside the repository (${escaped.slice(0,3).map(([f,r])=>`${f}: ${r.reason}`).join('; ')}); a junction or symlink must not lead protected paths outside the repository`);
+}
+
+// Git이 돌려준 상대 경로를 실제 경로로 풀어, 저장소 실제 루트 안의 일반 파일일 때만 그 경로를 준다.
+// 상위 폴더(예: tests)가 Windows 정션이나 심볼릭 링크로 저장소 밖을 가리키면 바깥 파일을 읽게 되므로 거절한다.
+export function repoFile(root,rel) {
+ let realRoot,real;
+ try{realRoot=fs.realpathSync.native(root);real=fs.realpathSync.native(path.join(root,rel));}catch{return {ok:false,reason:'unreadable'};}
+ const r=path.relative(realRoot,real);
+ if(!r||r==='..'||r.startsWith('..'+path.sep)||path.isAbsolute(r))return {ok:false,reason:'outside_repository'};
+ try{if(!fs.statSync(real).isFile())return {ok:false,reason:'not_regular_file'};}catch{return {ok:false,reason:'unreadable'};}
+ return {ok:true,real};
 }
 
 // 보호 경로에 맞는 실제 파일 목록(추적·미추적 모두).
@@ -57,8 +70,10 @@ export function acceptanceTestsContext(root,brief,max=ACCEPTANCE_TESTS_MAX) {
  if(!protect.length||!brief?.acceptance_commands?.length)return null;
  let budget=max;
  const files=protectedFiles(root,protect).map(file=>{
+  const at=repoFile(root,file);
+  if(!at.ok)return {path:file,unreadable:true,reason:at.reason};
   let text;
-  try{text=fs.readFileSync(path.join(root,file),'utf8');}catch{return {path:file,unreadable:true};}
+  try{text=fs.readFileSync(at.real,'utf8');}catch{return {path:file,unreadable:true,reason:'unreadable'};}
   const shown=text.slice(0,Math.max(0,budget));budget-=shown.length;
   return {path:file,sha256:hash(text),...(shown.length<text.length?{content:shown,truncated:true}:{content:shown})};
  });

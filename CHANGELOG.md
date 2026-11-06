@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+- 외부 보안 검토(`a3ae104`, Windows에서 재현)에서 나온 세 문제를 고쳤다.
+  - 보호 파일 읽기가 저장소 밖으로 나가지 않는다. `tests` 같은 상위 폴더가 정션이나 심볼릭 링크로 저장소 밖을 가리키면, 위임 리뷰어에게 주는 `acceptance_tests`에 바깥 파일 내용이 실렸다. 이제 실제 경로가 저장소 실제 루트 안의 일반 파일일 때만 읽고, 아니면 `unreadable`과 이유(`outside_repository` 등)만 남긴다. preserve 작업의 `init`도 그런 보호 파일을 거절한다.
+  - 루트의 `__proto__` 파일 변경을 감지한다. 스냅샷과 무시 파일 목록이 일반 객체여서 `__proto__`가 키가 되지 않고 프로토타입을 바꿨고, 내용을 바꿔도 `changes()`가 비고 digest도 그대로였다. 경로가 키인 맵을 프로토타입 없는 객체로 만들고, 저장된 스냅샷은 자기 키만 읽는다. 일반 이름의 직렬화와 digest는 그대로다.
+  - brief의 `task_id`가 문자열인지 먼저 본다. 없거나 `null`, `42`, `["task"]`이면 형식 검사를 통과해 `init`이 `path.join`에서 죽었다.
+
 ## 0.31.0 — 2026-11-06
 
 - Windows Codex 샌드박스로 `mxc`를 고를 수 있다(`HF_CODEX_WINDOWS_SANDBOX=mxc`). 공식 문서가 호환 Windows 11에서 먼저 권하고 관리자 설정이 필요 없다. 이 PC(build 26300)에서 `unelevated`는 이름 있는 파이프를 만들지 못해 node의 파이프 연결 spawn이 모두 `EPERM`이었고(Terra가 테스트를 못 돌린 원인), `mxc`에서는 됐다. 다만 `mxc`의 임시 폴더는 이름 바꾸기를 막아 `git init`이 실패하므로, Windows 구현 라운드는 그런 명령을 저장소 안 `.hf-tmp`를 TEMP로 삼아 다시 돌리고 지우라고 지시한다.

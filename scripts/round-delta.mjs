@@ -3,7 +3,7 @@
 // 보조 보기일 뿐 판정·승인에는 쓰지 않는다. 누적 diff가 여전히 기록이다.
 import fs from 'node:fs';
 import path from 'node:path';
-import {git,hash,snapshot,changes,read} from './artifact.mjs';
+import {git,hash,snapshot,changes,read,own} from './artifact.mjs';
 
 export const ROUND_BASE_VERSION=1;
 const MAX_FILE=512*1024,MAX_TOTAL=4*1024*1024,MAX_LINES=20000,MAX_EDITS=2000,CONTEXT=3;
@@ -14,9 +14,9 @@ const isText=buf=>!buf.includes(0);
 export function captureRoundBase(root,base) {
  const dirty=[...new Set([...split0(git(root,['diff','--name-only','-z','HEAD','--'])),...split0(git(root,['ls-files','-z','--others','--exclude-standard']))])]
   .filter(p=>p!=='.fusion'&&!p.startsWith('.fusion/')).sort();
- const files={},omitted=[];let total=0;
+ const files=Object.create(null),omitted=[];let total=0;
  for(const p of dirty){
-  const entry=base.files[p];
+  const entry=own(base.files,p);
   if(entry===undefined)continue;
   if(entry===null){files[p]={deleted:true};continue;}
   if(entry.kind!=='file'){omitted.push({path:p,reason:'not_regular_file'});continue;}
@@ -102,7 +102,7 @@ export function roundDelta(root,state,taskdir,{charBudget=60000}={}) {
  const now=snapshot(root),omittedBase=new Map((saved.omitted??[]).map(o=>[o.path,o.reason]));
  const files=[],omitted=[];let used=0;
  for(const p of changes(start,now)){
-  const entry=omittedBase.has(p)?{path:p,status:'unavailable',reason:omittedBase.get(p)}:fileDelta(root,p,saved.files[p],start.files[p]);
+  const entry=omittedBase.has(p)?{path:p,status:'unavailable',reason:omittedBase.get(p)}:fileDelta(root,p,own(saved.files,p),own(start.files,p));
   const size=JSON.stringify(entry).length;
   if(used+size>charBudget){omitted.push({path:p,status:entry.status,reason:'char_budget'});continue;}
   used+=size;files.push(entry);

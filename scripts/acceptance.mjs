@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {git,hash} from './artifact.mjs';
+import {git,hash,own} from './artifact.mjs';
 import {workerEnv} from './worker-env.mjs';
 
 // 수용 테스트: brief의 acceptance_commands를 컨트롤러가 직접 실행하고 종료 코드와 출력 해시를 남긴다.
@@ -59,7 +59,8 @@ export function ignoredManifest(root,artifacts=[]) {
  const skip=[...DEFAULT_ARTIFACTS,...artifacts,...operatorIgnoredAllow()].map(globRegex);
  const names=git(root,['ls-files','-z','--others','--ignored','--exclude-standard']).split('\0').filter(Boolean);
  if(names.length>MAX_IGNORED)return {overflow:true,count:names.length,files:{}};
- const files={};
+ // 경로가 키인 맵: `__proto__`라는 파일 이름이 프로토타입을 바꾸지 않게 프로토타입 없는 객체를 쓴다.
+ const files=Object.create(null);
  for(const name of names){
   if(name==='.fusion'||name.startsWith('.fusion/')||skip.some(r=>r.test(name)))continue;
   try{
@@ -74,7 +75,7 @@ export function ignoredChanges(a,b) {
  if(!a||!b||a.overflow||b.overflow)return ['(ignored files exceed the watch limit of '+MAX_IGNORED+')'];
  // 작업 도중 허용 목록을 켜도 진행 중인 작업이 막히지 않게, 예전 기준 기록에 들어 있던 허용 경로는 양쪽에서 같이 뺀다.
  const allowed=operatorIgnoredAllow().map(globRegex);
- return [...new Set([...Object.keys(a.files),...Object.keys(b.files)])].filter(k=>a.files[k]!==b.files[k]&&!allowed.some(r=>r.test(k))).sort();
+ return [...new Set([...Object.keys(a.files),...Object.keys(b.files)])].filter(k=>own(a.files,k)!==own(b.files,k)&&!allowed.some(r=>r.test(k))).sort();
 }
 
 // 명령을 차례로 실행한다. 일꾼과 같은 걸러진 환경변수를 쓴다(리드의 비밀값을 테스트 코드에 넘기지 않는다).
