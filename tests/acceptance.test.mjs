@@ -30,6 +30,25 @@ test('acceptance commands run after finish and their result is the verification 
  const v=art(f,'verification.json');assert.equal(v.acceptance.status,'pass');assert.equal(v.acceptance.reused,'acceptance-1-finish.json');
 });
 
+for(const keep of [0,1]){
+ test(`VERIFY reruns both acceptance commands when the prior record contains ${keep} results`,t=>{
+  const f=fixture(t);
+  const commands=[CHECK,'node --version'];
+  f.brief.acceptance_commands=commands;
+  f.begin();
+  fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');
+  f.finish(f.result(['a.txt']));
+  f.review('pass');
+  const record=accepted(f);
+  assert.deepEqual(record.results.map(r=>r.command),commands);
+  record.results=record.results.slice(0,keep);
+  fs.writeFileSync(path.join(f.control,'tasks',f.brief.task_id,f.state().acceptance.file),JSON.stringify(record));
+  assert.equal(run(f.root,'verify',{acceptance_satisfied:true}).phase,'CLOSE');
+  assert.equal(accepted(f).stage,'verify');
+  assert.deepEqual(accepted(f).results.map(r=>r.command),commands);
+ });
+}
+
 test('a failing acceptance command returns the round to the same worker with the output, before any lead review',async t=>{
  const f=fixture(t);f.brief.acceptance_commands=[CHECK];
  f.begin();await f.bridge();
