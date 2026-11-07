@@ -131,7 +131,7 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
     }
     if(s.phase==='REVIEW'){
      if(s.pending_review)throw failure('AUTOPILOT_PENDING_REVIEW',s.pending_review.not_converging
-      ?`Delegated reviews keep rejecting ${s.pending_review.not_converging.criteria.join(', ')} (${s.pending_review.not_converging.rounds} earlier rounds); the lead reads the findings and decides`
+      ?`Delegated reviews keep rejecting ${s.pending_review.not_converging.criteria.join(', ')} (${s.pending_review.not_converging.rounds} earlier rounds); the lead reads the findings and decides. Pass with follow_ups when only cases the brief does not name remain; sending it back needs unmet_stated_items`
       :'A delegated verdict requires lead review');
      // 미완료 결과는 승인될 수 없으므로 리뷰어를 쓰기 전에 리드에게 넘긴다. 트리를 바꾼 라운드는 컨트롤러가 수용 명령을 돌렸으니
      // 그 결과를 먼저 확인해, AUTOPILOT_ACCEPTANCE_UNVERIFIED가 실제로 돌린 증거(실패·종료 증명 누락)를 가리키게 한다.

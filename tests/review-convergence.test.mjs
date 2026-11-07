@@ -43,10 +43,12 @@ test('alternative counts as a rejection; history keeps the last six rounds and s
  assert.equal(r.history[0].blocking_criteria[0].length,200);
 });
 
-// End to end: the third delegated rejection of AC1 waits for the lead instead of going back automatically.
-test('the third delegated rejection of the same criterion waits for the lead even with auto_apply',async t=>{
+// Reach the state where the third delegated rejection of AC1 waits for the lead.
+const stuck=async t=>{
  const f=fixture(t,{initialize:false});
  fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{by:'delegate'},external:{default:'grok',available:['grok','sonnet','haiku']}}));
+ // 통과하는 수용 명령을 둔다. 없으면 리드(Opus)가 같은 계열(Sonnet)의 라운드를 혼자 통과시킬 수 없다(SAME_FAMILY_REVIEW).
+ Object.assign(f.brief,{acceptance_commands:['node -e "process.exit(0)"'],acceptance_baseline_green:'review-loop test: the reviewer, not the command, decides'});
  run(f.root,'init',{...f.brief,executor:'grok'});
  const delegate=async()=>{const c=run(f.root,'delegate-review',{});await consult(f.root,c.consult_id);return run(f.root,'consult-finish',{quiescent:true}).review;};
  const next=()=>{const phase=f.state().phase;if(phase==='REDO')return f.begin();const pick=['sonnet','haiku','grok'].find(x=>x!==f.state().owner);return f.begin({executor:pick});};
@@ -59,16 +61,56 @@ test('the third delegated rejection of the same criterion waits for the lead eve
   outcomes.push(out);
   if(out.status==='pending')break;
  }
+ f.mode('ok');
+ return {f,outcomes};
+};
+const leadReview=(verdict,extra={})=>({verdict,rationale:'read the findings and the diff',blocking_criteria:verdict==='pass'?[]:['AC1: still unmet'],commands_run:['git diff'],independent_diff_review:true,...extra});
+
+test('the third delegated rejection of the same criterion waits for the lead even with auto_apply',async t=>{
+ const {f,outcomes}=await stuck(t);
  assert.deepEqual(outcomes.slice(0,2).map(o=>o.status),['applied','applied']);
  const last=outcomes[2];
  assert.equal(last.status,'pending');
  assert.equal(last.reason,'not_converging');
  assert.deepEqual(last.criteria,['AC1']);
- assert.match(last.next_action,/adopt/);
+ assert.match(last.next_action,/follow_ups/);
+ assert.match(last.decision_rule,/item the brief names/);
  const s=f.state();
  assert.equal(s.phase,'REVIEW');
  assert.deepEqual(s.pending_review.not_converging.criteria,['AC1']);
  assert.equal(s.reviews.length,2,'the third rejection is not applied yet');
- f.mode('ok');
- assert.equal(run(f.root,'review',{adopt:true}).phase!=='REVIEW',true,'the lead can still send it back');
+});
+
+// L01 run 11: the lead overrode seven held rejections with its own redo, one new AC1 signal type each time.
+test('sending a held rejection back needs the brief items that are still unmet',async t=>{
+ const {f}=await stuck(t);
+ assert.throws(()=>run(f.root,'review',{adopt:true}),/NOT_CONVERGING: AC1 .*unmet_stated_items.*follow_ups/);
+ assert.throws(()=>run(f.root,'review',leadReview('redo')),/NOT_CONVERGING/);
+ assert.throws(()=>run(f.root,'review',leadReview('alternative')),/NOT_CONVERGING/);
+ assert.equal(f.state().phase,'REVIEW','a refusal changes nothing');
+ assert.equal(f.state().reviews.length,2);
+ const out=run(f.root,'review',{adopt:true,unmet_stated_items:['AC1: a.txt must say fixed']});
+ assert.notEqual(out.phase,'REVIEW');
+ const r=f.state().reviews.at(-1);
+ assert.equal(r.adopted_by_lead,true);
+ assert.deepEqual(r.unmet_stated_items,['AC1: a.txt must say fixed']);
+});
+
+test('the lead passes a held rejection with follow-ups, and the PR draft lists them',async t=>{
+ const {f}=await stuck(t);
+ const out=run(f.root,'review',leadReview('pass',{follow_ups:['AC1: also cover multiline values (not named in the brief)']}));
+ assert.equal(out.phase,'VERIFY');
+ const r=f.state().reviews.at(-1);
+ assert.equal(r.overrode,'sol');assert.equal(r.overrode_verdict,'redo');
+ assert.deepEqual(r.follow_ups,['AC1: also cover multiline values (not named in the brief)']);
+ assert.equal(run(f.root,'verify',{acceptance_satisfied:true}).phase,'CLOSE');
+ const draft=fs.readFileSync(f.state().pr_draft,'utf8');
+ assert.match(draft,/## 후속 작업[\s\S]*multiline values/);
+});
+
+test('a rejection that is not held needs no unmet_stated_items; follow_ups are validated',t=>{
+ const f=fixture(t);f.begin();f.finish();
+ assert.throws(()=>run(f.root,'review',leadReview('pass',{follow_ups:['']})),/Invalid follow_ups/);
+ assert.throws(()=>run(f.root,'review',leadReview('pass',{follow_ups:Array(21).fill('x')})),/Invalid follow_ups/);
+ assert.equal(run(f.root,'review',leadReview('redo')).phase,'REDO');
 });

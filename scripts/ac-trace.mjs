@@ -71,6 +71,9 @@ export function prDraft({state,brief,table,changed,unattributed_changes=[],round
  lines.push('## 진행','','| 라운드 | 작업자 | 판정 | 리뷰 |','|---|---|---|---|',
   ...rounds.map(r=>`| ${r.round} | ${r.owner??'-'} | ${r.verdict??'-'} | ${cell(r.reviewed_by??'-')} |`),'');
  if(risks.length)lines.push('## 남은 위험','',...risks.map(x=>`- ${x}`),'');
+ // 리뷰가 범위 밖이라며 통과시키고 남긴 지적. 별도 작업으로 다룬다.
+ const followUps=[...new Set((state?.reviews??[]).flatMap(r=>Array.isArray(r.follow_ups)?r.follow_ups:[]))];
+ if(followUps.length)lines.push('## 후속 작업','','이번 작업의 수용 기준에 이름이 없어 통과시킨 지적이다. 별도 작업으로 다룬다.','',...followUps.map(x=>`- ${cell(x)}`),'');
  lines.push('---',`HyperFusion task \`${state.task_id}\` · base \`${String(state.base_commit??'').slice(0,12)}\` · 커밋과 푸시는 하지 않았다.`,'');
  return lines.join('\n');
 }
