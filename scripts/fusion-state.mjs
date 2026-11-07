@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isMain,resolveExecutable} from './platform.mjs';
-import {config,selectExecutor,CAP,APEX_ROUND_CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND,automaticImplementer,grantOnly,consultExecutorOptions} from './executor-config.mjs';
+import {config,selectExecutor,CAP,APEX_ROUND_CAP,CONSULT_CAP,EXECUTORS,REVIEWERS,REVIEW_RUNS_PER_ROUND,REVIEW_CONVERGENCE_LIMIT,automaticImplementer,grantOnly,consultExecutorOptions} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {route} from './router.mjs';
 import {atomic,immutable,read,repo,snapshot,changes,git,hash,SAFE_DIFF,riskyGitConfig} from './artifact.mjs';
@@ -912,6 +912,19 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
   return {status:'lead_gate',panel_status,verdict,recommendation,pass_forbidden,reviewers,phase:s.phase,next_action:'lead-decision'};
 }
 
+// 이번 위임 반려의 기준이 모두, 앞선 라운드의 위임 반려에 이미 REVIEW_CONVERGENCE_LIMIT번 이상 나왔는지 본다.
+// 리드가 직접 내린 판정은 세지 않는다. 일꾼이 바뀌어도 센다(L01 run 10: 일꾼 여섯이 같은 AC2로 열여섯 번 반려됐다).
+export function nonConverging(s,verdict,blocking) {
+  if(!['redo','alternative'].includes(verdict)||!Array.isArray(blocking)||!blocking.length)return null;
+  const keysOf=r=>(r.blocking_criteria??[]).flatMap(contract.criterionKeys);
+  const earlier=s.reviews.filter(r=>r.consult_id&&r.verdict!=='pass'&&r.round<s.iteration);
+  const keys=[...new Set(blocking.flatMap(contract.criterionKeys))];
+  if(!keys.every(k=>earlier.filter(r=>keysOf(r).includes(k)).length>=REVIEW_CONVERGENCE_LIMIT))return null;
+  const hit=earlier.filter(r=>keysOf(r).some(k=>keys.includes(k)));
+  return {criteria:keys,rounds:new Set(hit.map(r=>r.round)).size,
+    history:hit.slice(-6).map(r=>({round:r.round,owner:r.owner,blocking_criteria:(r.blocking_criteria??[]).map(x=>String(x).slice(0,200))}))};
+}
+
 // 위임 리뷰어의 결과를 판정으로 바꿔 적용한다.
 function applyDelegatedReview(c,open,member,result) {
   const s=c.s;
@@ -946,6 +959,14 @@ function applyDelegatedReview(c,open,member,result) {
     s.pending_review={...delegated,evidence:false};
     return {status:'pending',reason:'rejection_without_evidence',
       next_action:'read the findings; review {"adopt":true} to apply the rejection anyway, or give your own verdict'};
+  }
+  // 위임 리뷰가 같은 기준을 라운드마다 다시 반려하면 자동으로 돌려보내지 않는다.
+  // 리드가 지금까지의 반려 사유와 diff를 읽고 다시 보낼지, 남은 지적을 후속 작업으로 돌릴지 정한다.
+  const stuck=nonConverging(s,verdict,blocking);
+  if(stuck){
+    s.pending_review={...delegated,not_converging:stuck};
+    return {status:'pending',reason:'not_converging',criteria:stuck.criteria,history:stuck.history,
+      next_action:`delegated reviews already rejected ${stuck.criteria.join(', ')} in ${stuck.rounds} earlier rounds and are not converging: read the findings and the diff yourself, then review {"adopt":true} to send it back again, or give your own verdict (record findings beyond the brief as follow-ups)`};
   }
   if(!s.configuration.review.auto_apply){
     s.pending_review=delegated;

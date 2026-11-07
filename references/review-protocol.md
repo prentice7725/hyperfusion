@@ -57,6 +57,19 @@ LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. �
 - adaptive: 기록에 `evidence:false`가 붙고 패킷의 `unsupported_rejections`에 남는다. 근거 없는 반려뿐이면 추천이 비어 있다. 리드는 REDO하거나, 직접 diff를 읽고 `overrule_reason`, `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적어 APPROVE한다(`overruled_reviews`, 뒤집힌 자리는 `lead_filled_seats`). 근거가 있는 반려는 리드 혼자 뒤집지 못한다. 다른 의견이 필요하면 `LEAD_DECISION_REQUIRED`에서 구현자와 이미 판정한 리뷰어를 뺀 모델을 `executors`로 지정하고 `substitution_reason`을 적어 `delegate-review`를 다시 연다(라운드당 위임 리뷰 2회 한도 안). 교체된 반려는 지우지 않고 `superseded:true`로 남는다. 대체 리뷰어가 같은 digest에서 pass하면, 리드가 직접 diff를 읽고 `overrule_reason`, `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적어 APPROVE할 수 있다. 대체 리뷰어도 반려하면 승인할 수 없다.
 - 일꾼이 미완료로 보고해 컨트롤러가 바꾼 반려와 수용 테스트 실패 반려는 그 자체가 근거다.
 
+### 수렴하지 않는 반려 (classic)
+
+어떤 수용 기준(AC 번호, 없으면 정규화한 문장)이 앞선 라운드의 위임 리뷰에서 이미 두 번(`REVIEW_CONVERGENCE_LIMIT`) 이상 반려됐을 수 있다. 이번 위임 반려의 기준이 **모두** 그런 기준이면, `auto_apply:true`여도 그 반려는 적용하지 않는다. 대신 `pending_review`(`not_converging`: 기준, 반려된 라운드 수, 최근 6건의 이력)로 남긴다.
+- 일꾼이 바뀌어도 센다.
+- 리드가 직접 내린 판정은 세지 않는다.
+- 처음 나온 기준이 하나라도 섞이면 전처럼 적용한다.
+
+autopilot은 이때 `AUTOPILOT_PENDING_REVIEW`로 멈추고, 어떤 기준이 몇 라운드째인지 알린다. 리드는 지적과 diff를 직접 읽은 뒤 둘 중 하나를 한다.
+- `review {"adopt":true}`로 다시 돌려보낸다.
+- 자기 판정을 낸다. brief 범위를 넘는 남은 지적은 후속 작업으로 적는다.
+
+배경: L01 run 10에서 Sol 한 명이 16라운드 연속으로 AC2를 반려했다. 매번 비밀값 가림(redaction)의 새 우회 경우였고, 일꾼 여섯이 돌아가며 고쳤다. 결과는 19라운드, 179분, 리드 2.2M이었다. adaptive는 원래 같은 기준이 두 번 반려되면 반려 위임을 쓰지 않고 리드 게이트로 간다.
+
 ## 옵트인 Adaptive Review (`review.strategy: "lead-gated-adaptive"`)
 
 `strategy`가 없으면 위 위임 리뷰가 그대로다. 실패한 리뷰어의 다음 후보, `auto_apply`, 라운드당 재시도 상한도 바뀌지 않는다. `strategy`가 켜지면 `auto_apply`와 `review {"adopt":true}`는 판정을 적용하지 않는다.

@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 위임 리뷰 반려가 수렴하지 않으면 리드에게 넘긴다. 이번 반려의 기준이 모두 앞선 라운드의 위임 리뷰에서 이미 두 번 이상 반려된 기준이면, `auto_apply`여도 자동으로 돌려보내지 않고 `pending_review`(`not_converging`)로 남긴다. 일꾼이 바뀌어도 센다. 리드 자신의 판정은 세지 않는다. autopilot은 `AUTOPILOT_PENDING_REVIEW`로 멈추고 어떤 기준이 몇 라운드째인지 알린다. 리드는 지적과 diff를 읽고 다시 돌려보내거나(`adopt`) 자기 판정을 낸다. L01 run 10에서는 Sol이 비밀값 가림의 새 우회 경우를 찾을 때마다 AC2를 반려했다. 16라운드 연속 반려에 일꾼 여섯이 돌아가며 고쳤고, 결과는 19라운드, 179분, 리드 2.2M이었다.
+
 - README(한·영·일)의 "v0.3: External-First와 범용 감시 (옵트인)" 절을 풀어 넣었다. 범용 감시는 설정과 상관없이 늘 켜져 있고 External-First 배치표는 classic과 같아, 실제로 고르는 것은 적응형 리뷰(`lead-gated-adaptive`)뿐이다. 그 절은 "적응형 리뷰 (옵트인)"으로 남기고, External-First 배치·범용 감시·기본 추론 강도·사용량과 쿼터는 각각 배치와 팀·안전과 감사·벤더·모델 설정·측정으로 옮겼다. `universal-supervisor.md`·`routing.md`·`configuration.md`의 첫 문단도 같은 기준으로 고쳤다. 코드와 설정 값은 바꾸지 않았다.
 
 - 일꾼이 할 일을 마쳤는데 호스트 환경 때문에 일부 검사를 못 돌려 `blocked`로 보고한 결과를 승인할 수 있다. 조건은 세 가지다. 결정을 묻지 않았을 것, 통과하지 못한 테스트가 모두 `environment_error`를 적었을 것, 이 라운드에서 컨트롤러 수용 실행이 같은 트리에서 종료 증명과 함께 통과했을 것. 이 경우 autopilot은 위임 리뷰로 넘기고, 리뷰 pass와 리드 APPROVE를 받는다. 리드 없는 자동 승인은 전처럼 `complete`만 받는다. L01 run 9(MXC)에서 Terra는 1라운드에 구현을 끝냈지만, MXC가 막은 전체 `npm test` 때문에 `blocked`로 보고했다. 리드는 이를 `complete`로 바꾸려고 빈 라운드 2번과 복구 1번을 썼다.
