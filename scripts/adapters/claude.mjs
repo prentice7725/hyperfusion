@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import {denyRules} from '../bash-policy.mjs';
 import {schemaFor,prompt,bashRules,editDeny,secretReadDeny,probe as probeCli,ACCEPTANCE,RUN_TESTS} from './common.mjs';
 import {memberBinary,MEMBERS} from '../member-registry.mjs';
+import {LIMIT_TEXT} from '../provider-limit.mjs';
 
 // Claude Code CLI를 하위 프로세스로 띄워 일꾼으로 쓴다. 리드(Opus)와는 별도 프로세스·별도 세션이다.
 // 같은 CLI로 모델만 다른 일꾼(Sonnet, Haiku)을 만든다. 새 Claude 모델은 여기 한 줄과 설정의 model로 붙는다.
@@ -52,13 +53,23 @@ function member(name,{model:MODEL,label}) {
  function parse(stdout,request) {
   let e;
   try{e=JSON.parse(stdout);}catch{throw Error(`${label} emitted invalid JSON`);}
-  if(!e||e.type!=='result'||e.is_error===true||e.subtype!=='success')throw Error(`${label} returned an unsuccessful result envelope`);
+  if(!e||e.type!=='result'||e.is_error===true||e.subtype!=='success'){
+   // 오류 결과의 문구(사용량 한도 등)만 붙인다. 성공한 결과의 본문은 오류 문구에 싣지 않는다.
+   const why=e?.is_error===true&&typeof e.result==='string'?e.result.replace(/\s+/g,' ').trim().slice(0,300):'';
+   throw Error(`${label} returned an unsuccessful result envelope`+(why?': '+why:''));
+  }
   if(e.session_id!==request.cli.session_id)throw Error(`${label} session provenance mismatch`);
   if(e.permission_denials?.length)throw Error(`${label} reported permission denials; inspect before recovery`);
   return {session_id:e.session_id,result:e.structured_output,
    usage:{usage:e.usage??null,modelUsage:e.modelUsage??null,num_turns:e.num_turns??null,total_cost_usd:e.total_cost_usd??null}};
  }
- return {name,MODEL,defaultModel:MODEL,requiredFlags,binary,probe,newSession,dispatch,parse};
+ // 한도에 걸린 Claude는 is_error 결과 하나를 내고 0이 아닌 코드로 끝난다. 그 결과의 문구만 꺼낸다.
+ function diagnose(stdout) {
+  let e;try{e=JSON.parse(String(stdout??'').trim());}catch{return null;}
+  const text=e?.is_error===true&&typeof e.result==='string'?e.result.replace(/\s+/g,' ').trim():'';
+  return text&&LIMIT_TEXT.test(text)?`${label} reported: ${text.slice(0,300)}`:null;
+ }
+ return {name,MODEL,defaultModel:MODEL,requiredFlags,binary,probe,newSession,dispatch,parse,diagnose};
 }
 
 export const sonnet=member('sonnet',{model:MEMBERS.sonnet.model,label:'Sonnet'});

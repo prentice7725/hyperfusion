@@ -15,6 +15,7 @@ import {settledSlots} from './read-only-plan.mjs';
 import {workerEnv} from './worker-env.mjs';
 import {MEMBERS} from './member-registry.mjs';
 import {sandboxFailureFile} from './codex-sandbox.mjs';
+import {limitHit,limitFailureFile} from './provider-limit.mjs';
 import {verifyExecute,verifyConsult} from './dispatch-verify.mjs';
 import {assertBudget} from './budgets.mjs';
 import {printError} from './cli.mjs';
@@ -25,6 +26,10 @@ import {openMonitor} from './worker-monitor.mjs';
 import {attachObserverPane,herdrEnabled} from './herdr-observer.mjs';
 
 const STATE_CLI=fileURLToPath(new URL('./fusion-state.mjs',import.meta.url));
+// 한도에 걸린 실행을 남긴다. 컨트롤러는 이 기록이 있는 CLI의 일꾼·리뷰어를 이 작업 동안 고르지 않는다.
+const recordLimit=(dir,tag,executor,round,message)=>{
+ try{immutable(path.join(dir,limitFailureFile(tag)),{executor,cli:MEMBERS[executor]?.binary??null,round,source:'bridge',message:String(message).slice(0,600),at:new Date().toISOString()});}catch{/* 이미 기록됨 */}
+};
 
 const timeoutFor=(root,state,executor,override)=>{
  // 일꾼별 timeout_ms 설정이 있으면 그 값, 없으면 20분.
@@ -114,6 +119,9 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
  // 어댑터가 출력에서 원인을 알아보면(로그인 필요 등) 오류 문구에 조치를 덧붙인다. 실패 분류와 리드의 안내가 같은 문장을 본다.
  const fail=e=>{
   try{const hint=adapter(request.executor).diagnose?.(stdout,stderr);if(hint&&!e.message.includes(hint.slice(0,24)))e.message+=' — '+hint;}catch{}
+  // 사용량·요금 한도는 stderr와 CLI 오류 메시지(어댑터가 오류 문구에 싣는다)에서만 찾는다. 일꾼의 작업 출력은 보지 않는다.
+  const limit=limitHit(String(stderr??'').slice(-4000)+'\n'+e.message);
+  if(limit&&!e.message.startsWith('PROVIDER_LIMIT'))e.message=`PROVIDER_LIMIT: ${request.executor} hit a usage or rate limit ("${limit}"); workers on the same CLI are skipped for the rest of this task — `+e.message;
   e.quiescence=proof;throw e;
  };
  if(reason||exit.code!==0)fail(Error(reason||request.executor+' exited with code '+exit.code));
@@ -149,6 +157,7 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
   if(/CODEX_WINDOWS_SANDBOX/.test(e?.message??'')){
    try{immutable(path.join(dir,sandboxFailureFile(n)),{executor:request.executor,cli:MEMBERS[request.executor]?.binary??null,round:n,source:'bridge',message:String(e.message).slice(0,600),at:new Date().toISOString()});}catch{/* 이미 기록됨 */}
   }
+  if(/^PROVIDER_LIMIT/.test(e?.message??''))recordLimit(dir,String(n),request.executor,n,e.message);
   await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} failed`,{priority:'high'});
   throw e;
  }
@@ -197,6 +206,7 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuies
   return {member:m.member,executor:m.executor,ok:true,recommended_verdict:result.recommended_verdict,findings:result.findings.length,result_file:file,quiescence:parsed.quiescence};
  },{stopOn:error=>error.quiescence?.quiescent!==true});
  const members=runs.map((r,i)=>r.status==='fulfilled'?r.value:{member:open.members[i].member,executor:open.members[i].executor,ok:false,error:r.reason.message,quiescence:r.reason.quiescence??null});
+ for(const m of members)if(!m.ok&&/^PROVIDER_LIMIT/.test(m.error??''))recordLimit(dir,`consult-${id}-${m.member}`,m.executor,state.iteration,m.error);
  await notify(`HyperFusion ${state.task_id}`,`${open.mode} ${id} done: `+members.map(m=>`${m.executor} ${m.ok?m.recommended_verdict:'failed'}`).join(', '));
  const stopped=members.every(m=>m.quiescence?.quiescent===true);
  return {status:'CONSULT_READY',consult_id:id,mode:open.mode,members,

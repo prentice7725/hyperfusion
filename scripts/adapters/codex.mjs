@@ -1,5 +1,6 @@
 import {schemaFor,prompt,probe as probeCli,extractResult} from './common.mjs';
 import {memberBinary,MEMBERS} from '../member-registry.mjs';
+import {LIMIT_TEXT} from '../provider-limit.mjs';
 import {sandboxArgs,windowsSandboxSelfTest,windowsChildSpawnTest,SANDBOX_FAILURE,SANDBOX_HINT,WINDOWS_SANDBOX_ENV,WINDOWS_TEMP_ORDER} from '../codex-sandbox.mjs';
 
 // OpenAI Codex CLI(codex exec) 하나로 두 팀원을 만든다. 모델과 권한만 다르다.
@@ -85,8 +86,15 @@ function preflightSandbox(cli,root) {
 // 실패한 실행의 출력에서 원인을 알아본다(브리지가 오류 문구에 덧붙인다).
 export function diagnose(stdout,stderr) {
  const text=String(stderr??'').slice(-8000)+'\n'+String(stdout??'').slice(-8000);
- return SANDBOX_FAILURE.test(text)?`CODEX_WINDOWS_SANDBOX: Codex could not start a process inside its Windows sandbox (access denied). ${SANDBOX_HINT}`:null;
+ if(SANDBOX_FAILURE.test(text))return `CODEX_WINDOWS_SANDBOX: Codex could not start a process inside its Windows sandbox (access denied). ${SANDBOX_HINT}`;
+ // 한도에 걸린 Codex는 오류 이벤트를 내고 0이 아닌 코드로 끝난다. 오류 이벤트의 문구만 꺼낸다(일꾼의 메시지는 보지 않는다).
+ const limit=errorEvents(stdout).find(m=>LIMIT_TEXT.test(m));
+ return limit?`Codex reported: ${limit.slice(0,300)}`:null;
 }
+const errorEvents=stdout=>String(stdout??'').split(/\r?\n/).slice(-50).flatMap(line=>{
+ let e;try{e=JSON.parse(line);}catch{return [];}
+ return ['turn.failed','error'].includes(e?.type)?[String(e.message??e.error?.message??'').replace(/\s+/g,' ').trim()]:[];
+}).filter(Boolean);
 
 const validSession=id=>typeof id==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(id);
 export function parseEvents(stdout,request) {
@@ -101,7 +109,11 @@ export function parseEvents(stdout,request) {
    const hit=out.split(/\r?\n/).find(l=>SANDBOX_FAILURE.test(l));
    if(hit&&!sandboxFailure)sandboxFailure=hit.trim().slice(0,200);
   }
-  if(['turn.failed','error'].includes(e.type))throw Error('Codex returned an unsuccessful turn');
+  // Codex의 오류 메시지를 붙인다(사용량 한도 등). 브리지가 이 문구로 실패를 분류한다.
+  if(['turn.failed','error'].includes(e.type)){
+   const why=String(e.message??e.error?.message??'').replace(/\s+/g,' ').trim().slice(0,300);
+   throw Error('Codex returned an unsuccessful turn'+(why?': '+why:''));
+  }
   if(e.type==='thread.started'){
    if(!validSession(e.thread_id)||session)throw Error('Codex thread provenance mismatch');
    session=e.thread_id;

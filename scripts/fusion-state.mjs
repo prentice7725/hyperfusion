@@ -47,6 +47,7 @@ import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,sameP
 import {apexMember,specialistMember,reservedMembers,delegableOwners,memberFamilyOf} from './team-roles.mjs';
 import {gradeOf,MEMBERS} from './member-registry.mjs';
 import {SANDBOX_REPORT,sandboxFailureFile,WORKER_TEMP_DIR} from './codex-sandbox.mjs';
+import {LIMIT_FAILURE_FILE} from './provider-limit.mjs';
 import {independent} from './model-registry.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
@@ -100,19 +101,22 @@ function openControl(root) {
 
   // 배치 판단은 실행 파일 존재만 확인한다. 도움말 프로브의 일시적 실패로 예산을 버리지 않는다.
   const installMemo=new Map();
-  // 이 작업에서 이미 샌드박스에 막힌 CLI. 같은 CLI의 일꾼은 이 작업 동안 쓰지 않는다.
-  c.sandboxBlocked=name=>{
+  // 이 작업에서 이미 샌드박스에 막혔거나 사용량·요금 한도에 걸린 CLI. 같은 CLI의 일꾼·리뷰어는 이 작업 동안 쓰지 않는다.
+  c.cliBlocked=name=>{
     const cli=MEMBERS[name]?.binary;
     if(!cli||!c.s?.task_id)return null;
-    let files=[];try{files=fs.readdirSync(c.taskdir()).filter(f=>/^sandbox-failure-\d+\.json$/.test(f));}catch{return null;}
+    let files=[];try{files=fs.readdirSync(c.taskdir()).filter(f=>/^sandbox-failure-\d+\.json$/.test(f)||LIMIT_FAILURE_FILE.test(f)).sort();}catch{return null;}
     for(const f of files){
       let r;try{r=read(path.join(c.taskdir(),f));}catch{continue;}
-      if(r?.cli===cli)return `ADAPTER_UNAVAILABLE: CODEX_WINDOWS_SANDBOX: ${r.executor} round ${r.round} was blocked by the Codex Windows sandbox (${f}), so ${cli} workers are skipped for the rest of this task`;
+      if(r?.cli!==cli)continue;
+      return f.startsWith('limit-')
+        ?`ADAPTER_UNAVAILABLE: PROVIDER_LIMIT: ${r.executor} hit a usage or rate limit in round ${r.round} (${f}), so ${cli} workers and reviewers are skipped for the rest of this task`
+        :`ADAPTER_UNAVAILABLE: CODEX_WINDOWS_SANDBOX: ${r.executor} round ${r.round} was blocked by the Codex Windows sandbox (${f}), so ${cli} workers are skipped for the rest of this task`;
     }
     return null;
   };
   c.installError=name=>{
-    const blocked=c.sandboxBlocked(name);
+    const blocked=c.cliBlocked(name);
     if(blocked)return blocked;
     if(!installMemo.has(name)){
       try{
@@ -544,6 +548,9 @@ function consult(c,input) {
   for(const e of picks){
     if(members.length===size)break;
     if(!vendorAllowed(s.configuration,e)){if(explicit||adaptive)assertVendor(s.configuration,e);continue;}
+    // 이 작업에서 한도에 걸린 CLI의 리뷰어는 건너뛴다(기본 순서의 다음 리뷰어로). 리드가 직접 고른 경우는 거절한다.
+    const limited=c.cliBlocked(e);
+    if(limited&&/PROVIDER_LIMIT/.test(limited)){if(explicit||adaptive)throw Error(limited);continue;}
     let cli;
     try{cli=adapter(e).probe(s.configuration.executors[e]??{});adapter(e).preflight?.({root:c.root});}
     catch(err){if(explicit||adaptive)throw err;continue;}
@@ -785,7 +792,7 @@ function autoRedoEvaluation(c,records,now) {
   const raw=c.optional(`raw-result-${n}.json`);
   need(raw?.status==='complete'&&raw.needs_lead_decision!==true,'worker reported complete','the worker did not report complete or asked for a lead decision');
   need(c.budget(s.owner),'worker round budget left',`${s.owner} has no round budget left`);
-  need(!c.sandboxBlocked(s.owner),'worker can run here',`${s.owner} is blocked by the Codex Windows sandbox in this task`);
+  need(!c.cliBlocked(s.owner),'worker can run here',`${s.owner} is blocked in this task (Codex Windows sandbox or a usage limit)`);
   need(!budgetStatus(c.root,s).reason,'within budget','the task budget is exhausted');
   return {eligible:unmet.length===0,unmet,passed};
 }
@@ -872,10 +879,12 @@ function openLeadGate(c,{recommendation,pass_forbidden,reviewers,panel_status,ve
     recommendation='REASSIGN_OTHER';
     note+=`; ${s.owner} is a B-tier worker, so the rejected round is promoted to an A-tier worker (${promotion(c,s).join(', ')})`;
   }
-  // 샌드박스에 막힌 CLI의 일꾼에게 REDO를 권하지 않는다. 그대로 재시도하면 똑같이 막힌다.
-  if(recommendation==='REDO'&&c.sandboxBlocked(s.owner)){
+  // 샌드박스에 막혔거나 한도에 걸린 CLI의 일꾼에게 REDO를 권하지 않는다. 그대로 재시도하면 똑같이 막힌다.
+  if(recommendation==='REDO'&&c.cliBlocked(s.owner)){
     recommendation=exhaustedOptions(c,s)[0].split(' ')[0];
-    note+=`; ${s.owner} was blocked by the Codex Windows sandbox, so REDO is not offered (${recommendation} instead)`;
+    note+=/PROVIDER_LIMIT/.test(c.cliBlocked(s.owner))
+      ?`; ${s.owner} hit a usage or rate limit, so REDO is not offered (${recommendation} instead)`
+      :`; ${s.owner} was blocked by the Codex Windows sandbox, so REDO is not offered (${recommendation} instead)`;
   }
   // 상한에 닿은 일꾼에게 REDO를 권하지 않는다. lead-decision도 어차피 거절하므로 패킷 단계에서 처음부터 교체를 권한다.
   if(recommendation==='REDO'&&!c.budget(s.owner)){
@@ -1756,7 +1765,7 @@ function leadDecision(c,input) {
   } else if(normalized==='REDO'){
     // 상한에 닿은 일꾼은 다시 시킬 수 없다. 받아 두면 REDO 단계에서 다음 begin이 'round cap reached'로 막혀 갇히므로 여기서 거절하고 교체를 요구한다.
     if(!c.budget(s.owner))throw Error(`LEAD_DECISION: ${s.owner} has no round budget left (round cap reached), so REDO would be refused at the next begin; choose ${exhaustedOptions(c,s).join(', ')}`);
-    if(c.sandboxBlocked(s.owner))throw Error(`LEAD_DECISION: ${c.sandboxBlocked(s.owner)}; REDO would fail the same way, choose ${exhaustedOptions(c,s).join(', ')}`);
+    if(c.cliBlocked(s.owner))throw Error(`LEAD_DECISION: ${c.cliBlocked(s.owner)}; REDO would fail the same way, choose ${exhaustedOptions(c,s).join(', ')}`);
     // 같은 실수를 세 번 시키지 않는다. 그래도 같은 일꾼에게 맡기려면 리드가 이유를 남긴다.
     const repeated=repeatedCriteria(s,panelBlocking(records));
     if(repeated.length&&swapTargets(c,s).length){
