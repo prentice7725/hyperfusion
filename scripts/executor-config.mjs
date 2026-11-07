@@ -16,6 +16,8 @@ export const EXECUTORS=Object.keys(MEMBERS).filter(n=>MEMBERS[n].implement);
 export const REVIEWERS=['sol',...EXECUTORS];
 // 위임 리뷰는 라운드당 이 횟수까지(리뷰어가 실패하면 한 번 더). 상담 예산과 별도다.
 export const REVIEW_RUNS_PER_ROUND=2;
+// 위임 리뷰가 앞선 라운드에서 같은 수용 기준을 이 횟수만큼 반려했으면, 그 기준의 다음 반려는 자동 적용하지 않고 리드에게 넘긴다.
+export const REVIEW_CONVERGENCE_LIMIT=2;
 export const CAP={...Object.fromEntries(EXECUTORS.map(n=>[n,MEMBERS[n].rounds])),lead:1};
 export const APEX_ROUND_CAP=3;
 // 상담(advisor 1명, committee 2명) 위원 실행 총량. 구현 예산과 별도다.
