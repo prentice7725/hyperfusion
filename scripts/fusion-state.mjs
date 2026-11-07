@@ -33,7 +33,7 @@ import {collectRunUsage} from './usage-accounting.mjs';
 import {quotaReport} from './quota-policy.mjs';
 import {validateLimits,assertBudget,budgetStatus} from './budgets.mjs';
 import {ensureControl,isLegacy,migrate,controlRoot,controlPath,acquireLock} from './control-dir.mjs';
-import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex,operatorIgnoredAllow} from './acceptance.mjs';
+import {ignoredManifest,ignoredChanges,runCommands,failureFeedback,globRegex,operatorIgnoredAllow,passingAcceptanceRecord} from './acceptance.mjs';
 import {readRoundMonitors,formatWatch} from './worker-monitor.mjs';
 import {readStatusLine} from './status-line.mjs';
 import {takeReconciliation,reconciliationPlan,publicPlan,operationName,revalidateProcesses,assertReconciliationGrant} from './reconciliation.mjs';
@@ -1567,7 +1567,7 @@ function verify(c,input) {
     const prev=s.acceptance?.round===s.iteration?s.acceptance:null;
     const after=prev?.ignored_after?c.optional(prev.ignored_after):null;
     const priorEvidence=prev?.file?c.optional(prev.file):null;
-    const proven=prev?.quiescent===true&&priorEvidence?.results?.every(r=>r.quiescence?.quiescent===true);
+    const proven=prev?.quiescent===true&&passingAcceptanceRecord(priorEvidence,brief.acceptance_commands,s.iteration,now.digest);
     const ignoredNow=after&&proven&&prev.status==='pass'&&prev.tree_digest===now.digest?ignoredManifest(c.root,brief.acceptance_artifacts):null;
     if(ignoredNow&&!ignoredChanges(after,ignoredNow).length)evidence={status:'pass',reused:prev.file};
     else {

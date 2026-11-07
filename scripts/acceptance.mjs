@@ -78,6 +78,17 @@ export function ignoredChanges(a,b) {
  return [...new Set([...Object.keys(a.files),...Object.keys(b.files)])].filter(k=>own(a.files,k)!==own(b.files,k)&&!allowed.some(r=>r.test(k))).sort();
 }
 
+// VERIFY may reuse only the controller's complete record for this round and tree.
+export function passingAcceptanceRecord(record,commands,round,digest) {
+ if(record?.status!=='pass'||record.quiescent!==true||record.round!==round||record.tree_digest!==digest)return false;
+ if(!commands.length||!Array.isArray(record.commands)||!Array.isArray(record.results))return false;
+ if(record.commands.length!==commands.length||record.results.length!==commands.length)return false;
+ return commands.every((command,i)=>{
+  const result=record.results[i];
+  return record.commands[i]===command&&result?.command===command&&result.status==='pass'&&result.quiescence?.quiescent===true;
+ });
+}
+
 // 명령을 차례로 실행한다. 일꾼과 같은 걸러진 환경변수를 쓴다(리드의 비밀값을 테스트 코드에 넘기지 않는다).
 // 바이트코드 캐시를 쓰지 않게 해서 실행 산출물이 무시된 파일 비교를 흔들지 않게 한다.
 export function runCommands(root,commands,{timeout_ms=600000,deadline_ms=null}={}) {
