@@ -116,6 +116,10 @@ if(mode==='codex-crash')process.exit(1);
 if(args.includes('resume')&&(args[1]!=='resume'||['--sandbox','--cd','--output-schema','--model','--json'].some(flag=>args.indexOf(flag)<2))){console.error('resume options must be on the probed subcommand');process.exit(2);}
 const session=args.includes('resume')?args.at(-2):'0199a213-81c0-7800-8aa1-bbab2a035a53';
 console.log(JSON.stringify({type:'thread.started',thread_id:session}));
+// codex-limit: 사용량 한도에 걸린 Codex. 오류 이벤트를 내고 0이 아닌 코드로 끝난다.
+// codex-limit-quoted: 성공한 턴이 일꾼 메시지에서 한도 문구를 쓴다(한도로 보면 안 된다).
+if(mode==='codex-limit'){console.log(JSON.stringify({type:'error',message:"You've hit your usage limit. Try again in 4 hours."}));console.log(JSON.stringify({type:'turn.failed',error:{message:"You've hit your usage limit."}}));process.exit(1);}
+if(mode==='codex-limit-quoted')console.log(JSON.stringify({type:'item.completed',item:{id:'n1',type:'agent_message',text:'Note: the API returns 429 Too Many Requests when the usage limit is reached.'}}));
 // codex-sandbox-denied: 샌드박스가 셸을 못 띄운 명령 실행 흔적을 남기고 턴은 정상 종료한다(실제 Codex의 Windows 동작).
 if(mode==='codex-sandbox-denied')console.log(JSON.stringify({type:'item.completed',item:{id:'c1',type:'command_execution',aggregated_output:'windows sandbox failed: CreateProcessAsUserW failed: 5 (denied) | cmd=node --test'}}));
 console.log(JSON.stringify({type:'item.completed',item:{id:'final',type:'agent_message',text:JSON.stringify(finish(request,session))}}));
@@ -128,6 +132,8 @@ fs.writeFileSync(HERE+'/fake-claude-args.json',JSON.stringify(args));
 const request=JSON.parse(fs.readFileSync(0,'utf8'));
 const resume=args.includes('--resume'),id=args[args.indexOf(resume?'--resume':'--session-id')+1];
 if(resume&&(!fs.existsSync(HERE+'/fake-claude-session')||fs.readFileSync(HERE+'/fake-claude-session','utf8')!==id)){console.log('{}');process.exit(1);}
+// claude-limit: 사용량 한도에 걸린 Claude는 is_error 결과를 내고 1로 끝난다.
+if(mode==='claude-limit'){console.log(JSON.stringify({type:'result',subtype:'success',is_error:true,session_id:id,result:'Claude AI usage limit reached|1762500000'}));process.exit(1);}
 fs.writeFileSync(HERE+'/fake-claude-session',id);
 if(mode==='denied'){console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,session_id:id,structured_output:finish(request,id),permission_denials:[{tool_name:'Bash'}]}));process.exit(0);}
 console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,session_id:id,structured_output:finish(request,id),usage:{input_tokens:30,output_tokens:9},total_cost_usd:0.01}));
@@ -151,9 +157,13 @@ export function fixture(t,{initialize=true,executor='grok'}={}) {
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'hf-v03-')),root=path.join(temp,'repo');fs.mkdirSync(root);
  const old={grok:process.env.HF_GROK_BIN,agy:process.env.HF_AGY_BIN,claude:process.env.HF_CLAUDE_BIN,codex:process.env.HF_CODEX_BIN};
  const oldState=process.env.HF_STATE_DIR;
+ // 운영자가 호스트에 둔 Codex 샌드박스 설정(예: mxc)은 가짜 CLI의 사전 점검 호출 수를 바꾼다. 테스트는 설정 없는 호스트처럼 돈다.
+ const oldSandbox=process.env.HF_CODEX_WINDOWS_SANDBOX;
+ delete process.env.HF_CODEX_WINDOWS_SANDBOX;
  t.after(()=>{
   for(const [k,v] of [['HF_GROK_BIN',old.grok],['HF_AGY_BIN',old.agy],['HF_CLAUDE_BIN',old.claude],['HF_CODEX_BIN',old.codex]]){if(v===undefined)delete process.env[k];else process.env[k]=v;}
   if(oldState===undefined)delete process.env.HF_STATE_DIR;else process.env.HF_STATE_DIR=oldState;
+  if(oldSandbox!==undefined)process.env.HF_CODEX_WINDOWS_SANDBOX=oldSandbox;
   fs.rmSync(temp,{recursive:true,force:true});
  });
  // Windows는 shebang을 실행하지 못하므로 .mjs 진입점으로 만들어 node로 실행되게 한다.
