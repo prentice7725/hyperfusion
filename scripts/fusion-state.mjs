@@ -975,7 +975,8 @@ function applyDelegatedReview(c,open,member,result) {
   if(stuck){
     s.pending_review={...delegated,not_converging:stuck};
     return {status:'pending',reason:'not_converging',criteria:stuck.criteria,history:stuck.history,
-      next_action:`delegated reviews already rejected ${stuck.criteria.join(', ')} in ${stuck.rounds} earlier rounds and are not converging: read the findings and the diff yourself, then review {"adopt":true} to send it back again, or give your own verdict (record findings beyond the brief as follow-ups)`};
+      decision_rule:'Judge each finding against the success criteria as written. If every item the brief names is met and the findings are further cases it does not name, pass and list them in follow_ups. Send it back only for a named item that is still unmet or a regression, and list those in unmet_stated_items.',
+      next_action:`delegated reviews already rejected ${stuck.criteria.join(', ')} in ${stuck.rounds} earlier rounds and are not converging: read the findings and the diff yourself. Pass with follow_ups when only cases the brief does not name remain; send it back (review {"adopt":true} or your own verdict) only with unmet_stated_items naming the brief's unmet items`};
   }
   if(!s.configuration.review.auto_apply){
     s.pending_review=delegated;
@@ -1489,9 +1490,15 @@ function review(c,input) {
     throw Error('ADAPTIVE_REVIEW: the lead cannot replace a missing independent review; record a lead-decision');
   }
   // adopt: 보류된 위임 판정을 그대로 채택. 아니면 리드 자신의 판정(위임 판정이 있었다면 덮어쓴 것으로 기록).
+  // 수렴하지 않아 넘어온 반려를 다시 돌려보내려면(채택이든 리드 자신의 반려든) brief에 적힌 항목 중 아직 안 된 것을 이름으로 적어야 한다.
+  // brief가 이름 붙이지 않은 새 경우만 남았으면 pass하고 follow_ups로 남긴다(L01 run 11: 리드가 새 AC1 신호 유형마다 일곱 번 다시 돌려보냈다).
+  const stuck=c.s.pending_review?.not_converging;
+  if(stuck&&(input.adopt===true||input.verdict!=='pass')&&!(Array.isArray(input.unmet_stated_items)&&input.unmet_stated_items.length)){
+    throw Error(`NOT_CONVERGING: ${stuck.criteria.join(', ')} was already rejected in ${stuck.rounds} earlier rounds. To send it back again, list in unmet_stated_items the items the brief's success criteria name that are still unmet or regressed. If only cases the brief does not name remain, pass and list them in follow_ups`);
+  }
   if(input.adopt===true){
     if(!c.s.pending_review)throw Error('No pending delegated review to adopt');
-    return applyReview(c,{...c.s.pending_review,adopted_by_lead:true});
+    return applyReview(c,{...c.s.pending_review,adopted_by_lead:true,...(stuck?{unmet_stated_items:input.unmet_stated_items}:{})});
   }
   const overridden=c.s.pending_review
     ?{overrode:c.s.pending_review.reviewed_by,overrode_verdict:c.s.pending_review.verdict}

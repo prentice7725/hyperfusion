@@ -92,6 +92,9 @@ export function review(v) {
  requireThat(v.verdict!=='pass'||v.blocking_criteria.length===0,'Cannot pass blocking criteria');
  // 반려에는 반드시 구체적인 반려 사유가 있어야 한다. "다시 해" 같은 빈 반려는 받지 않는다.
  requireThat(v.verdict==='pass'||v.blocking_criteria.length>0,'Rejection requires concrete blocking criteria');
+ // follow_ups: 이번 작업 범위 밖이라 통과시키되 따로 처리할 지적. unmet_stated_items: brief에 적힌 항목 중 아직 안 된 것.
+ for(const k of ['follow_ups','unmet_stated_items'])
+  requireThat(v[k]===undefined||strs(v[k])&&v[k].length<=20&&v[k].every(x=>x.length<=500),`Invalid ${k}: up to 20 non-empty strings of at most 500 characters`);
  return v;
 }
 // 다음 라운드 명령서. 이전 라운드 반려 사유를 일꾼에게 그대로 들이민다.
