@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 일꾼이 미완료로 보고한 라운드가 REVIEW에 있으면 `next`가 diff 리뷰 대신 반려를 안내한다. 미완료 결과는 어떤 리뷰로도 pass할 수 없기 때문이다. 안내에는 일꾼의 `unresolved` 항목을 `blocking_criteria`로 채운 redo 입력이 들어 있다. 일꾼이 결정을 물었으면 `decision`이다. 완료 결과는 전처럼 diff 리뷰를 안내한다. 계기는 L02 HF run 2다. Terra가 `failed`로 보고했는데 `next`가 "review the diff yourself"라고 안내했다. 리드는 31KB diff를 읽고 pass했다가 `Incomplete result cannot pass`로 거절됐다. 이 한 번의 읽기가 그 실행에서 리드 비용이 가장 큰 도구 결과(약 9K 토큰)였다.
+
 - 일꾼 라운드가 결과 없이 끝나면(시간 초과·비정상 종료) 복구할 때 결과 실패로 센다. 같은 일꾼이 연속 두 번 그러면 복구 뒤 단계는 REDO가 아니라 `ALTERNATIVE_REQUIRED`이고, `begin`이 다른 일꾼을 고른다. 결과 검증 실패와 같은 횟수(`result_failures`)를 쓰고, 일꾼이 바뀌거나 결과가 통과하면 0으로 돌아간다. 다른 일꾼이 없으면 전처럼 같은 일꾼 REDO다. 계기는 L02 HF 시험이다. Grok이 연속 세 번 아무것도 바꾸지 못한 채 시간 초과됐지만, 복구할 때마다 REDO로 돌아가 일꾼을 바꿀 수 없었다. 리드는 빠져나갈 길을 찾느라 컨트롤러 소스를 여러 번 읽었다. 결과는 7라운드, 92분, 리드 819K로 solo(642K)보다 28% 많았다.
 
 - 큰 벤치마크 과제의 품질 채점을 더한다. `benchmark.mjs score CASE REPO`는 시험 트리의 사본에 숨긴 시험을 넣어 돌리고, 편집 허용 경로 밖의 변경을 범위 위반으로 센다. `--regressions`를 주면 바뀐 파일을 import로 닿는 기존 시험도 돌린다. 끝 트리에서 실패한 파일만 시작 트리에서 다시 돌리고 시험 이름 단위로 비교한다. 시작 트리에서 통과하던 시험이 끝에서 실패하면, 이미 다른 이유로 실패하던 파일 안이라도 새어 나간 회귀로 센다. 임시 폴더를 지우지 못해도 결과는 낸다. `--record`는 `wrong_closes`, `scope_violations`, `escaped_regressions`를 지표 기록에 써서 `compare-repeated`가 읽게 한다. `check-hidden CASE`는 숨긴 시험이 정답 커밋에서 통과하고 그 부모에서 실패하는지 확인한다. 숨긴 시험은 저장소 밖(기본 `~/.hyperfusion/benchmark-hidden/`)에 둔다. 설치된 스킬이 이 저장소의 복제본이라 안에 두면 리드나 일꾼이 읽을 수 있다.
