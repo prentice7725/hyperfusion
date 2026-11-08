@@ -7,6 +7,7 @@
 - 리드가 `decide`로 남긴 결정(`decision-N.json`)도 다음 위임 리뷰어의 `context.contract_corrections`에 넣는다(`source:"lead decide"`). 지금까지는 `contract_change:true`인 `lead-decision`만 넘겼다. 리뷰어 프롬프트는 이미 고쳐진 계약을 기준으로 판정하라고 안내한다. 계기는 L03 HF 시험이다. 리드는 보호된 시험이 고정한 두 계약 사항을 `decide`로 정리했지만, Sol은 그 결정을 받지 못해 같은 두 사항을 세 라운드 연속 다시 올렸다. 라운드마다 `DECISION_REQUIRED`에서 멈췄고, 리드는 매번 같은 결정을 다시 적었다.
 
 - 일꾼 구현 라운드의 기본 시간 한도를 20분에서 40분으로 늘린다. 리뷰·상담은 20분 그대로다. `executors.<이름>.timeout_ms`를 주면 전처럼 그 값이 이긴다. agy의 `--print-timeout`도 같은 기본값을 따른다. 계기는 L03 HF 시험이다. Grok 2라운드는 20분 동안 추론 15번과 도구 71번을 썼다. 그 안에는 테스트 명령 300초와 출력 대기 180초가 있었고, 결국 끝내지 못하고 시간 초과됐다.
+
 - 결과 없이 끝난 라운드를 복구하면 그 일꾼의 세션을 버리고 다음 라운드를 새 세션으로 시작한다. 리드의 수동 `recover`도 같다. 이전에는 `auto-recover`가 세션 기록이 없는 경우에만 버렸다. Grok 자체 로그(`~/.grok/logs/unified.jsonl`)를 보면 L02·L03 HF 시험의 "Grok 멈춤"은 모두 같은 원인이었다. 시간 초과로 죽인 세션을 다음 라운드가 이어받았고, 그 4번 모두 `session_create`에서 멈춰 출력 없이 20분을 채웠다. 새 세션으로 시작한 Grok 라운드 4번은 모두 정상적으로 추론하고 도구를 썼다. 첫 시간 초과도 멈춘 게 아니었다. 테스트 명령 300초, 출력 대기 180초를 포함해 20분 한도 안에 끝내지 못한 것이다.
 
 - 일꾼이 미완료로 보고한 라운드가 REVIEW에 있으면 `next`가 diff 리뷰 대신 반려를 안내한다. 미완료 결과는 어떤 리뷰로도 pass할 수 없기 때문이다. 안내에는 일꾼의 `unresolved` 항목을 `blocking_criteria`로 채운 redo 입력이 들어 있다. 일꾼이 결정을 물었으면 `decision`이다. 완료 결과는 전처럼 diff 리뷰를 안내한다. 계기는 L02 HF run 2다. Terra가 `failed`로 보고했는데 `next`가 "review the diff yourself"라고 안내했다. 리드는 31KB diff를 읽고 pass했다가 `Incomplete result cannot pass`로 거절됐다. 이 한 번의 읽기가 그 실행에서 리드 비용이 가장 큰 도구 결과(약 9K 토큰)였다.
