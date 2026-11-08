@@ -57,7 +57,7 @@ function sourceRepo(commit,given) {
  throw Error('BENCHMARK: no source repository contains '+commit+'; pass --source with a full HyperFusion clone (CI checkouts are shallow)');
 }
 // git ls-tree + cat-file --batch로 한 트리의 일반 파일을 바이트 그대로 읽는다. 심볼릭 링크·서브모듈은 건너뛴다.
-function treeFiles(repo,rev,only=null) {
+export function treeFiles(repo,rev,only=null) {
  const listing=execFileSync('git',['-C',repo,'ls-tree','-r','-z','--full-tree',rev,...(only?['--',...only]:[])],{maxBuffer:64*1024*1024});
  const entries=listing.toString('utf8').split('\0').filter(Boolean).map(line=>{const [meta,file]=line.split('\t');const [mode,type,object]=meta.split(' ');return {mode,type,object,file};})
   .filter(e=>e.type==='blob'&&(e.mode==='100644'||e.mode==='100755'));

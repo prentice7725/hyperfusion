@@ -140,6 +140,45 @@ replaced. Calibration runs are not comparison trials; prepare fresh fixtures for
 the paired runs. `compare --suite large` and `compare-repeated --suite large`
 expect only large-suite records and never mix them with the core suite.
 
+### Quality scoring with hidden tests
+
+The protected acceptance file is the commit's own test, and both arms see it. A
+pass therefore shows that the trial meets what that file checks, not that it
+meets every item the brief names. Hidden tests close that gap. They live outside
+the repository, by default in `~/.hyperfusion/benchmark-hidden/<CASE>/*.test.mjs`
+(override with `--hidden` or `HF_BENCHMARK_HIDDEN`). The installed skill is a Git
+clone of this repository, so a lead or worker could read tests stored here.
+
+Write hidden tests only for items the brief's criteria name and the acceptance
+file does not exercise. Use only names the acceptance file already fixes, and
+assert behaviour the brief states, not choices the brief leaves open (which
+artifact a signal cites, how many omitted pointers fit a tight budget). A hidden
+test runs at `tests/hidden/` in a copy of the trial tree, so it imports
+`../../scripts/...`.
+
+```sh
+node scripts/benchmark.mjs check-hidden HF-L01 --source /path/to/hyperfusion-clone
+node scripts/benchmark.mjs score HF-L01 /path/to/trial-repo [--regressions] [--record]
+```
+
+`check-hidden` builds the reference commit and its parent tree and runs the
+hidden tests on both. They are valid only when every test passes on the
+reference and the parent fails. `score` copies the trial's final tree (tracked
+plus untracked, minus ignored files and `.hf-tmp/`) and runs the hidden tests
+there. It reports scope violations: changed files outside the case's editable
+paths. With `--regressions` it also runs the existing test files that reach a
+changed file through static imports. A file that fails at the end is rerun on
+the start tree. A test that fails at the end and passed there by the same name
+is an escaped regression, even inside a file that already failed for another
+reason. A file that crashes at the end without naming a test counts when it
+passed on the start tree.
+Test files run one at a time on Windows, as in `npm test`. Affected files often
+cover most of the suite, so this can take as long as a full serial run.
+`--record` writes `wrong_closes` (a CLOSE whose hidden tests or regressions
+fail), `scope_violations` and, when checked, `escaped_regressions` into the
+trial's metric record for `compare-repeated`. Scoring never writes into the
+trial tree.
+
 ## Usage and price assumptions
 
 Raw `lead_tokens` remains available. `components`, `by_model`, `by_role` and
