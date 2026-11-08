@@ -23,6 +23,7 @@ import {maskTransport} from './redaction.mjs';
 import {watchProcessTree} from './process-proof.mjs';
 import {recordCompletion,controllerDigest} from './reconciliation.mjs';
 import {openMonitor} from './worker-monitor.mjs';
+import {defaultTimeout} from './round-timeout.mjs';
 import {attachObserverPane,herdrEnabled} from './herdr-observer.mjs';
 
 const STATE_CLI=fileURLToPath(new URL('./fusion-state.mjs',import.meta.url));
@@ -31,9 +32,9 @@ const recordLimit=(dir,tag,executor,round,message)=>{
  try{immutable(path.join(dir,limitFailureFile(tag)),{executor,cli:MEMBERS[executor]?.binary??null,round,source:'bridge',message:String(message).slice(0,600),at:new Date().toISOString()});}catch{/* 이미 기록됨 */}
 };
 
-const timeoutFor=(root,state,executor,override)=>{
- // 일꾼별 timeout_ms 설정이 있으면 그 값, 없으면 20분.
- const t=override??state.configuration?.executors?.[executor]?.timeout_ms??1200000;
+const timeoutFor=(root,state,executor,override,role='implement')=>{
+ // 일꾼별 timeout_ms 설정이 있으면 그 값, 없으면 구현 40분·리뷰와 상담 20분(round-timeout.mjs).
+ const t=override??state.configuration?.executors?.[executor]?.timeout_ms??defaultTimeout(role);
  if(!Number.isSafeInteger(t)||t<1)throw Error('Invalid timeout');
  const budget=assertBudget(root,state);
  return budget.remaining_wall_ms===null?t:Math.min(t,budget.remaining_wall_ms);
@@ -194,7 +195,7 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuies
   if(snapshot(root).digest!==open.digest)throw Error('READ_ONLY_TREE_CHANGED');
   const sent=read(path.join(dir,`consult-${id}-${m.member}.json`));
   const request={...sent,...verifyConsult(root,state,dir,sent,{id,member:m.member,executor:m.executor})};
-  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs),maxBytes,proveQuiescence:proofRequired,signal,marker:{HF_WORKER_CONSULT:String(id)}});
+  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs,'consult'),maxBytes,proveQuiescence:proofRequired,signal,marker:{HF_WORKER_CONSULT:String(id)}});
   let result;try{result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);}catch(error){error.quiescence=parsed.quiescence;throw error;}
   const file=path.join(dir,`consult-result-${id}-${m.member}.json`);
   immutable(file,result);

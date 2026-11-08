@@ -155,7 +155,7 @@ autopilot은 이때 `AUTOPILOT_PENDING_REVIEW`로 멈추고, 어떤 기준이 �
 - **리뷰는 읽기 전용이다.** 상담과 같은 장치로 돌고, 전후 스냅샷이 다르면 판정을 버리고 RECOVERY_REQUIRED로 간다.
 - **리뷰어에게 결론을 주지 않는다.** 위임 리뷰의 `last_result`는 상태, 바꾼 파일, 일꾼이 인정한 미해결 항목만 담고 요약·테스트 보고·위험 평가는 `claims_withheld`로 키 이름만 남긴다. `recent_reviews`는 이전 반려 기준만 담는다. 테스트는 컨트롤러가 직접 돌린 `controller_acceptance`로 판단한다.
 - **리뷰어는 수용 테스트 본문도 본다.** `verification.protect`로 보호된 수용 테스트는 리드가 일꾼보다 먼저 쓰고 보호돼 있어 diff에 나오지 않는다. 위임 리뷰(`review` 모드)는 `context.acceptance_tests`로 그 파일들의 본문(합계 12,000자 상한, 잘린 파일은 직접 읽으라고 알림)·해시·수용 명령을 받고, 테스트가 objective와 모든 AC를 충실히 검사하는지도 판정한다. AC를 검사하지 않는 테스트, 동어반복 단언, 잘못된 이유로 통과하는 테스트는 테스트 파일의 줄을 가리키는 지적이며, 일꾼이 고칠 수 없으므로 `decision`으로 보고한다. AC와 테스트를 같은 모델(리드)이 썼을 때 공유하는 오해를 다른 계열이 걸러 내려는 것이다. 상담(advisor, committee)은 원인 분석에 필요하므로 전체 보고를 받는다.
-- **리드 전용 판정:** 리뷰어는 `takeover`를 낼 수 없다. `decision`을 내면 DECISION_REQUIRED가 되어 설계 판단은 리드가 한다.
+- **리드 전용 판정:** 리뷰어는 `takeover`를 낼 수 없다. `decision`을 내면 DECISION_REQUIRED가 되어 설계 판단은 리드가 한다. 리드가 `decide`로 남긴 결정(`decision-N.json`)은 `contract_change:true`인 `lead-decision`처럼 다음 위임 리뷰어의 `context.contract_corrections`에 들어간다(`source:"lead decide"`). 리뷰어는 결정된 계약을 기준으로 판정하고, 이미 결정된 사항만 다시 들어 반려하지 않는다.
 - **미완료 보고:** 일꾼이 미완료(`blocked` 등)라고 보고한 라운드는 리뷰어가 pass를 줘도 redo(`worker reported …`)로 바뀐다. 리드가 직접 리뷰하는 단계에서도 pass는 거절되므로, `next`는 diff 전체를 읽으라고 하지 않는다. 일꾼의 `unresolved` 항목을 `blocking_criteria`로 채운 redo 입력을 내준다(일꾼이 결정을 물었으면 `decision`). 리드는 `git diff --stat`와 그 항목이 가리키는 파일만 확인한다.
 - **판정 형식:** pass가 아닌데 반려 사유가 비어 있는 판정은 형식 오류로 버린다. 리뷰어가 실패하면 다음 리뷰어를 부르거나 리드가 직접 본다. 라운드당 위임 리뷰는 2회까지이고, 상담 예산(4회)과는 별개다.
 - **보류되는 판정:** 적용할 수 없는 판정(예: 교체할 일꾼이 없는데 alternative)은 강제하지 않는다. 사유와 함께 보류하고 리드가 결정한다.

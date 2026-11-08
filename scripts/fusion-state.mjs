@@ -646,6 +646,10 @@ function contractCorrections(c,n) {
   for(let r=1;r<=n;r++){
     const d=c.optional(`lead-decision-${r}.json`);
     if(d?.contract_change===true)list.push({round:d.round,decision:d.decision,rationale:d.rationale});
+    // 리뷰어가 'decision'을 요구해 리드가 decide로 남긴 결정도 계약 해석이다. 넘기지 않으면 다음 리뷰어가 같은 지적을 다시 올려
+    // 라운드마다 DECISION_REQUIRED에 멈춘다(L03 HF: Sol이 리드가 이미 정리한 두 계약 사항을 세 라운드 연속 다시 올렸다).
+    const decided=c.optional(`decision-${r}.json`);
+    if(typeof decided?.decision==='string'&&decided.decision.trim())list.push({round:r,decision:decided.decision.slice(0,4000),source:'lead decide'});
   }
   return list.length?{contract_corrections:list}:{};
 }

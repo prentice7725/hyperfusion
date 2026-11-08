@@ -108,6 +108,21 @@ test('a contract correction recorded by the lead reaches the next round\'s revie
  assert.ok([...sent.result_rules,...sent.instructions].some(x=>/contract_corrections/.test(x)),'reviewers are told to judge against the corrected contract');
 });
 
+test('a decision the lead recorded with decide reaches the next round reviewers',async t=>{
+ // L03 HF: Sol re-raised the same two settled contract points three rounds running, and each one stopped at DECISION_REQUIRED.
+ const f=fixture(t,{initialize:false});writeConfig(f,{review:{by:'delegate'}});
+ run(f.root,'init',{...f.brief,executor:'grok'});
+ f.begin();f.finish();f.mode('review-decision');
+ const first=await delegate(f);
+ assert.equal(f.state().phase,'DECISION_REQUIRED');
+ assert.equal(reviewBrief(f,first.c).consult.context.contract_corrections,undefined);
+ const decision='HF_LEAD_GRADE stays an operator override: the protected test fixes it. Do not report it again.';
+ run(f.root,'decide',{decision});
+ f.mode('ok');f.begin();f.finish();
+ const second=await delegate(f);
+ assert.deepEqual(reviewBrief(f,second.c).consult.context.contract_corrections,[{round:1,decision,source:'lead decide'}]);
+});
+
 test('the frozen review plan still refuses a round whose snapshot drifted',async t=>{
  const f=adaptive(t);
  f.begin();f.finish();
