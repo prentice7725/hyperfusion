@@ -10,9 +10,9 @@ import {read} from '../scripts/artifact.mjs';
 
 const GRANT={policy:'standard-auto',reason:'single-file fix with a command that proves AC1'};
 // red-first: 표식 파일이 생기기 전에는 실패하는 수용 명령. 대역 일꾼은 파일을 고치지 않으므로 표식으로 "고쳐짐"을 흉내 낸다.
-const setup=(t,{delegation=GRANT,review={}}={})=>{
+const setup=(t,{delegation=GRANT,review={},external}={})=>{
  const f=fixture(t,{initialize:false});
- fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{by:'delegate',strategy:'lead-gated-adaptive',...review}}));
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{by:'delegate',strategy:'lead-gated-adaptive',...review},...(external?{external}:{})}));
  const mark=path.join(f.temp,'green');
  const cmd=`node -e "process.exit(require('fs').existsSync(process.argv[1])?0:1)" "${mark}"`;
  const input={...f.brief,executor:'grok',acceptance_commands:[cmd],acceptance_map:{AC1:[cmd]}};
@@ -56,13 +56,26 @@ test('a permission or login failure is never retried automatically',async t=>{
 });
 
 test('automatic recovery stops after two uses and leaves the third failure to the lead',async t=>{
- const f=setup(t);f.mode('always-fail');
+ // 다른 일꾼이 없으면 같은 일꾼 REDO만 남는다. 그래도 자동 복구는 두 번까지다.
+ const f=setup(t,{external:{default:'grok',available:['grok']}});f.mode('always-fail');
  const out=await autopilot(f.root);
  assert.notEqual(out.reason,'CLOSE');
  const s=f.state();
  assert.equal(s.auto_recoveries,2);
  assert.equal(s.phase,'EXECUTING');assert.ok(s.writer);
  assert.equal(s.attempts.grok,3);
+});
+
+test('two rounds that ended without a result move the task to another worker',async t=>{
+ // 결과 없이 끝난 라운드(시간 초과·비정상 종료)도 실패로 센다. 같은 일꾼이 두 번 그러면 REDO 대신 다른 일꾼이 맡는다.
+ const f=setup(t);f.mode('always-fail');
+ const out=await autopilot(f.root);
+ const s=f.state();
+ assert.equal(s.auto_recoveries,2);
+ assert.equal(s.attempts.grok,2,'grok is not given a third round');
+ assert.notEqual(s.owner,'grok',JSON.stringify(out));
+ assert.equal(s.iteration,3);
+ assert.equal(s.attempts[s.owner],1);
 });
 
 test('a failure after the worker changed the tree is not recovered automatically',async t=>{
