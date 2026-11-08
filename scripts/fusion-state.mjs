@@ -1649,7 +1649,12 @@ function recover(c,input) {
   const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope,c.root);
   // 실행 중인 라운드가 결과 없이 끝났다(시간 초과·비정상 종료). 검증에 실패한 결과와 같이 센다.
   // 세지 않으면 같은 일꾼이 계속 시간 초과돼도 REDO만 남고, REDO에서는 일꾼을 바꿀 수 없어 리드가 갇힌다.
-  if(s.phase==='EXECUTING'&&s.iteration>0&&!c.optional(`result-${s.iteration}.json`))s.result_failures=(s.result_failures??0)+1;
+  // 그 일꾼 세션도 버린다. 시간 초과로 죽인 세션을 다음 라운드가 이어받으면 Grok은 세션을 여는 단계에서 멈춘다
+  // (L02·L03 HF: 이어받은 4번 모두 session_create에서 멈춰 20분 시간 초과, 새 세션은 4번 모두 정상 작동).
+  if(s.phase==='EXECUTING'&&s.iteration>0&&!c.optional(`result-${s.iteration}.json`)){
+    s.result_failures=(s.result_failures??0)+1;
+    if(s.owner&&s.owner!=='lead'&&s.sessions?.[s.owner])s.sessions[s.owner]=null;
+  }
   if(['PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED'].includes(s.phase)){
     // 디스패치 전에 컨트롤러가 죽어 남은 고아 lease. 소모된 시도는 되돌리지 않는다.
     const orphan=assertLease(c.root,input.token);

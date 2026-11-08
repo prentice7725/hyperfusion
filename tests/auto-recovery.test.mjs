@@ -78,6 +78,19 @@ test('two rounds that ended without a result move the task to another worker',as
  assert.equal(s.attempts[s.owner],1);
 });
 
+test('a lead recovery of a round that ended without a result starts the next round in a new worker session',async t=>{
+ // Grok은 시간 초과로 죽인 세션을 이어받으면 세션을 여는 단계에서 멈춘다(L02·L03 HF). 리드의 수동 recover도 세션을 버려야 한다.
+ const f=setup(t,{delegation:null});f.mode('fail-once');
+ f.begin();
+ const first=f.state().sessions.grok;assert.ok(first,'begin binds a session id');
+ await assert.rejects(execute(f.root,{proveQuiescence:true}),/exited with code 2/);
+ run(f.root,'recover',{token:f.state().writer.token,quiescent:true,reason:'grok timed out; processes stopped'});
+ assert.equal(f.state().phase,'REDO');assert.equal(f.state().sessions.grok,null);assert.equal(f.state().result_failures,1);
+ f.begin();
+ assert.equal(read(task(f,'dispatch-2.json')).cli.resume,false,'the next round does not resume the killed session');
+ assert.notEqual(f.state().sessions.grok,first);
+});
+
 test('a failure after the worker changed the tree is not recovered automatically',async t=>{
  const f=setup(t);f.mode('always-fail');
  f.begin();
