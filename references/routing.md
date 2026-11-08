@@ -65,6 +65,7 @@ auto 배치 시 순서대로 CLI를 프로브하고 없는 일꾼은 건너뛴�
 
 - `alternative` 판정 후 `begin`에 `executor`를 생략하면, 배치 순서에서 **방금 반려된 일꾼 다음**부터 돌아가며 예산 있는 일꾼을 투입한다.
 - 같은 반려 사유 2연속 → 자동 ALTERNATIVE_REQUIRED → 위와 같은 순서.
+- 같은 일꾼의 라운드가 연속 두 번 결과 없이 끝나면(시간 초과·비정상 종료 후 `recover`·`auto-recover`) → 자동 ALTERNATIVE_REQUIRED → 위와 같은 순서. 결과 검증 실패와 같은 횟수(`result_failures`)로 센다. 다른 일꾼이 없으면 같은 일꾼 REDO가 남는다.
 - 리드가 `executor`를 명시하면 그대로 따른다. init에서 명시하면 `routing.mode:"explicit"`이고 router 추천은 근거에 함께 기록된다.
 
 ## 수동 확인

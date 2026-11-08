@@ -1643,6 +1643,9 @@ function recover(c,input) {
   if(c.writerHeld())recoverToken(c,input.token);
   // 범위 밖에 남은 파일을 리드가 알고 받아들이는 경우. 상태를 바꾸기 전에 입력부터 검사한다.
   const accepted=input.allow_out_of_scope===undefined?[]:parseScopeExceptions(input.allow_out_of_scope,c.root);
+  // 실행 중인 라운드가 결과 없이 끝났다(시간 초과·비정상 종료). 검증에 실패한 결과와 같이 센다.
+  // 세지 않으면 같은 일꾼이 계속 시간 초과돼도 REDO만 남고, REDO에서는 일꾼을 바꿀 수 없어 리드가 갇힌다.
+  if(s.phase==='EXECUTING'&&s.iteration>0&&!c.optional(`result-${s.iteration}.json`))s.result_failures=(s.result_failures??0)+1;
   if(['PLAN','REDO','ALTERNATIVE_REQUIRED','TAKEOVER_REQUIRED'].includes(s.phase)){
     // 디스패치 전에 컨트롤러가 죽어 남은 고아 lease. 소모된 시도는 되돌리지 않는다.
     const orphan=assertLease(c.root,input.token);
