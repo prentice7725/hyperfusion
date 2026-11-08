@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 큰 벤치마크 과제의 품질 채점을 더한다. `benchmark.mjs score CASE REPO`는 시험 트리의 사본에 숨긴 시험을 넣어 돌리고, 편집 허용 경로 밖의 변경을 범위 위반으로 센다. `--regressions`를 주면 바뀐 파일을 import로 닿는 기존 시험도 돌린다. 끝 트리에서 실패한 파일만 시작 트리에서 다시 돌리고 시험 이름 단위로 비교한다. 시작 트리에서 통과하던 시험이 끝에서 실패하면, 이미 다른 이유로 실패하던 파일 안이라도 새어 나간 회귀로 센다. 임시 폴더를 지우지 못해도 결과는 낸다. `--record`는 `wrong_closes`, `scope_violations`, `escaped_regressions`를 지표 기록에 써서 `compare-repeated`가 읽게 한다. `check-hidden CASE`는 숨긴 시험이 정답 커밋에서 통과하고 그 부모에서 실패하는지 확인한다. 숨긴 시험은 저장소 밖(기본 `~/.hyperfusion/benchmark-hidden/`)에 둔다. 설치된 스킬이 이 저장소의 복제본이라 안에 두면 리드나 일꾼이 읽을 수 있다.
+
 - 수렴하지 않아 리드에게 넘어온 반려에 멈춤 기준을 둔다. 다시 돌려보내려면(`adopt`든 리드 자신의 반려든) brief의 수용 기준이 이름 붙인 항목 중 아직 안 됐거나 회귀한 것을 `unmet_stated_items`에 적어야 한다. 적지 않으면 `NOT_CONVERGING`으로 거절된다. brief에 없는 새 경우만 남았으면 리드는 통과시키고 그 지적을 `follow_ups`에 적는다(최대 20개). `follow_ups`는 PR 초안의 "후속 작업" 절에 모인다. 보류 응답에는 `decision_rule`이 붙는다. 계기는 L01 run 11이다. 수렴 보류는 5라운드부터 작동했지만, 리드가 AC1의 새 신호 유형마다 자기 판정으로 일곱 번 다시 돌려보냈다. 결과는 12라운드, 106분, 리드 1.31M이었다.
 
 - 일꾼이나 리뷰어가 사용량·요금 한도에 걸리면 같은 CLI를 그 작업 동안 쓰지 않는다. 브리지는 실패한 실행의 stderr와 CLI 오류 메시지에서 한도 문구를 찾는다. Codex는 오류 이벤트, Claude는 `is_error` 결과를 본다. 찾으면 `PROVIDER_LIMIT`를 붙이고 `limit-failure-*.json`을 남긴다. 그 뒤 구현 라우팅과 위임 리뷰어 선택이 그 CLI를 건너뛴다. 예를 들어 Codex가 한도에 걸리면 Terra, Luna, Sol이 모두 빠진다. 리드 게이트는 REDO를 권하지 않는다. 일꾼이 작업 출력에 쓴 한도 문구는 보지 않는다. 계기는 L01 run 11 도중 Codex 5시간 한도가 바닥난 일이다. 이전에는 다음 라운드에도 Terra·Luna를 고르고 다음 리뷰에도 Sol을 먼저 불렀다.

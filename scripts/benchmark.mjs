@@ -5,6 +5,7 @@ import {aggregate} from './metrics.mjs';
 import {weightedUsage,weightedClaude,validatePricing} from './usage-weights.mjs';
 import {prepareFixture,LARGE_CASES} from './benchmark-fixtures.mjs';
 import {startWindow,stopWindow,recoverWindow} from './benchmark-window.mjs';
+import {scoreTrial,recordScore,checkHidden} from './benchmark-quality.mjs';
 
 export const CASES=JSON.parse(fs.readFileSync(new URL('../references/benchmark-cases.json',import.meta.url),'utf8'));
 // core는 기존 10개 고정 과제, large는 실제 기능 커밋으로 만든 큰 과제다. 묶음끼리 섞어 비교하지 않는다.
@@ -130,8 +131,20 @@ if(isMain(import.meta.url)){
   else if(cmd==='start'&&left&&right)console.log(JSON.stringify(startWindow(left,right,{arm:flag('--arm')??'baseline',sessionId:flag('--session')}),null,2));
   else if(cmd==='recover'&&left&&right)console.log(JSON.stringify(recoverWindow(left,right,{quiescent:extra.includes('--quiescent'),reason:flag('--reason')}),null,2));
   else if(cmd==='stop'&&left&&right)console.log(JSON.stringify(stopWindow(left,right,{success:extra.includes('--success')?true:extra.includes('--failed')?false:undefined,sessionId:flag('--session'),transcriptPath:flag('--transcript')}),null,2));
+  else if(cmd==='score'&&left&&right){
+   const hidden=flag('--hidden');
+   scoreTrial(left,right,{...(hidden?{hidden}:{}),regressions:extra.includes('--regressions')})
+    .then(score=>console.log(JSON.stringify(extra.includes('--record')?{...score,record:recordScore(right,score)}:score,null,2)))
+    .catch(e=>{console.error(e.message);process.exitCode=1;});
+  }
+  else if(cmd==='check-hidden'&&left){
+   const hidden=flag('--hidden');
+   checkHidden(left,{...(hidden?{hidden}:{}),source:flag('--source')})
+    .then(r=>{console.log(JSON.stringify(r,null,2));if(!r.valid)process.exitCode=1;})
+    .catch(e=>{console.error(e.message);process.exitCode=1;});
+  }
   else if(cmd==='compare'&&left&&right)console.log(JSON.stringify(comparePilot(read(left),read(right),flag('--pricing')?read(flag('--pricing')):null,{suite}),null,2));
   else if(cmd==='compare-repeated'&&left&&right)console.log(JSON.stringify(compareRepeated(read(left),read(right),flag('--pricing')?read(flag('--pricing')):null,{repetitions:flag('--repetitions')?Number(flag('--repetitions')):3,suite}),null,2));
-  else throw Error('Usage: benchmark.mjs cases [--suite core|large] | prepare CASE NEW_REPO [--source HYPERFUSION_CLONE] | start CASE REPO [--arm baseline|hyperfusion] [--session ID] | stop CASE REPO --success|--failed [--session ID --transcript FILE] | compare BASELINE.json HYPERFUSION.json [--suite core|large] [--pricing PRICES.json] | compare-repeated CURRENT.json CANDIDATE.json [--suite core|large] [--repetitions 3] [--pricing PRICES.json]');
+  else throw Error('Usage: benchmark.mjs cases [--suite core|large] | prepare CASE NEW_REPO [--source HYPERFUSION_CLONE] | start CASE REPO [--arm baseline|hyperfusion] [--session ID] | stop CASE REPO --success|--failed [--session ID --transcript FILE] | score CASE REPO [--hidden DIR] [--regressions] [--record] | check-hidden CASE [--hidden DIR] [--source HYPERFUSION_CLONE] | compare BASELINE.json HYPERFUSION.json [--suite core|large] [--pricing PRICES.json] | compare-repeated CURRENT.json CANDIDATE.json [--suite core|large] [--repetitions 3] [--pricing PRICES.json]');
  }catch(e){console.error(e.message);process.exitCode=1;}
 }
