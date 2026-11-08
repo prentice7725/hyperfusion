@@ -17,7 +17,7 @@
 - `default: "auto"`면 작업마다 router가 일꾼을 고른다([routing.md](routing.md)). 호출 시 `--executor`가 그 작업의 선택을 덮어쓴다. 설정은 init 때 상태에 고정되며 진행 중 작업에는 영향이 없다.
 - `available`은 사용자가 고용한 일꾼 명단이다. 한 명만 넣으면 교체 없이 그 일꾼을 예산 끝까지 돌린다.
 - `lead_takeover:false`면 모든 일꾼이 모두 소진됐을 때 리드가 코드를 쓰지 않고 BLOCKED로 끝난다.
-- `executors.<이름>.timeout_ms`: 일꾼 한 라운드의 상한(기본 1,200,000 = 20분). Windows에서 agy가 멈추는 문제가 있으면 짧게 잡는다.
+- `executors.<이름>.timeout_ms`: 일꾼 한 번 실행의 상한. 기본값은 구현 라운드 2,400,000(40분), 리뷰·상담 1,200,000(20분)이다. 값을 주면 두 경우 모두 그 값을 쓴다. Windows에서 agy가 멈추는 문제가 있으면 짧게 잡는다.
 - `executors.antigravity.sandbox:false`는 바깥 샌드박스 안에서 agy `--sandbox`가 시작되지 못할 때만 쓴다(`sandbox_apply: Operation not permitted`). 저장소 안의 설정 파일은 일꾼이나 복제한 저장소가 쓴 것일 수 있으므로, **운영자가 환경변수 `HF_ALLOW_UNSANDBOXED=1`을 직접 설정해야만** 받아들여진다(없으면 설정 오류). 허용해도 상담·리뷰는 항상 `--sandbox`로 실행한다. 끄면 구현 라운드의 agy 터미널 실행이 제한되지 않는다는 점을 사용자에게 알린다.
 - `lead: sol|astra` 등 main 브랜치(Codex 리드) 설정은 거절한다. 조용히 변환하지 않는다.
 

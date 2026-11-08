@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {printTimeout} from '../scripts/adapters/antigravity.mjs';
+import {defaultTimeout} from '../scripts/round-timeout.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -52,4 +54,5 @@ test('doctor explains a leftover writer lease instead of a bare error',t=>{
 });
 test('JSON input written by PowerShell with a UTF-8 BOM is accepted',t=>{const d=tmp(t),f=path.join(d,'in.json');fs.writeFileSync(f,'\uFEFF{"a":1}');assert.deepEqual(read(f),{a:1});});
 test('Go-style help on stderr with exit code 2 (real agy.EXE) still passes the probe',t=>{const f=fixture(t,{initialize:false});const p=adapter('antigravity').probe();assert.equal(p.supports['--print-timeout'],true);});
+test('without a configured timeout, implement rounds get 40 minutes and reviews or consults 20',t=>{const f=fixture(t,{initialize:false});run(f.root,'init',{...f.brief,executor:'antigravity'});const d=f.begin();assert.equal(d.cli.args[d.cli.args.indexOf('--print-timeout')+1],'2370s');assert.equal(printTimeout({},'consult'),'1170s');assert.equal(defaultTimeout('implement'),2400000);assert.equal(defaultTimeout('consult'),1200000);});
 test('agy gets --print-timeout shorter than the bridge timeout',async t=>{const f=fixture(t,{initialize:false});fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{antigravity:{timeout_ms:300000}}}));run(f.root,'init',{...f.brief,executor:'antigravity'});const d=f.begin();assert.equal(d.cli.args[d.cli.args.indexOf('--print-timeout')+1],'270s');assert.ok(d.cli.args.indexOf('--print-timeout')<d.cli.args.indexOf('-p'));});

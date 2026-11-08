@@ -4,7 +4,7 @@
 
 ## 공통
 
-- 브리지는 셸 없이 실행한다. stdout/stderr는 각각 8 MiB, 호출당 기본 20분(`executors.<이름>.timeout_ms`로 조정), 40턴 상한. timeout/중단 시 POSIX는 프로세스 그룹에 SIGTERM 후 SIGKILL, Windows는 `taskkill /T /F`로 트리를 끝낸다.
+- 브리지는 셸 없이 실행한다. stdout/stderr는 각각 8 MiB, 호출당 기본 구현 40분·리뷰와 상담 20분(`executors.<이름>.timeout_ms`로 조정, agy의 `--print-timeout`은 그보다 30초 짧다), 40턴 상한. timeout/중단 시 POSIX는 프로세스 그룹에 SIGTERM 후 SIGKILL, Windows는 `taskkill /T /F`로 트리를 끝낸다.
 - `launch-N.json`(create-once)이 같은 라운드의 중복 실행을 막는다. `process-N.json`, `envelope-N.json`에 PID와 원본 출력을 남긴다.
 - 성공해도 lease는 유지된다. 리드가 빠져나간 자손 프로세스가 없음을 확인한 뒤 finish 한다.
 - 결과는 공통 result 계약으로 검증한다. 오류 envelope, 세션 불일치, 미완료 중단, JSON 아님은 전부 실패다.

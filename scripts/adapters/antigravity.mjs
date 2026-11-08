@@ -4,6 +4,7 @@ import {assertCommandLine} from '../platform.mjs';
 import {workerEnv} from '../worker-env.mjs';
 import {memberBinary} from '../member-registry.mjs';
 import {selectAgyModel} from './agy-model.mjs';
+import {defaultTimeout} from '../round-timeout.mjs';
 
 // Google Antigravity CLI(agy) 헤드리스 모드. 모든 플래그는 -p 앞에 와야 한다.
 // 대화 ID는 CLI가 발급하므로 첫 라운드 envelope의 conversation_id를 저장해 재개에 쓴다.
@@ -44,7 +45,7 @@ export function checkModel(cli,model) {
   +`agy would silently run its default model instead. Fix the model name, or have the operator set ${ALLOW_UNLISTED_ENV}=1 to launch anyway`);
 }
 // agy가 스스로 먼저 끝내도록 브리지 timeout보다 30초 짧게 잡는다. 그래야 강제 종료 대신 정상 envelope가 남는다.
-export const printTimeout=options=>Math.max(30,Math.floor(((options.timeout_ms??1200000)-30000)/1000))+'s';
+export const printTimeout=(options,role='implement')=>Math.max(30,Math.floor(((options.timeout_ms??defaultTimeout(role))-30000)/1000))+'s';
 export const newSession=()=>null;
 // 프롬프트가 명령줄로 가므로(Windows 32,767자) 상담 위원에게 넣는 diff를 작게 유지한다. 나머지는 파일을 직접 읽는다.
 export const contextDiffMax=12000;
@@ -79,7 +80,7 @@ export function dispatch(brief,lease,{session,resume,probe:cli,promptFile,option
   ...(unsandboxed(options,brief)?[]:['--sandbox']),
   // 새 대화는 --new-project로 연다. 없으면 agy가 전역으로 활성화된 다른 프로젝트를 재사용해 엉뚱한 workspace의 플러그인·훅을 읽는다
   // (AionCore가 agy 1.1.13에서 실측). 재개 라운드는 --conversation이 그 대화의 프로젝트를 이어 쓰므로 붙이지 않는다. 모르는 agy에는 넘기지 않는다.
-...(cli.supports?.['--print-timeout']?['--print-timeout',printTimeout(options)]:[]),
+...(cli.supports?.['--print-timeout']?['--print-timeout',printTimeout(options,brief?.consult?'consult':'implement')]:[]),
   ...(resume?['--conversation',session]:cli.supports?.['--new-project']?['--new-project']:[]),'-p',text];
  // 프롬프트를 명령줄로 넘기므로 Windows 길이 제한을 lease 획득 전에 확인한다.
  assertCommandLine(cli.executable,[...(cli.prefix_args??[]),...args],{hint:()=>oversizeHint(brief)});
