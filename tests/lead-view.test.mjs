@@ -112,6 +112,31 @@ test('next names the one command to run in every phase, with the values the lead
  assert.deepEqual(n.input.acceptance_satisfied,true);
 });
 
+// 미완료 결과는 pass할 수 없으므로 next가 diff 전체 리뷰를 시키지 않는다(L02 HF run 2에서 리드가 31KB diff를 읽고 거절당했다).
+test('next does not send the lead to read the diff when the worker reported an incomplete result',t=>{
+ const f=fixture(t);
+ f.begin();
+ f.finish({...f.result(),status:'blocked',unresolved:['AC3 reviewer families not wired','AC4 legacy plan untouched']});
+ const before=fs.readFileSync(path.join(f.control,'state.json'),'utf8');
+ const n=run(f.root,'next',{});
+ assert.equal(fs.readFileSync(path.join(f.control,'state.json'),'utf8'),before,'next never changes the state');
+ assert.equal(n.phase,'REVIEW');assert.equal(n.action,'review');
+ assert.match(n.step,/do not read the full diff/);
+ assert.equal(n.worker_report.status,'blocked');
+ assert.deepEqual(n.input.blocking_criteria,['AC3 reviewer families not wired','AC4 legacy plan untouched']);
+ assert.notEqual(n.input.verdict,'pass');
+ assert.throws(()=>run(f.root,'review',{...n.input,verdict:'pass',blocking_criteria:[]}),/Incomplete result cannot pass/);
+ run(f.root,'review',n.input);
+ assert.equal(f.state().phase,'REDO','the suggested input is accepted as is');
+});
+
+test('next still asks for a diff review of a complete result',t=>{
+ const f=fixture(t);
+ f.begin();f.finish();
+ const n=run(f.root,'next',{});
+ assert.equal(n.action,'review');assert.match(n.step,/review the diff yourself/);
+});
+
 // 리드가 단계마다 턴을 덜 쓰게 하는 입력 경로들. 실제 명령줄로 확인한다.
 const BRIDGE=fileURLToPath(new URL('../scripts/executor-bridge.mjs',import.meta.url));
 const raw=(f,action,input,...flags)=>spawnSync(process.execPath,[SCRIPT,action,f.root,...(input===undefined?[]:['-']),...flags],{encoding:'utf8',env:process.env,input:input===undefined?undefined:JSON.stringify(input),timeout:60000});

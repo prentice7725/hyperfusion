@@ -2061,6 +2061,19 @@ function nextStep(c) {
       then:{action:'finish',command_line:`${line('finish',false)} --token ${s.writer.token} --quiescent`,input:{token:s.writer.token,quiescent:true},
         note:s.owner==='lead'?'Lead takeover needs an explicit result.':'The result is read from result-N.json; do not paste it.'}});
   case 'REVIEW':{
+    // 일꾼이 미완료로 보고한 결과는 어떤 리뷰로도 pass할 수 없다. diff를 전부 읽게 하지 말고 일꾼 자신의 미해결 항목으로 반려하게 한다.
+    // L02 HF run 2: 리드가 31KB diff를 읽고 pass했다가 'Incomplete result cannot pass'로 거절됐다.
+    const raw=c.optional(`raw-result-${s.iteration}.json`);
+    if(raw&&!approvableResult(s,raw)){
+      const open=(Array.isArray(raw.unresolved)?raw.unresolved:[]).filter(x=>typeof x==='string'&&x.trim()).map(x=>x.slice(0,500)).slice(0,20);
+      const blocking=open.length?open:[`worker reported ${raw.status} without naming the open items`];
+      return step({step:`the worker reported ${raw.status}: pass is refused, so do not read the full diff; reject with the worker's own open items`,
+        action:'review',command_line:line('review'),
+        worker_report:{status:raw.status,unresolved:open,needs_lead_decision:raw.needs_lead_decision===true},
+        input:{verdict:raw.needs_lead_decision===true?'decision':'redo',rationale:`worker reported ${raw.status}; incomplete results cannot pass`,
+          blocking_criteria:blocking,commands_run:['git diff --stat'],independent_diff_review:true},
+        note:'Check `git diff --stat` and only the files the open items name. Use verdict alternative to change the worker. Then begin with lead_feedback "@review".'});
+    }
     const delegated=s.configuration.review?.by==='delegate';
     return delegated
       ?step({step:'delegate-review: another model reviews read-only',action:'delegate-review',command_line:line('delegate-review'),input:{},
