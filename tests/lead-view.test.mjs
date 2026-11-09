@@ -137,6 +137,24 @@ test('next still asks for a diff review of a complete result',t=>{
  assert.equal(n.action,'review');assert.match(n.step,/review the diff yourself/);
 });
 
+// 오토파일럿이 멈춘 뒤 리드가 손으로 라운드를 이어 가도 독립 리뷰는 리뷰어에게 간다(2026-11-09 L05 run 2: 리드가 diff를 직접 읽고 판정했다).
+test('after a manual round, next hands the review of an autopilot-ready task to autopilot',async t=>{
+ const f=fixture(t,{initialize:false});
+ const mark=path.join(f.temp,'green');
+ f.brief.acceptance_commands=[`node -e "process.exit(require('fs').existsSync(process.argv[1])?0:1)" "${mark}"`];
+ run(f.root,'init',{...f.brief,executor:'grok'});
+ assert.equal(f.state().acceptance_baseline.status,'red');
+ f.begin();fs.writeFileSync(mark,'1');f.finish();
+ const n=run(f.root,'next',{});
+ assert.equal(n.phase,'REVIEW');assert.equal(n.action,'autopilot');
+ assert.match(n.command_line,/ autopilot "[^"]+"$/);
+ assert.doesNotMatch(n.step,/review the diff yourself/);
+ assert.equal(n.fallback.action,'review');
+ const out=await autopilot(f.root);
+ assert.notEqual(f.state().phase,'REVIEW',JSON.stringify(out));
+ assert.match(String(f.state().reviews.at(-1)?.commands_run),/delegated read-only review/,'an independent reviewer judged the round');
+});
+
 // 리드가 단계마다 턴을 덜 쓰게 하는 입력 경로들. 실제 명령줄로 확인한다.
 const BRIDGE=fileURLToPath(new URL('../scripts/executor-bridge.mjs',import.meta.url));
 const raw=(f,action,input,...flags)=>spawnSync(process.execPath,[SCRIPT,action,f.root,...(input===undefined?[]:['-']),...flags],{encoding:'utf8',env:process.env,input:input===undefined?undefined:JSON.stringify(input),timeout:60000});

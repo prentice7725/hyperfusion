@@ -79,7 +79,11 @@ export function result(v,task_id,round) {
  requireThat(v.status!=='needs_decision'||v.needs_lead_decision,'Decision flag missing');
  // environment_error: 일꾼의 샌드박스나 실행 환경이 막아서 테스트가 돌지 못했을 때 그 사유. 실패를 지우는 필드가 아니라 실패의 원인을 밝히는 필드다.
  // status는 fail 그대로 두고(정직한 보고), complete와 함께 올 수 있지만 컨트롤러는 이를 통과로 세지 않는다(위임 승인은 거절하고 리드가 본다).
- requireThat(Array.isArray(v.tests)&&v.tests.every(x=>str(x.command)&&['pass','fail','not_run'].includes(x.status)&&(blank(x.environment_error)||(x.status!=='pass'&&str(x.environment_error)))),'Invalid tests (environment_error needs status fail or not_run and a reason)');
+ // 통과한 테스트에 붙은 환경 메모("처음엔 EPERM, 재시도로 통과" 등)는 실패 사유가 아니다. 결과 전체를 거절하지 않고 environment_note로 옮긴다.
+ // 통과로 세는 기준은 그대로다: environmentFailure는 fail·not_run만 보고, 샌드박스 감지도 이 메모를 쓰지 않는다(2026-11-09 L05 run 2: 이 거절로 라운드 1을 잃었다).
+ if(Array.isArray(v.tests))v.tests=v.tests.map(t=>t&&t.status==='pass'&&str(t.environment_error)
+  ?(({environment_error,...rest})=>({...rest,environment_note:environment_error.trim().slice(0,600)}))(t):t);
+ requireThat(Array.isArray(v.tests)&&v.tests.every(x=>str(x.command)&&['pass','fail','not_run'].includes(x.status)&&(blank(x.environment_error)||(x.status!=='pass'&&str(x.environment_error)))),'Invalid tests (each test needs a command and status pass, fail or not_run; environment_error on fail or not_run needs a reason)');
  requireThat(v.status!=='complete'||(!v.needs_lead_decision&&!v.unresolved.length&&!v.tests.some(t=>t.status==='fail'&&!environmentFailure(t))),'Contradictory complete result');
  // 기억 후보는 덤으로 받는 선택 항목이다. 모양이 틀려도 라운드를 실패시키지 않는다(장부에 올릴 때 걸러서 사유와 함께 남긴다).
  requireThat(v.memory_candidates===undefined||Array.isArray(v.memory_candidates),'Invalid memory_candidates (a list of up to 3)');

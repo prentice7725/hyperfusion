@@ -8,7 +8,8 @@ import {execute} from '../scripts/executor-bridge.mjs';
 import {result as validateResult,environmentFailure} from '../scripts/contracts.mjs';
 import {ACCEPTANCE} from '../scripts/adapters/common.mjs';
 import {MEMBERS} from '../scripts/member-registry.mjs';
-import {SANDBOX_REPORT} from '../scripts/codex-sandbox.mjs';
+import {SANDBOX_REPORT,sandboxFailureFile} from '../scripts/codex-sandbox.mjs';
+import {read} from '../scripts/artifact.mjs';
 
 // 2026-11-04 L01: Terra가 Codex의 Windows 샌드박스에 세 라운드 연속 막혔고 리드가 매번 손으로 복구했다.
 // 한 번 막히면 그 작업에서는 같은 CLI(Codex: Terra, Luna)를 쓰지 않고 다른 일꾼으로 넘긴다.
@@ -20,7 +21,19 @@ test('a worker may report a sandbox-blocked test as not_run with its reason',()=
  const blocked={command:'node --test',status:'not_run',environment_error:'spawn EPERM'};
  assert.equal(validateResult({...base,tests:[blocked]},'T',1).tests[0].status,'not_run');
  assert.equal(environmentFailure(blocked),true);
- assert.throws(()=>validateResult({...base,tests:[{...blocked,status:'pass'}]},'T',1),/environment_error needs status fail or not_run/);
+ // 통과한 테스트의 환경 메모는 실패 사유가 아니라 메모다(2026-11-09 L05 run 2: 이 조합을 거절해 라운드 1을 잃었다).
+ const noted=validateResult({...base,tests:[{...blocked,status:'pass'}]},'T',1).tests[0];
+ assert.deepEqual(noted,{command:'node --test',status:'pass',environment_note:'spawn EPERM'});
+ assert.equal(environmentFailure(noted),false);
+});
+
+test('a Codex pass that notes a retried EPERM keeps the round and the Codex workers',t=>{
+ const f=fixture(t,{executor:'terra'});
+ f.begin();
+ const out=f.finish({...f.result(),tests:[{command:'node --test',status:'pass',environment_error:'spawn EPERM on the first try; the retry passed'}]});
+ assert.equal(out.phase,'REVIEW','the result is accepted');
+ assert.equal(fs.existsSync(task(f,sandboxFailureFile(1))),false,'a passing test is no sandbox failure');
+ assert.equal(read(task(f,'raw-result-1.json')).tests[0].environment_error,'spawn EPERM on the first try; the retry passed','the raw report is kept as sent');
 });
 
 test('a Codex sandbox failure in the bridge moves the task off every Codex worker',async t=>{
