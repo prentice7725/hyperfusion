@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Grok 구현 실행의 기본 턴 상한을 40에서 60으로 올린다. Claude 일꾼과 리뷰·상담은 40 그대로이고, `max_turns`·`max_turns_by_difficulty`를 주면 전처럼 그 값이 이긴다. Grok의 턴은 도구 호출이 아니라 모델 루프 수다. L05 HF run 3에서 Terra 대신 새로 투입된 Grok 세션이 재작업 라운드에서 40루프(도구 67번, 24분)를 다 쓰고 결과 없이 끝났고, 리드가 복구 문서를 읽어 직접 복구했다. 60루프는 같은 속도에서 구현 라운드 시간 한도 40분 안에 든다.
+
 - 통과한 테스트에 `environment_error`가 붙어 와도 결과를 거절하지 않고 그 문장을 `environment_note`로 옮긴다. 통과·실패를 세는 방식과 Codex 샌드박스 감지는 그대로다. 오토파일럿을 쓸 수 있는 작업에서 리드가 라운드를 손으로 이어 가면(복구 뒤 등) `next`가 REVIEW에서 "직접 리뷰" 대신 `autopilot`을 내줘 독립 리뷰어가 판정한다. L05 HF run 2에서 이 거절로 라운드 1을 잃고 리드가 diff 전체를 읽어 직접 판정했으며 리뷰어는 한 번도 돌지 않았다.
 
 - 리드가 `decide`로 남긴 결정(`decision-N.json`)도 다음 위임 리뷰어의 `context.contract_corrections`에 넣는다(`source:"lead decide"`). 지금까지는 `contract_change:true`인 `lead-decision`만 넘겼다. 리뷰어 프롬프트는 이미 고쳐진 계약을 기준으로 판정하라고 안내한다. 계기는 L03 HF 시험이다. 리드는 보호된 시험이 고정한 두 계약 사항을 `decide`로 정리했지만, Sol은 그 결정을 받지 못해 같은 두 사항을 세 라운드 연속 다시 올렸다. 라운드마다 `DECISION_REQUIRED`에서 멈췄고, 리드는 매번 같은 결정을 다시 적었다.

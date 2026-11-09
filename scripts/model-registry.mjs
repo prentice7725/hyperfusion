@@ -25,7 +25,7 @@ export const MODELS={
 // REVIEW_EFFORT와 이중 리뷰 때 Grok xhigh 규칙을 옮긴 값이다.
 export const MEMBER_PROFILES={
  sol:{cli:'codex',model:'gpt-6.1-sol',review_rank:1,review_effort:'xhigh'},
- grok:{cli:'grok',model:null,default_family:'xai',tier:'standard',review_rank:2,review_effort:'xhigh',deep_review_effort:'xhigh'},
+ grok:{cli:'grok',model:null,default_family:'xai',tier:'standard',review_rank:2,review_effort:'xhigh',deep_review_effort:'xhigh',implement_max_turns:60},
  sonnet:{cli:'claude',model:'claude-sonnet-5-5',review_rank:3,review_effort:'max'},
  antigravity:{cli:'agy',model:null,default_family:'google',tier:'standard',review_rank:4},
  luna:{cli:'codex',model:'gpt-6-luna',review_rank:5},
