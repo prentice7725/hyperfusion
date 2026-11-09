@@ -2084,6 +2084,17 @@ function nextStep(c) {
         note:'Check `git diff --stat` and only the files the open items name. Use verdict alternative to change the worker. Then begin with lead_feedback "@review".'});
     }
     const delegated=s.configuration.review?.by==='delegate';
+    // 오토파일럿을 쓸 수 있는 작업이면 리드가 손으로 라운드를 이어 갔더라도(복구 뒤 등) 독립 리뷰는 오토파일럿에 맡긴다.
+    // 2026-11-09 L05 run 2: 복구 뒤 next가 "review the diff yourself"를 내서 리드가 diff 전체를 읽고 직접 판정했고 리뷰어는 한 번도 돌지 않았다.
+    const reviewConfig=s.configuration.review??{};
+    const preserve=c.optional('initial-brief.json')?.verification?.kind==='preserve';
+    const autopilotReady=!delegated&&(reviewConfig.strategy==='lead-gated-adaptive'||reviewConfig.auto_apply===true)
+      &&s.acceptance_baseline?.status===(preserve?'green-acknowledged':'red')&&c.optional(`brief-${s.iteration}.json`)?.acceptance_commands?.length>0;
+    if(autopilotReady)return step({step:'autopilot: the independent reviewer reviews this round, then autopilot stops at the lead gate',action:'autopilot',
+      command_line:`node "${SELF}" autopilot "${root}"`,
+      note:'Do not read the full diff before the reviewer reports. Review it yourself only if autopilot refuses, with the fallback below.',
+      fallback:{action:'review',command_line:line('review'),
+        input:{verdict:'<pass|redo|alternative|decision>',rationale:'<text>',blocking_criteria:['<AC id: reason>'],commands_run:['git diff'],independent_diff_review:true}}});
     return delegated
       ?step({step:'delegate-review: another model reviews read-only',action:'delegate-review',command_line:line('delegate-review'),input:{},
         then:'run the bridge in the output once, then consult-finish with {"quiescent":true}'})

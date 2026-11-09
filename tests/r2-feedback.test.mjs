@@ -20,7 +20,8 @@ test('a test blocked by the worker sandbox may be reported as failed with a reas
  assert.equal(environmentFailure(blocked),true);
  assert.throws(()=>validateResult(withTests([{command:'npm test',status:'fail'}]),'T',1),/Contradictory complete result/,'a failure with no reason still contradicts complete');
  assert.throws(()=>validateResult(withTests([{command:'npm test',status:'fail',environment_error:' '}]),'T',1),/Contradictory complete result/,'a blank reason is no reason: this is an ordinary failure');
- assert.throws(()=>validateResult(withTests([{command:'npm test',status:'pass',environment_error:'EPERM'}]),'T',1),/environment_error/,'a pass cannot carry a reason');
+ // 통과한 테스트에 붙은 사유는 메모로 옮긴다. 통과를 실패로도, 실패를 통과로도 바꾸지 않는다.
+ assert.deepEqual(validateResult(withTests([{command:'npm test',status:'pass',environment_error:'EPERM'}]),'T',1).tests[0],{command:'npm test',status:'pass',environment_note:'EPERM'});
  // not_run도 이유를 달 수 있다: 샌드박스가 막아 아예 못 돌린 테스트(2026-11-04 L01, Terra).
  assert.doesNotThrow(()=>validateResult(withTests([{command:'npm test',status:'not_run',environment_error:'EPERM'}]),'T',1));
  assert.equal(environmentFailure({command:'x',status:'fail'}),false);
@@ -109,8 +110,8 @@ test('Codex must fill environment_error on every test, so an empty value means "
  // 빈 값이 "사유 없는 실패"를 면해 주지는 않는다.
  assert.throws(()=>validateResult(codexLike([{command:'npm test',status:'fail',environment_error:''}]),'T',1),/Contradictory complete result/);
  assert.equal(environmentFailure({command:'x',status:'fail',environment_error:''}),false);
- // 사유가 있는데 실패가 아니면 여전히 거절한다. 문자열이 아닌 값도 거절한다.
- assert.throws(()=>validateResult(codexLike([{command:'x',status:'pass',environment_error:'EPERM'}]),'T',1),/environment_error/);
+ // 통과에 붙은 사유는 environment_note로 옮긴다. 문자열이 아닌 값은 여전히 거절한다.
+ assert.equal(validateResult(codexLike([{command:'x',status:'pass',environment_error:'EPERM'}]),'T',1).tests[0].environment_note,'EPERM');
  assert.throws(()=>validateResult(codexLike([{command:'x',status:'fail',environment_error:5}]),'T',1),/environment_error/);
  // 실제 라운드: Codex가 낸 모양 그대로 finish를 통과한다.
  const f=fixture(t);

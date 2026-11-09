@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 통과한 테스트에 `environment_error`가 붙어 와도 결과를 거절하지 않고 그 문장을 `environment_note`로 옮긴다. 통과·실패를 세는 방식과 Codex 샌드박스 감지는 그대로다. 오토파일럿을 쓸 수 있는 작업에서 리드가 라운드를 손으로 이어 가면(복구 뒤 등) `next`가 REVIEW에서 "직접 리뷰" 대신 `autopilot`을 내줘 독립 리뷰어가 판정한다. L05 HF run 2에서 이 거절로 라운드 1을 잃고 리드가 diff 전체를 읽어 직접 판정했으며 리뷰어는 한 번도 돌지 않았다.
+
 - 리드가 `decide`로 남긴 결정(`decision-N.json`)도 다음 위임 리뷰어의 `context.contract_corrections`에 넣는다(`source:"lead decide"`). 지금까지는 `contract_change:true`인 `lead-decision`만 넘겼다. 리뷰어 프롬프트는 이미 고쳐진 계약을 기준으로 판정하라고 안내한다. 계기는 L03 HF 시험이다. 리드는 보호된 시험이 고정한 두 계약 사항을 `decide`로 정리했지만, Sol은 그 결정을 받지 못해 같은 두 사항을 세 라운드 연속 다시 올렸다. 라운드마다 `DECISION_REQUIRED`에서 멈췄고, 리드는 매번 같은 결정을 다시 적었다.
 
 - 일꾼 구현 라운드의 기본 시간 한도를 20분에서 40분으로 늘린다. 리뷰·상담은 20분 그대로다. `executors.<이름>.timeout_ms`를 주면 전처럼 그 값이 이긴다. agy의 `--print-timeout`도 같은 기본값을 따른다. 계기는 L03 HF 시험이다. Grok 2라운드는 20분 동안 추론 15번과 도구 71번을 썼다. 그 안에는 테스트 명령 300초와 출력 대기 180초가 있었고, 결국 끝내지 못하고 시간 초과됐다.
