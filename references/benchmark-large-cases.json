@@ -114,7 +114,7 @@
   "source_commit": "2e0a42d69af09a173025b01f5113148a323b256d",
   "objective": "Add a read-only round-diff for re-review after REDO",
   "criteria": [
-   "AC1: from round 2, begin stores the content of files that already differ from HEAD (text only, bounded) as round-base-N.json",
+   "AC1: from round 2, begin stores the content of files that already differ from HEAD (text only, bounded) as round-base-N.json; an entry whose content is not stored (binary, too large) has no text field",
    "AC2: a read-only round-diff command diffs that base against the current tree so the lead sees only what the redo round changed",
    "AC3: missing or mismatched bases are reported instead of guessed",
    "AC4: the round-diff output is not authoritative and approval still covers the cumulative diff"
