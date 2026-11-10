@@ -8,7 +8,7 @@ import {execute,consult} from '../scripts/executor-bridge.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {luna,sol,parseEvents} from '../scripts/adapters/codex.mjs';
 import {sandboxArgs} from '../scripts/codex-sandbox.mjs';
-import {config,EXECUTORS,DEFAULT_CAPS,CAP} from '../scripts/executor-config.mjs';
+import {config,EXECUTORS,DEFAULT_CAPS,CAP,consultExecutorOptions} from '../scripts/executor-config.mjs';
 import {route} from '../scripts/router.mjs';
 import {MEMBERS,vendorOf} from '../scripts/member-registry.mjs';
 import {vendorAllowed,assertVendor} from '../scripts/vendor-policy.mjs';
@@ -108,6 +108,13 @@ test('turn ceilings are configurable per difficulty with explicit override prece
  const c=config(f.root);
  assert.equal(implementDispatch({configuration:c,routing:{difficulty:'high'}},'grok').options.max_turns,80);
  assert.equal(implementDispatch({configuration:c,routing:{difficulty:'high'}},'sonnet').options.max_turns,60);
+ // Without a configured ceiling Grok implements with 60 loops; Sonnet keeps the adapter default and reviews keep theirs.
+ assert.equal(implementDispatch({configuration:c,routing:{difficulty:'medium'}},'grok').options.max_turns,60);
+ write(f,{executors:{grok:{max_turns:30}}});
+ assert.equal(implementDispatch({configuration:config(f.root),routing:{difficulty:'high'}},'grok').options.max_turns,30);
+ write(f,{});
+ assert.equal(implementDispatch({configuration:config(f.root),routing:{difficulty:'high'}},'sonnet').options.max_turns,undefined);
+ assert.equal(consultExecutorOptions(config(f.root),'grok').max_turns,undefined);
  write(f,{executors:{luna:{max_turns:80}}});assert.throws(()=>config(f.root),/TURN_LIMIT_UNSUPPORTED/);
  write(f,{executors:{grok:{max_turns_by_difficulty:{high:0}}}});assert.throws(()=>config(f.root),/configuration/);
 });

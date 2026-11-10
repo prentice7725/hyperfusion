@@ -71,6 +71,9 @@ export function taskExecutorOptions(configuration,owner,difficulty) {
  if(owner==='antigravity'&&options.models_by_difficulty?.[difficulty])options.model=options.models_by_difficulty[difficulty];
  delete options.models_by_difficulty;
  if(options.max_turns===undefined&&options.max_turns_by_difficulty?.[difficulty]!==undefined)options.max_turns=options.max_turns_by_difficulty[difficulty];
+ // Grok counts model loops, not tool calls: a fresh Grok session on a redo spent all 40 loops (67 tools) without a result.
+ // 60 loops fit the 40-minute implementation wall cap at the observed pace. Configured limits still take precedence.
+ if(options.max_turns===undefined&&MEMBER_PROFILES[owner]?.implement_max_turns)options.max_turns=MEMBER_PROFILES[owner].implement_max_turns;
  const table=DIFFICULTY_EFFORT[owner];
  if(externalFirst(configuration)&&table?.[difficulty]&&configuration?.effort_source?.[owner]==='default')options.reasoning_effort=table[difficulty];
  return options;
