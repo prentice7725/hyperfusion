@@ -4,9 +4,18 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 **Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Terra, Grok, Sonnet, Luna, Haiku, or Antigravity, with independent reviews available through Sol.
 
-> **Versions.** The package release is `0.31.0` (`package.json`). Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
+> **Versions.** The package release is `0.32.0` (`package.json`). Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
 
 ## Recent changes
+
+**0.32.0**
+
+- **Environment-only failures reach the reviewer.** When a worker finished but the host stopped some checks (every non-passing test carries `environment_error`), autopilot sends the round to a reviewer instead of stopping, whether the worker reported `blocked` or `failed`. It can pass only if this round's controller acceptance passed. The Windows TEMP workaround folder `.hf-tmp` is removed at `finish`.
+- **Workers run focused tests.** Workers run the tests that cover their change, and the whole repository suite only when the brief or `lead_feedback` asks for it. The controller still decides acceptance by running the acceptance commands.
+- **Longer, more robust worker rounds.** Implementation rounds get 40 minutes (was 20) and Grok gets 60 model loops (was 40). A round that ends without a result restarts in a fresh session, and two in a row from the same worker require another worker. A CLI that hits a usage limit is set aside for the task. A lone backslash inside a Grok result string is repaired.
+- **Rejections that do not converge go to the lead.** A delegated rejection that repeats criteria already rejected twice waits for the lead, and sending it back needs `unmet_stated_items`. Decisions recorded with `decide` reach reviewers as contract corrections.
+- **Benchmark quality scoring.** `benchmark.mjs score` runs hidden tests on a copy of the trial tree and counts edits outside the editable paths. → [benchmark](references/benchmark-pilot.md#quality-scoring-with-hidden-tests)
+- **Security fixes from an external review.** Protected-file reads stay inside the repository even through junctions and symlinks, a root `__proto__` file is tracked, and a non-string `task_id` is refused.
 
 **0.31.0**
 
@@ -17,12 +26,6 @@ English | [한국어](README.ko.md) | [日本語](README.ja.md)
 - **Optional Herdr observer panes.** Inside Herdr, each worker gets a read-only monitor pane. See [herdr](references/herdr.md).
 - **Large benchmark suite.** `--suite large` (HF-L01–L05) builds cases from real feature commits. See [benchmark](references/benchmark-pilot.md#large-suite-historical-feature-commits).
 - **Codex on Windows hosts.** A Codex round blocked by its sandbox moves the task to a non-Codex worker for the rest of the task, and the router puts Terra and Luna last when the host sandbox blocks child processes (tests cannot run). `HF_CODEX_WINDOWS_SANDBOX=mxc` selects the MXC sandbox, which lets Codex run tests on compatible Windows 11. → [Codex runtime](references/codex-runtime.md)
-
-**0.30.0**
-
-- **Codex and Antigravity leads (grade C).** A Codex CLI or agy session can now lead, not only Claude Code. `node scripts/lead-guard.mjs --print-settings --host codex|antigravity` prints the hooks. The lead model comes from host hooks or `HF_LEAD_MODEL`; without that evidence init refuses with `LEAD_MODEL_UNKNOWN`. Non-Claude leads need `review.strategy: "lead-gated-adaptive"`. Partly field-tested on Windows. See [Codex](references/hosts/codex.md) and [Antigravity](references/hosts/antigravity.md).
-- **Roles follow the lead's model family.** Implementer, specialist and reviewer seats are computed from the lead (`family-rules-v1` for non-Claude leads). Opus-led behaviour is unchanged.
-- **Review and acceptance fixes from field runs.** agy gets its result schema as a file, and a prompt that is still too long for Windows says which field to shorten. Grok findings written with `detail` are accepted. Contract corrections reach reviewers. The controller runs acceptance even when a worker reports blocked, but still refuses to approve it. Reviewers can get their own turn limit (`consult_max_turns`).
 
 ## Why HyperFusion
 

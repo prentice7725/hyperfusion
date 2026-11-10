@@ -4,9 +4,18 @@
 
 **Claude Opus 5.5は指示と検収だけを行い、コードは他のモデルが書きます。** 実装とテストをTerra・Grok・Sonnet・Luna・Haiku・Antigravityに任せ、レビューはSolに任せることもできるClaude Codeスキルです。
 
-> **バージョン。** パッケージのリリースは`0.31.0`（`package.json`）です。保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
+> **バージョン。** パッケージのリリースは`0.32.0`（`package.json`）です。保存スキーマ4、アーキテクチャ識別子`opus-lead-v0.3`、wire protocol `hyperfusion-opus-lead-v0.5`はパッケージバージョンとは別の互換性識別子です（正本は`scripts/versions.mjs`）。バージョンごとの変更は[CHANGELOG（韓国語）](CHANGELOG.md)を参照してください。
 
 ## 最近の変更
+
+**0.32.0**
+
+- **環境が原因の失敗もレビュアーに届く。** ワーカーが作業を終えたのにホストのせいで一部の検査を実行できなかった場合（通過しなかったテストすべてに`environment_error`がある場合）、ワーカーの報告が`blocked`でも`failed`でも、オートパイロットは止まらずレビュアーに送ります。承認できるのは、このラウンドのコントローラー受け入れ実行が通過したときだけです。WindowsのTEMP回避フォルダー`.hf-tmp`は`finish`で削除します。
+- **ワーカーは変更部分のテストだけを実行する。** リポジトリ全体のスイートは、briefか`lead_feedback`が求めたときだけ実行します。受け入れ判定はこれまでどおりコントローラーが受け入れコマンドを実行して行います。
+- **より長く、より頑丈なワーカーラウンド。** 実装ラウンドの時間上限は40分（以前は20分）、Grokのモデルループ上限は60（以前は40）です。結果なしで終わったラウンドは新しいセッションでやり直し、同じワーカーが2回続けてそうなると別のワーカーが担当します。使用量の上限に達したCLIはその作業の間使いません。Grokの結果文字列内の不正なバックスラッシュは修正して読みます。
+- **収束しない差し戻しはリードが決める。** 前のラウンドですでに2回差し戻された基準だけを繰り返す委任差し戻しはリードを待ち、再び差し戻すには`unmet_stated_items`が必要です。`decide`で残した決定は契約の訂正としてレビュアーに届きます。
+- **ベンチマークの品質採点。** `benchmark.mjs score`が試験ツリーのコピーで隠しテストを実行し、編集可能なパス外の変更を数えます。→ [benchmark](references/benchmark-pilot.md#quality-scoring-with-hidden-tests)
+- **外部セキュリティレビューの反映。** 保護ファイルの読み取りはジャンクションやシンボリックリンクを経由してもリポジトリの外に出ず、ルートの`__proto__`ファイルの変更を検出し、文字列でない`task_id`は拒否します。
 
 **0.31.0**
 
@@ -17,12 +26,6 @@
 - **任意のHerdr観測pane。** Herdr内で実行すると、ワーカーごとに読み取り専用のモニターpaneが開きます。→ [herdr](references/herdr.md)
 - **大きなベンチマーク課題セット。** `--suite large`（HF-L01〜L05）は実際の機能コミットから課題を作ります。→ [ベンチマーク](references/benchmark-pilot.md#large-suite-historical-feature-commits)
 - **WindowsでのCodex。** サンドボックスに阻まれたCodexのラウンドは、その作業が終わるまでCodex以外のワーカーに回ります。ホストのサンドボックスが子プロセスを止める（テストを実行できない）場合、ルーターはTerraとLunaを最後に回します。`HF_CODEX_WINDOWS_SANDBOX=mxc`でMXCサンドボックスを選ぶと、互換性のあるWindows 11でCodexがテストを実行できます。→ [Codex運用](references/codex-runtime.md)
-
-**0.30.0**
-
-- **Codex・Antigravity のリード(C 等級)。** Claude Code だけでなく、Codex CLI や agy のセッションもリードになれます。`node scripts/lead-guard.mjs --print-settings --host codex|antigravity` がフック設定を出力します。リードのモデルはホストのフックか `HF_LEAD_MODEL` から決まり、根拠がなければ init は `LEAD_MODEL_UNKNOWN` で拒否します。Claude 以外のリードには `review.strategy: "lead-gated-adaptive"` が必要です。Windows で一部を実測しました。→ [Codex](references/hosts/codex.md)、[Antigravity](references/hosts/antigravity.md)
-- **役割はリードのモデル系列に従う。** 実装者・専門家・レビュー枠をリードのモデルから計算します(Claude 以外のリードは `family-rules-v1`)。Opus リードの動作は変わりません。
-- **実測で見つかったレビュー・受け入れの問題を修正。** agy は結果スキーマをファイルで受け取り、それでも Windows のコマンドラインに収まらないときは短くすべきフィールドを示します。`detail` で書かれた Grok の指摘を受け付けます。契約の訂正がレビュアーに届きます。ワーカーが blocked と報告してもコントローラが受け入れコマンドを実行します(承認の拒否は変わりません)。レビュアーのターン上限を別に設定できます(`consult_max_turns`)。
 
 ## 作った理由
 

@@ -4,9 +4,18 @@
 
 **Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Terra·Grok·Sonnet·Luna·Haiku·Antigravity에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
 
-> **버전.** 패키지 릴리스는 `0.31.0`(`package.json`)이다. 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
+> **버전.** 패키지 릴리스는 `0.32.0`(`package.json`)이다. 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
 
 ## 최근 변경
+
+**0.32.0**
+
+- **환경 탓 실패도 리뷰어에게 간다.** 일꾼이 일을 마쳤지만 호스트 때문에 일부 검사를 못 돌렸으면(통과하지 못한 테스트마다 `environment_error`가 있으면), 일꾼이 `blocked`로 보고했든 `failed`로 보고했든 오토파일럿이 멈추지 않고 리뷰어에게 보낸다. 이 라운드의 컨트롤러 수용 실행이 통과해야만 승인할 수 있다. Windows TEMP 우회 폴더 `.hf-tmp`는 `finish`에서 지운다.
+- **일꾼은 바꾼 부분의 테스트만 돌린다.** 전체 저장소 스위트는 브리프나 `lead_feedback`이 요구할 때만 돌린다. 수용 판정은 지금처럼 컨트롤러가 수용 명령을 돌려서 한다.
+- **더 길고 튼튼한 일꾼 라운드.** 구현 라운드 시간 한도는 40분(이전 20분), Grok 모델 루프 상한은 60(이전 40)이다. 결과 없이 끝난 라운드는 새 세션으로 다시 시작하고, 같은 일꾼이 연속 두 번 그러면 다른 일꾼이 맡는다. 사용량 한도에 걸린 CLI는 그 작업 동안 쓰지 않는다. Grok 결과 문자열 안의 잘못된 백슬래시는 고쳐 읽는다.
+- **수렴하지 않는 반려는 리드가 정한다.** 앞선 라운드에서 이미 두 번 반려된 기준만 되풀이하는 위임 반려는 리드를 기다리고, 다시 돌려보내려면 `unmet_stated_items`가 필요하다. `decide`로 남긴 결정은 계약 정정으로 리뷰어에게 간다.
+- **벤치마크 품질 채점.** `benchmark.mjs score`가 시험 트리의 사본에서 숨긴 시험을 돌리고 편집 허용 경로 밖의 변경을 센다. → [benchmark](references/benchmark-pilot.md#quality-scoring-with-hidden-tests)
+- **외부 보안 검토 반영.** 보호 파일 읽기는 정션이나 심볼릭 링크를 거쳐도 저장소 밖으로 나가지 않고, 루트의 `__proto__` 파일 변경을 감지하며, 문자열이 아닌 `task_id`는 거절한다.
 
 **0.31.0**
 
@@ -17,12 +26,6 @@
 - **선택적 Herdr 관측 pane.** Herdr 안에서 실행하면 일꾼마다 읽기 전용 모니터 pane이 열린다. → [herdr](references/herdr.md)
 - **큰 벤치마크 과제 묶음.** `--suite large`(HF-L01~L05)는 실제 기능 커밋으로 과제를 만든다. → [벤치마크](references/benchmark-pilot.md#large-suite-historical-feature-commits)
 - **Windows의 Codex.** 샌드박스에 막힌 Codex 라운드는 그 작업이 끝날 때까지 Codex가 아닌 일꾼으로 넘어가고, 호스트 샌드박스가 하위 프로세스를 막으면(테스트를 못 돌림) 라우터가 Terra와 Luna를 맨 뒤로 보낸다. `HF_CODEX_WINDOWS_SANDBOX=mxc`로 MXC 샌드박스를 고르면 호환 Windows 11에서 Codex가 테스트를 돌린다. → [Codex 운영](references/codex-runtime.md)
-
-**0.30.0**
-
-- **Codex·Antigravity 리드(C 등급).** Claude Code뿐 아니라 Codex CLI나 agy 세션도 리드가 될 수 있다. `node scripts/lead-guard.mjs --print-settings --host codex|antigravity`가 훅 설정을 출력한다. 리드 모델은 호스트 훅이나 `HF_LEAD_MODEL`에서 정하고, 근거가 없으면 init이 `LEAD_MODEL_UNKNOWN`으로 거절한다. 비 Claude 리드는 `review.strategy: "lead-gated-adaptive"`가 필요하다. Windows에서 일부 실측했다. → [Codex](references/hosts/codex.md), [Antigravity](references/hosts/antigravity.md)
-- **역할은 리드 모델의 계열을 따른다.** 구현자·전문가·리뷰 자리를 리드 모델에서 계산한다(비 Claude 리드는 `family-rules-v1`). Opus 리드의 동작은 그대로다.
-- **실측에서 찾은 리뷰·수용 문제 수정.** agy는 결과 스키마를 파일로 받고, 그래도 Windows 명령줄에 넘치면 줄일 필드를 알려 준다. `detail`로 쓴 Grok 지적을 받는다. 계약 정정이 리뷰어에게 간다. 일꾼이 blocked로 보고해도 컨트롤러가 수용 명령을 돌린다(승인 거절은 그대로). 리뷰어 턴 상한을 따로 줄 수 있다(`consult_max_turns`).
 
 ## 왜 만들었나
 
