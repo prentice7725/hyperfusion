@@ -84,6 +84,11 @@ export function result(v,task_id,round) {
  if(Array.isArray(v.tests))v.tests=v.tests.map(t=>t&&t.status==='pass'&&str(t.environment_error)
   ?(({environment_error,...rest})=>({...rest,environment_note:environment_error.trim().slice(0,600)}))(t):t);
  requireThat(Array.isArray(v.tests)&&v.tests.every(x=>str(x.command)&&['pass','fail','not_run'].includes(x.status)&&(blank(x.environment_error)||(x.status!=='pass'&&str(x.environment_error)))),'Invalid tests (each test needs a command and status pass, fail or not_run; environment_error on fail or not_run needs a reason)');
+ // A worker that reports "failed" only because the host blocked its tests is in the environment-blocked state.
+ // Reclassify it so the existing gate applies: it reaches a reviewer only after this round's controller acceptance
+ // passes with shutdown proof, and delegated auto-approval still takes complete only. reported_status keeps the original
+ // (2026-11-10 L05 run 4: Terra's sandbox-only "failed" stopped autopilot and the lead reviewed the whole diff by hand).
+ if(v.status==='failed'&&environmentBlocked({...v,status:'blocked'}))Object.assign(v,{status:'blocked',reported_status:'failed'});
  requireThat(v.status!=='complete'||(!v.needs_lead_decision&&!v.unresolved.length&&!v.tests.some(t=>t.status==='fail'&&!environmentFailure(t))),'Contradictory complete result');
  // 기억 후보는 덤으로 받는 선택 항목이다. 모양이 틀려도 라운드를 실패시키지 않는다(장부에 올릴 때 걸러서 사유와 함께 남긴다).
  requireThat(v.memory_candidates===undefined||Array.isArray(v.memory_candidates),'Invalid memory_candidates (a list of up to 3)');

@@ -144,9 +144,9 @@ export function hasOption(help,option) {
 // 또는 텍스트 끝에서 끝나는 JSON 객체만 인정한다.
 export function extractResult(text) {
  if(typeof text!=='string'||!text.trim())throw Error('Executor returned no final text');
- try{return JSON.parse(text.trim());}catch{}
+ try{return parseJson(text.trim());}catch{}
  const blocks=[...text.matchAll(/```json\s*\n([\s\S]*?)```/g)];
- if(blocks.length){try{return JSON.parse(blocks.at(-1)[1]);}catch{throw Error('Executor result JSON is malformed');}}
+ if(blocks.length){try{return parseJson(blocks.at(-1)[1]);}catch{throw Error('Executor result JSON is malformed');}}
  // Grok은 중간 설명과 최종 JSON을 구분 없이 이어 붙여 낼 때가 있다("...untouched.{"task_id":...}").
  // 텍스트 끝에서 끝나는 가장 바깥 JSON 객체만 받는다. 설명만 있는 답은 계속 거절한다.
  const tail=trailingObject(text);
@@ -158,9 +158,31 @@ function trailingObject(text) {
  if(!s.endsWith('}'))return undefined;
  for(let start=s.indexOf('{');start!==-1;start=s.indexOf('{',start+1)){
   if(objectEnd(s,start)!==s.length-1)continue;
-  try{const v=JSON.parse(s.slice(start));if(v&&typeof v==='object'&&!Array.isArray(v))return v;}catch{}
+  try{const v=parseJson(s.slice(start));if(v&&typeof v==='object'&&!Array.isArray(v))return v;}catch{}
  }
  return undefined;
+}
+// Strict JSON first. Grok sometimes writes a lone backslash inside a string ("a virtual \ No newline line"),
+// which JSON rejects as a bad escape. Only that case is repaired: inside strings, a backslash that does not start a
+// valid escape becomes a literal backslash. Valid escapes, structure and every other syntax error are left alone,
+// and the repaired object still goes through the result contract (2026-11-10 L05 run 4: the round was lost to this).
+function parseJson(s) {
+ try{return JSON.parse(s);}
+ catch(error){const repaired=repairEscapes(s);if(repaired===s)throw error;return JSON.parse(repaired);}
+}
+export function repairEscapes(s) {
+ let out='',inString=false;
+ for(let i=0;i<s.length;i++){
+  const ch=s[i];
+  if(!inString){if(ch==='"')inString=true;out+=ch;continue;}
+  if(ch==='"'){inString=false;out+=ch;continue;}
+  if(ch!=='\\'){out+=ch;continue;}
+  const next=s[i+1];
+  if(next!==undefined&&'"\\/bfnrt'.includes(next)){out+=ch+next;i++;continue;}
+  if(next==='u'&&/^[0-9a-fA-F]{4}$/.test(s.slice(i+2,i+6))){out+=s.slice(i,i+6);i+=5;continue;}
+  out+='\\\\';
+ }
+ return out;
 }
 // start의 '{'와 짝이 맞는 '}' 위치. 문자열 안의 괄호와 이스케이프는 건너뛴다.
 function objectEnd(s,start) {

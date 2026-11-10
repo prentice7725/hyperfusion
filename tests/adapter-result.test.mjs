@@ -19,6 +19,19 @@ test('extractResult still rejects prose without a trailing JSON object',()=>{
  assert.throws(()=>extractResult('Result {"task_id":"x"} and then more prose.'),/no result JSON/);
  assert.throws(()=>extractResult('Done. {"task_id":"x",'),/no result JSON/);
 });
+// 2026-11-10 L05 run 4: Grok wrote a lone backslash inside a string, which JSON rejects, and the round was lost.
+test('extractResult repairs a lone backslash inside a string and keeps valid escapes',()=>{
+ const text='I will fix it.{"task_id":"t","summary":"a virtual \\ No newline line; real \\\\ No newline; tab\\tq\\"x\\" \\u00e9"}';
+ const v=extractResult(text);
+ assert.equal(v.summary,'a virtual \\ No newline line; real \\ No newline; tab\tq"x" \u00e9');
+ assert.equal(extractResult('```json\n{"a":"C:\\Users"}\n```').a,'C:\\Users');
+ assert.equal(extractResult('{"a":"bad \\x escape"}').a,'bad \\x escape');
+});
+test('extractResult does not repair anything but string escapes',()=>{
+ assert.throws(()=>extractResult('```json\n{"a":"x" \\ }\n```'),/malformed/);
+ assert.throws(()=>extractResult('Done. {"a":"x",}'),/no result JSON/);
+ assert.throws(()=>extractResult('```json\n{"a":"unterminated \\\n```'),/malformed/);
+});
 test('extractResult keeps whole-text and fenced-block precedence',()=>{
  assert.equal(extractResult('{"a":1}').a,1);
  assert.equal(extractResult('note {"a":1}\n```json\n{"a":2}\n```').a,2);
