@@ -44,11 +44,17 @@ const IMPLEMENT_RULES=[
 // 2026-11-10 L01–L05 반복 1회차: 일꾼 다섯 모두 1라운드에서 저장소 지시를 따라 전체 npm test를 돌렸고 대부분 환경 탓에 끊겼다.
 // L04에서는 그 끊긴 실행 때문에 failed가 되어 오토파일럿이 멈추고 리드 호출이 9번에서 26번으로 늘었다. 수용 판정은 컨트롤러가 한다.
 export const RUN_TESTS='Do not stop at a plan or a partial patch. Write the code, run the tests, fix what fails. Run the tests that cover what you changed; run the whole repository suite only when the brief or lead_feedback asks for it, even if repository instructions say to run full checks. The controller decides acceptance by running brief.acceptance_commands itself.';
+// 2026-11-10 L05: 바이너리 항목을 {text:null}로 남긴 구현만 숨김 시험(text===undefined)에 떨어졌고, 리뷰어도 그 차이를 보지 않았다.
+// Canon TDD 가이드의 타입별 경계값 목록을 일꾼과 리뷰어에게 같은 문장으로 준다.
+export const BOUNDARY_ITEMS='null and undefined (an absent value as a missing key versus null), empty strings, arrays and objects, zero, negative and limit numbers, every enum value and both booleans, dates at month and year ends, leap days and time zones, concurrent or repeated runs, and non-ASCII text';
+export const WORKER_BOUNDARIES=`Before reporting, check the boundaries your change handles and cover them with tests you add or run: ${BOUNDARY_ITEMS}. Skip kinds your change does not touch. Where the brief does not fix how an absent or skipped value looks, follow the surrounding code and state your choice in summary.`;
+export const REVIEW_BOUNDARIES=`Check the boundaries the change handles: ${BOUNDARY_ITEMS}. Report an unhandled boundary that a success criterion depends on. When the brief leaves a representation open (missing key versus null, for example), name the choice the code made in a minor finding instead of a blocker.`;
 const IMPLEMENT_ORDERS=[
  'You are a worker, not a planner. Execute exactly this brief until every success criterion holds, then stop.',
  'If lead_feedback is present, every item in it is a blocking order from the lead. Items with file/line point at the exact spot. Address each one; ignoring any of them fails the round.',
  'Do not commit, stage, push, deploy, delegate, touch .fusion or .git, or edit outside scope.paths.',
  RUN_TESTS,
+ WORKER_BOUNDARIES,
  'If the brief itself is wrong or insufficient, return needs_decision with the concrete question instead of guessing.',
  'Stop every command and child process before returning. Returning ends your write authority.',
  PRIOR
@@ -59,6 +65,7 @@ const CONSULT_RULES=[
  'severity: blocker breaks a success criterion, major is a real bug or risk, minor is worth fixing, nit is style.',
  'recommended_verdict is what you would tell the lead: pass, redo (same worker can fix), alternative (needs a different approach/worker), decision (requirements or architecture unclear), or none.',
  'Only report what you verified by reading the code. Say so in summary when evidence is thin, and lower confidence.',
+ REVIEW_BOUNDARIES,
  'context.contract_corrections, when present, lists contract corrections the lead recorded in earlier rounds. They amend the objective and success criteria: judge the change against the corrected contract, and do not report a defect that only contradicts the superseded wording.'
 ];
 const CONSULT_ORDERS={
