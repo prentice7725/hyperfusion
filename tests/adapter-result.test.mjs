@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {extractResult,resultSchema,consultSchema,prompt,ACCEPTANCE,RUN_TESTS} from '../scripts/adapters/common.mjs';
+import {extractResult,resultSchema,consultSchema,prompt,ACCEPTANCE,RUN_TESTS,WORKER_BOUNDARIES,REVIEW_BOUNDARIES} from '../scripts/adapters/common.mjs';
 import {commandOrders as claudeOrders} from '../scripts/adapters/claude.mjs';
 import {strictSchema} from '../scripts/adapters/codex.mjs';
 import {commandOrders,currentResult,dispatch as agyDispatch} from '../scripts/adapters/antigravity.mjs';
@@ -76,6 +76,22 @@ test('Antigravity rounds run commands synchronously and leave acceptance command
  const without=JSON.parse(commandOrders(base,[],{}));
  assert.ok(without.instructions.some(x=>/never wait for a completion notification/.test(x)));
  assert.ok(!without.instructions.some(x=>/acceptance_commands/.test(x)));
+});
+// 2026-11-10 L05: {text:null}과 키 생략의 차이를 일꾼도 리뷰어도 보지 않았다. 경계값 목록을 양쪽에 준다.
+test('workers and reviewers get the boundary checklist',()=>{
+ for(const text of [WORKER_BOUNDARIES,REVIEW_BOUNDARIES]){
+  assert.match(text,/missing key versus null/);
+  assert.match(text,/empty strings, arrays and objects/);
+  assert.match(text,/leap days and time zones/);
+ }
+ assert.match(WORKER_BOUNDARIES,/state your choice in summary/);
+ assert.match(REVIEW_BOUNDARIES,/minor finding instead of a blocker/);
+ assert.ok(JSON.parse(prompt(agyBrief({}),{owner:'terra'})).instructions.includes(WORKER_BOUNDARIES));
+ for(const mode of ['review','advisor']){
+  const p=JSON.parse(prompt({task_id:'t',consult:{id:'c1',member:'m1',mode}},{owner:'sol'}));
+  assert.ok(p.result_rules.includes(REVIEW_BOUNDARIES),mode);
+  assert.ok(!p.instructions.includes(WORKER_BOUNDARIES),mode);
+ }
 });
 test('only Codex reviewers are told they may run read-only shell commands',()=>{
  const brief={task_id:'t',consult:{id:'c1',member:'m1',mode:'review'}};

@@ -57,6 +57,10 @@ LLM 리뷰어는 맞는 코드를 결함으로 판정하는 편향이 있다. �
 - adaptive: 기록에 `evidence:false`가 붙고 패킷의 `unsupported_rejections`에 남는다. 근거 없는 반려뿐이면 추천이 비어 있다. 리드는 REDO하거나, 직접 diff를 읽고 `overrule_reason`, `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적어 APPROVE한다(`overruled_reviews`, 뒤집힌 자리는 `lead_filled_seats`). 근거가 있는 반려는 리드 혼자 뒤집지 못한다. 다른 의견이 필요하면 `LEAD_DECISION_REQUIRED`에서 구현자와 이미 판정한 리뷰어를 뺀 모델을 `executors`로 지정하고 `substitution_reason`을 적어 `delegate-review`를 다시 연다(라운드당 위임 리뷰 2회 한도 안). 교체된 반려는 지우지 않고 `superseded:true`로 남는다. 대체 리뷰어가 같은 digest에서 pass하면, 리드가 직접 diff를 읽고 `overrule_reason`, `diff_reviewed:true`, `tests_checked`, `changed_scope`를 적어 APPROVE할 수 있다. 대체 리뷰어도 반려하면 승인할 수 없다.
 - 일꾼이 미완료로 보고해 컨트롤러가 바꾼 반려와 수용 테스트 실패 반려는 그 자체가 근거다.
 
+### 경계값 확인
+
+일꾼과 리뷰어는 같은 경계값 목록을 받는다(`scripts/adapters/common.mjs`의 `BOUNDARY_ITEMS`). 목록은 null과 undefined(빈 값을 키 생략으로 나타내는지 null로 나타내는지), 빈 문자열·배열·객체, 0·음수·한계 숫자, 모든 enum 값과 두 boolean, 월말·연말·윤일·시간대, 동시·반복 실행, ASCII가 아닌 글자다. 일꾼은 변경이 다루는 경계를 테스트로 확인하고, 브리프가 빈 값의 모양을 정하지 않았으면 주변 코드를 따르고 고른 모양을 summary에 적는다. 리뷰어는 성공 기준이 기대는 경계를 처리하지 않았으면 지적한다. 브리프가 모양을 열어 둔 경우(키 생략과 null 등)에는 코드가 고른 모양을 blocker가 아니라 minor 지적으로 남긴다. 계기는 L05다. 바이너리 항목을 `{text:null}`로 남긴 구현만 숨김 시험(`text === undefined`)에 떨어졌고, 리뷰어는 그 차이를 짚지 않았다.
+
 ### 수렴하지 않는 반려 (classic)
 
 어떤 수용 기준(AC 번호, 없으면 정규화한 문장)이 앞선 라운드의 위임 리뷰에서 이미 두 번(`REVIEW_CONVERGENCE_LIMIT`) 이상 반려됐을 수 있다. 이번 위임 반려의 기준이 **모두** 그런 기준이면, `auto_apply:true`여도 그 반려는 적용하지 않는다. 대신 `pending_review`(`not_converging`: 기준, 반려된 라운드 수, 최근 6건의 이력)로 남긴다.
