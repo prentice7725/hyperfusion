@@ -18,7 +18,7 @@
 - 헤드리스는 stdin을 프롬프트로 읽지 않는다. 브리지가 제어 폴더의 `tasks/<id>/prompt-N.txt`를 만들고 `--prompt-file`로 넘긴다.
 - 인자: `--output-format json --cwd REPO --max-turns 40`, 첫 라운드 `--session-id <UUID>`(컨트롤러가 미리 발급), 이후 `--resume <UUID>`.
 - 권한: edit 허용 시 scope 경로마다 `--allow Edit(path)`, `--allow Edit(path/**)`. 항상 `--deny`로 `.git`·`.fusion`·제어 폴더 절대 경로의 Edit/Write(중첩 포함)와 git 변경 명령(`git -C dir push`처럼 옵션이 끼어든 모양 포함), curl/wget/ssh/sudo 같은 도구를 차단. `--yolo`나 `bypassPermissions`는 쓰지 않는다.
-- 스키마 강제가 없으므로 최종 `text`가 결과 JSON 자체이거나 마지막 ```json 블록이어야 한다. `stopReason`이 `end_turn`이 아니면(예: max_turns) 실패. `sessionId`가 발급한 UUID와 다르면 실패.
+- 스키마 강제가 없으므로 최종 `text`가 결과 JSON 자체이거나 마지막 ```json 블록이어야 한다. 문자열 안에서 올바른 이스케이프를 시작하지 않는 백슬래시(예: `"virtual \ No newline"`의 `\ `)만 글자 그대로의 백슬래시로 고쳐 다시 파싱한다. 다른 문법 오류는 고치지 않으며, 고친 결과도 결과 계약 검사를 그대로 거친다. `stopReason`이 `end_turn`이 아니면(예: max_turns) 실패. `sessionId`가 발급한 UUID와 다르면 실패.
 - 사용량: `usage`, `modelUsage`, `num_turns`, `total_cost_usd`(클라이언트 추정치)를 `usage-N.json`에 기록.
 
 ## Antigravity (`agy`)

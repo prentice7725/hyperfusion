@@ -5,7 +5,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fixture} from './support.mjs';
 import {read} from '../scripts/artifact.mjs';
-import {environmentBlocked} from '../scripts/contracts.mjs';
+import {environmentBlocked,result} from '../scripts/contracts.mjs';
 import {WORKER_TEMP_DIR,WINDOWS_TEMP_ORDER} from '../scripts/codex-sandbox.mjs';
 
 // 2026-11-06 L01 run 9: Terra finished the work, but the host refused the full suite and the cleanup,
@@ -24,6 +24,30 @@ test('environmentBlocked accepts only a blocked result whose non-passing tests a
  assert.equal(environmentBlocked({...base,tests:[{command:'a',status:'pass'}]}),false,'no environment error, no exception');
  assert.equal(environmentBlocked({...base,tests:[...base.tests,{command:'b',status:'fail'}]}),false,'a real failure stays blocking');
  assert.equal(environmentBlocked({...base,tests:[{command:'b',status:'not_run'}]}),false,'not_run without a reason is not an environment error');
+});
+
+// 2026-11-10 L05 run 4: Terra reported failed only because the sandbox blocked its tests; autopilot stopped and the lead reviewed by hand.
+test('a failed result whose only failures are environment errors is reclassified as blocked',()=>{
+ const base={task_id:'t',round:1,summary:'s',files_read:[],files_changed:[],commands_run:[],unresolved:[],risks:[],
+  needs_lead_decision:false,recommended_next_action:'review',tests:[{command:'a',status:'pass'},ENV_TEST]};
+ const v=result({...base,status:'failed'},'t',1);
+ assert.equal(v.status,'blocked');
+ assert.equal(v.reported_status,'failed');
+ assert.equal(environmentBlocked(v),true);
+ assert.equal(result({...base,status:'failed',tests:[...base.tests,{command:'b',status:'fail'}]},'t',1).status,'failed','a real failure stays failed');
+ assert.equal(result({...base,status:'failed',needs_lead_decision:true},'t',1).status,'failed','a decision request stays failed');
+ assert.equal(result({...base,status:'failed',tests:[{command:'a',status:'pass'}]},'t',1).status,'failed','no environment error, no reclassification');
+});
+
+// The bridge validates worker results with contracts.result before they are stored, so the round sees the reclassified result.
+test('an environment-only failed worker result can pass when the controller acceptance passed this round',t=>{
+ const f=fixture(t);f.brief.acceptance_commands=[CHECK];
+ f.begin();fs.writeFileSync(path.join(f.root,'a.txt'),'fixed');
+ f.finish(result({...envBlocked(f,['a.txt']),status:'failed'},f.brief.task_id,1));
+ assert.equal(f.state().phase,'REVIEW');
+ assert.equal(f.state().acceptance.status,'pass');
+ const s=f.review('pass');
+ assert.equal(s.reviews.at(-1).verdict,'pass');
 });
 
 test('an environment-only blocked result can pass when the controller acceptance passed this round',t=>{

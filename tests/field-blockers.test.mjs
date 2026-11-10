@@ -192,6 +192,19 @@ test('autopilot stops for the lead on an incomplete result after real acceptance
  assert.equal(s.open_consult,undefined,'no reviewer was spent');
 });
 
+// 2026-11-10 L05 run 4: a worker "failed" only because the host blocked its tests; the reviewer should judge it, not the lead.
+test('autopilot sends an environment-only failed result to the reviewer after real acceptance evidence',async t=>{
+ const f=autopilotTask(t);f.mode('edit');
+ const cli=process.env.HF_GROK_BIN;
+ fs.writeFileSync(cli,fs.readFileSync(cli,'utf8').replace("if(mode==='edit'){","if(mode==='edit'){result.status='failed';result.tests=[{command:'npm test',status:'not_run',environment_error:'the sandbox refused process-table access'}];"));
+ const out=await autopilot(f.root);
+ assert.notEqual(out.reason,'AUTOPILOT_WORKER_INCOMPLETE',JSON.stringify(out));
+ const s=f.state();
+ assert.deepEqual([s.acceptance.round,s.acceptance.status],[1,'pass']);
+ assert.equal(read(path.join(f.control,'tasks',f.brief.task_id,'raw-result-1.json')).reported_status,'failed');
+ assert.match(s.reviews.at(-1)?.commands_run?.join(' ')??'',/delegated read-only review/,JSON.stringify(out));
+});
+
 test('autopilot reports unverified acceptance when the incomplete round really failed it',async t=>{
  const f=fixture(t,{initialize:false});f.brief.acceptance_commands=[CHECK];
  run(f.root,'init',{...f.brief,executor:'grok'});
