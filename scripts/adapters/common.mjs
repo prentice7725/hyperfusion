@@ -41,7 +41,9 @@ const IMPLEMENT_RULES=[
  'Optional memory_candidates: up to 3 one- or two-sentence lessons the next agent should know (error with its cause and fix, a procedure that worked, a notable episode). Facts only, never secrets, never a copy of the brief. The lead decides whether they are kept.'
 ];
 // 셸 권한이 없는 헤드리스 agy에는 이 문장을 그대로 줄 수 없다(antigravity.mjs의 commandOrders가 바꿔 준다).
-export const RUN_TESTS='Do not stop at a plan or a partial patch. Write the code, run the tests, fix what fails.';
+// 2026-11-10 L01–L05 반복 1회차: 일꾼 다섯 모두 1라운드에서 저장소 지시를 따라 전체 npm test를 돌렸고 대부분 환경 탓에 끊겼다.
+// L04에서는 그 끊긴 실행 때문에 failed가 되어 오토파일럿이 멈추고 리드 호출이 9번에서 26번으로 늘었다. 수용 판정은 컨트롤러가 한다.
+export const RUN_TESTS='Do not stop at a plan or a partial patch. Write the code, run the tests, fix what fails. Run the tests that cover what you changed; run the whole repository suite only when the brief or lead_feedback asks for it, even if repository instructions say to run full checks. The controller decides acceptance by running brief.acceptance_commands itself.';
 const IMPLEMENT_ORDERS=[
  'You are a worker, not a planner. Execute exactly this brief until every success criterion holds, then stop.',
  'If lead_feedback is present, every item in it is a blocking order from the lead. Items with file/line point at the exact spot. Address each one; ignoring any of them fails the round.',
