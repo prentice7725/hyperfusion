@@ -140,6 +140,13 @@ test('Antigravity with an allow-list does not both allow and forbid the acceptan
  const shell=orders.find(x=>/auto-denies any shell command outside the operator allow-list/.test(x));
  assert.match(shell,/"npm test", "git diff", and never the commands in brief\.acceptance_commands/);
 });
+// 2026-11-10 L04 반복 1회차: Terra가 저장소 지시대로 전체 npm test를 돌리다 끊겨 failed를 보고했고 오토파일럿이 멈췄다.
+test('workers run focused tests and leave the whole suite to the brief',()=>{
+ assert.match(RUN_TESTS,/Run the tests that cover what you changed/);
+ assert.match(RUN_TESTS,/whole repository suite only when the brief or lead_feedback asks for it/);
+ assert.match(RUN_TESTS,/even if repository instructions say to run full checks/);
+ assert.ok(JSON.parse(prompt(agyBrief({}),{owner:'terra'})).instructions.includes(RUN_TESTS));
+});
 test('other workers keep the original run-the-tests order',()=>{
  const text=JSON.parse(prompt(agyBrief({}),{owner:'grok'})).instructions.join('\n');
  assert.match(text,/Write the code, run the tests, fix what fails/);

@@ -110,7 +110,7 @@ export function review(v) {
 // 문자열 또는 diff 위치를 짚는 {file, line?, comment}. 상담 findings를 그대로 옮겨 쓸 수 있다.
 export function feedback(v) {
  const item=x=>str(x)||(x&&typeof x==='object'&&reportedPath(x.file)&&str(x.comment)&&(x.line===undefined||(Number.isInteger(x.line)&&x.line>=0))&&Object.keys(x).every(k=>['file','line','comment'].includes(k)));
- requireThat(Array.isArray(v)&&v.length>0&&v.every(item),'Re-dispatch requires lead_feedback: concrete orders for the worker (strings or {file, line?, comment})');
+ requireThat(Array.isArray(v)&&v.length>0&&v.every(item),'Re-dispatch requires lead_feedback: a non-empty JSON array of concrete orders for the worker, each a string or {file, line?, comment}; a single string is not accepted');
  return v;
 }
 // 스키마를 강제하지 않는 Grok은 지적 본문을 issue 대신 detail로 적을 때가 있다(KF3 실측). 이름만 다른 그 필드 하나만 issue로 옮긴다.
