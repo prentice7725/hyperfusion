@@ -8,7 +8,8 @@
 {"verdict":"redo","rationale":"...","blocking_criteria":["AC2"],"commands_run":["git diff","npm test"],"independent_diff_review":true}
 ```
 
-- `pass` 외 판정은 `blocking_criteria`가 비어 있으면 거절된다.
+- `pass` 외 판정은 `blocking_criteria`가 비어 있으면 거절된다. `pass`는 `blocking_criteria`를 생략해도 되고, 생략하면 빈 목록으로 본다.
+- 입력이 모자라면 오류가 빠진 칸(`rationale`, `blocking_criteria`, `commands_run`)을 이름으로 알려 준다.
 - `pass`는 결과 status가 complete일 때만 가능하다.
 
 | 판정 | 다음 |

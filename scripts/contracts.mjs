@@ -96,7 +96,10 @@ export function result(v,task_id,round) {
 }
 export function review(v) {
  requireThat(v&&['pass','redo','alternative','escalate','decision','takeover'].includes(v.verdict),'Invalid verdict');
- requireThat(str(v.rationale)&&strs(v.blocking_criteria)&&strs(v.commands_run),'Invalid review evidence');
+ // A pass has no blockers, so an omitted list means an empty one (2026-11-11 rep 2: L01 and L03 leads each spent two calls on this).
+ if(v.verdict==='pass'&&v.blocking_criteria===undefined)v.blocking_criteria=[];
+ const missing=[!str(v.rationale)&&'rationale (non-empty string)',!strs(v.blocking_criteria)&&'blocking_criteria (array of strings)',!strs(v.commands_run)&&'commands_run (array of strings)'].filter(Boolean);
+ requireThat(!missing.length,`Invalid review evidence: ${missing.join(', ')}`);
  requireThat(v.independent_diff_review===true,'Independent diff review required');
  requireThat(v.verdict!=='pass'||v.blocking_criteria.length===0,'Cannot pass blocking criteria');
  // 반려에는 반드시 구체적인 반려 사유가 있어야 한다. "다시 해" 같은 빈 반려는 받지 않는다.

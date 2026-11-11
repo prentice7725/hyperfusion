@@ -258,3 +258,11 @@ test('recover names where the writer token comes from without printing it',t=>{
  assert.equal(f.state().phase,'EXECUTING','a refused recover changes nothing');
  assert.equal(run(f.root,'recover',{quiescent:true,reason:'worker crashed',token}).phase,'REDO');
 });
+
+test('a lead pass may omit blocking_criteria, and a bad review names the missing fields',()=>{
+ const base={verdict:'pass',rationale:'Read the diff',commands_run:['git diff'],independent_diff_review:true};
+ assert.deepEqual(contract.review({...base}).blocking_criteria,[]);
+ assert.throws(()=>contract.review({...base,verdict:'redo'}),/Invalid review evidence: blocking_criteria/);
+ assert.throws(()=>contract.review({verdict:'pass',independent_diff_review:true}),/Invalid review evidence: rationale .*commands_run/);
+ assert.throws(()=>contract.review({...base,blocking_criteria:['AC1']}),/Cannot pass blocking criteria/);
+});
