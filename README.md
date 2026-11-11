@@ -2,146 +2,94 @@
 
 English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
-**Claude Opus 5.5 plans and reviews; other models implement the work.** HyperFusion is a Claude Code skill that delegates implementation and test iteration to Terra, Grok, Sonnet, Luna, Haiku, or Antigravity, with independent reviews available through Sol.
+**Opus plans and reviews. Other models write the code.**
 
-> **Versions.** The package release is `0.32.0` (`package.json`). Storage schema 4, architecture `opus-lead-v0.3`, and wire protocol `hyperfusion-opus-lead-v0.5` are separate compatibility identifiers defined in `scripts/versions.mjs`. See [CHANGELOG](CHANGELOG.md) (Korean).
+HyperFusion is a Claude Code skill. The expensive model, Claude Opus 5.5, acts as the team lead. Other models do the implementation and testing as workers: Terra, Grok, Sonnet, Luna, Haiku and Antigravity. Reviews come from a model of another company that did not write the code.
 
-## Recent changes
+## Why
 
-**0.32.0**
+When Opus writes code, runs tests and reads long logs, it burns expensive tokens fast. A cheaper model, or a model on another subscription, can do that work.
 
-- **Environment-only failures reach the reviewer.** When a worker finished but the host stopped some checks (every non-passing test carries `environment_error`), autopilot sends the round to a reviewer instead of stopping, whether the worker reported `blocked` or `failed`. It can pass only if this round's controller acceptance passed. The Windows TEMP workaround folder `.hf-tmp` is removed at `finish`.
-- **Workers run focused tests.** Workers run the tests that cover their change, and the whole repository suite only when the brief or `lead_feedback` asks for it. The controller still decides acceptance by running the acceptance commands.
-- **Longer, more robust worker rounds.** Implementation rounds get 40 minutes (was 20) and Grok gets 60 model loops (was 40). A round that ends without a result restarts in a fresh session, and two in a row from the same worker require another worker. A CLI that hits a usage limit is set aside for the task. A lone backslash inside a Grok result string is repaired.
-- **Rejections that do not converge go to the lead.** A delegated rejection that repeats criteria already rejected twice waits for the lead, and sending it back needs `unmet_stated_items`. Decisions recorded with `decide` reach reviewers as contract corrections.
-- **Benchmark quality scoring.** `benchmark.mjs score` runs hidden tests on a copy of the trial tree and counts edits outside the editable paths. → [benchmark](references/benchmark-pilot.md#quality-scoring-with-hidden-tests)
-- **Security fixes from an external review.** Protected-file reads stay inside the repository even through junctions and symlinks, a root `__proto__` file is tracked, and a non-string `task_id` is refused.
+So the work is split:
 
-**0.31.0**
+- **Opus** decides what to build, looks at the result, and passes or rejects it.
+- **Workers** write the code and run the tests.
+- **You** talk to Opus only. Opus manages the workers.
 
-- **A-tier and B-tier workers.** A-tier (Terra medium, Grok 4.7 high, Sonnet medium) takes medium/high code, tests and refactors, in that order. B-tier (Luna, Haiku, Antigravity on Gemini 3.8 Flash high) takes low code, docs and UI. A rejected B-tier round is promoted to an A-tier worker. Sonnet and Terra implement without a grant. Review seats run Sol xhigh, Sonnet max and Grok xhigh. → [routing](references/routing.md)
-- **Autopilot at any difficulty.** `next` now suggests `autopilot` for the first round of any task whose acceptance commands init proved red, not only `low` tasks. It still stops at the lead gate and VERIFY.
-- **Cross-family close without acceptance commands.** A task without `acceptance_commands` closes only after a passing review from a model family other than the implementer's (`SAME_FAMILY_REVIEW`, `SAME_FAMILY_VERIFICATION`).
-- **Reviewers see the protected acceptance tests.** Delegated reviewers also judge whether the tests check the objective and every AC.
-- **Optional Herdr observer panes.** Inside Herdr, each worker gets a read-only monitor pane. See [herdr](references/herdr.md).
-- **Large benchmark suite.** `--suite large` (HF-L01–L05) builds cases from real feature commits. See [benchmark](references/benchmark-pilot.md#large-suite-historical-feature-commits).
-- **Codex on Windows hosts.** A Codex round blocked by its sandbox moves the task to a non-Codex worker for the rest of the task, and the router puts Terra and Luna last when the host sandbox blocks child processes (tests cannot run). `HF_CODEX_WINDOWS_SANDBOX=mxc` selects the MXC sandbox, which lets Codex run tests on compatible Windows 11. → [Codex runtime](references/codex-runtime.md)
+> Goal: **spend fewer Opus tokens with the same quality, accepting that tasks take longer.**
 
-## Why HyperFusion
+## How it works
 
-1. **Reduce lead-model token use.** Opus owns planning, rejection, and final review. Workers handle implementation and test loops. The project records lead tokens per successful task; unmeasured usage stays unknown.
-2. **One point of contact.** The user works with the lead, which assigns workers, checks their claims, sends concrete revision orders, and changes workers after repeated failures.
+```text
+  You
+    │  "build this feature"
+    ▼
+  Lead (Opus) ── writes the brief and the pass criteria (acceptance tests)
+    │
+    ▼
+  Worker (Terra, Grok, Sonnet …) ── writes code and runs tests
+    │
+    ▼
+  Controller ── compares the changed files and runs the acceptance tests itself
+    │           (a worker's "done" is never taken on trust)
+    ▼
+  Reviewer (another model that did not write the code) ── read-only review
+    │
+    ▼
+  Lead (Opus) ── pass → done / reject → back to a worker with concrete fix orders
+```
+
+- **Acceptance tests must fail first.** Before work starts, the controller runs them on the untouched code and checks that they fail. A test that already passes would prove nothing.
+- **A rejection needs a reason.** "Try again" is not accepted. The lead names which criterion (AC1, AC2 …) is unmet and why.
+- **A worker that repeats a mistake is replaced.**
+- **Only one worker edits files at a time.** Each round leaves a snapshot.
+- **Autopilot.** Worker runs and reviews proceed on their own. The lead wakes up only to decide.
+
+## Measured results
+
+We ran five large tasks (L01–L05) under the same conditions and compared the lead's (Opus) tokens. The tasks come from real feature commits in this repository. Quality was scored with hidden tests that neither the workers nor the lead saw.
+
+| Task | HyperFusion lead tokens (run 1 / run 2) | Opus alone (run 1 / run 2) |
+|---|---|---|
+| L01 | 221K / 477K | 434K / 414K |
+| L02 | 240K / 272K | 642K / 429K |
+| L03 | 623K / 736K | 1.04M / 719K |
+| L04 | 293K / 131K | 256K / 206K |
+| L05 | 149K / 307K | 307K / 411K |
+| **Total** | **1.53M / 1.92M (mean 1.73M)** | **2.68M / 2.18M (mean 2.43M)** |
+
+- **Opus tokens:** about **29% fewer** on average. Results vary a lot by task. On the small task (L04), Opus alone sometimes used fewer.
+- **Quality:** hidden tests passed 48/50 for HyperFusion (25/25 in run 1, 23/25 in run 2) and 24/25 for Opus alone (run 2).
+- **Time:** much longer. One task took 17–108 minutes with HyperFusion and 3–7 minutes with Opus alone (run 2).
+
+**How to read this, and its limits**
+- Token figures are input-equivalent. Cache writes count 1.25×, cache reads 0.1× and output 5×.
+- Worker tokens and costs are not in the table. Workers are assumed to run on another subscription or a cheaper model.
+- Each side ran twice only. The skill also changed between runs (run 2 included #112 and #114).
+- Measured on 2026-11-10 and 11-11 on one Windows 11 machine.
+- See the [benchmark document](references/benchmark-pilot.md) for the method.
 
 ## Team
 
-| Member | Configured model / CLI | Default role |
+| Member | Model | Work |
 |---|---|---|
-| **Opus (lead)** | claude-opus-5-5 | Team selection, planning, rejection, final review; no implementation while workers remain available |
-| Terra | gpt-6.1-terra (Codex) | A-tier, first pick: medium/high code, tests, refactoring (medium) |
-| Grok | Grok 4.7 CLI | A-tier implementation (high), image assets; review seat xhigh |
-| Sonnet | claude-sonnet-5-5 | A-tier implementation (medium); review seat max |
-| Luna | gpt-6-luna (Codex) | B-tier: small fixes, mechanical bulk edits, image-asset assistance |
-| Haiku | claude-haiku-5-5 | B-tier: small code changes, documentation, test additions through the Claude Code CLI |
-| Antigravity | agy (Gemini 3.8 Flash high) | B-tier: UI, frontend, documentation; no image-generation capability |
-| Sol | gpt-6.1-sol (Codex) | Reviews (xhigh) and committee advice by default; implementation only in a granted APEX round |
+| **Opus (lead)** | claude-opus-5-5 | Planning, decisions, final review. Writes no code while workers remain |
+| Terra | gpt-6.1-terra (Codex) | Medium and hard code, tests, refactoring |
+| Grok | Grok 4.7 CLI | Implementation, image assets, reviews |
+| Sonnet | claude-sonnet-5-5 | Implementation, reviews |
+| Luna | gpt-6-luna (Codex) | Small fixes, repetitive bulk edits |
+| Haiku | claude-haiku-5-5 | Easy code, documentation, extra tests |
+| Antigravity | agy (Gemini 3.8 Flash high) | UI, frontend, documentation |
+| Sol | gpt-6.1-sol (Codex) | Mostly reviews and advice |
 
-These assignments are starting points. Routing filters by capabilities and task kind/difficulty, then uses local history, time decay, and exploration. Uninstalled workers are skipped. A temporary preflight failure consumes no attempt; a missing worker executable can trigger reassignment. Model IDs are configuration defaults whose availability must be checked against the installed CLI and account.
+Only installed workers are used, and one is enough. These roles are a starting point: the lead changes them based on each worker's rejection history. → [Routing](references/routing.md)
 
-## Task flow
+## Install and use
 
-```text
-Lead: plan (brief + acceptance commands) → init → begin
-Worker: implement under a single writer lease → report results
-Controller: finish (snapshot diff, acceptance execution, process shutdown proof)
-Review: independent read-only inspection, without the worker's claims
-Lead: per-finding dispositions + pass / redo / alternative / decision / takeover → verify → CLOSE
-```
-
-Only `CLOSE` means success. Run `node scripts/fusion-state.mjs next <repository>` to get the next command and an input template with controller-known values.
-
-## Features
-
-**Assignment and teams**
-
-- **Team → approval → milestones → checkpoints.** A project plan records responsibilities before implementation. `project.mjs draft` pre-fills installed members and rejects unavailable ones. Milestones stop at checkpoints for acknowledgment. `project.mjs schedule` manages task dependencies as a frozen plan; implementation stays serial. See [project](references/project.md) and [workflow plans](references/workflow-plan.md).
-- **Capability-based routing.** Capabilities such as `code`, `ui`, `docs`, and `image-gen` determine eligibility. Local rejection history affects order; new workers get occasional exploration attempts. Configure existing adapters' models and capabilities in `executors`; a new provider requires an adapter implementation. See [routing](references/routing.md).
-- **Setup checks and contract smoke.** `setup-doctor.mjs` recommends a preset for the installed CLIs without changing configuration. `--smoke` runs a small actual task per installed worker in a temporary repository to check flags, output, and the result contract after CLI updates. Installation checks do not verify authentication or quota. See [operations](references/operations.md#doctor-계약-스모크).
-- **External-First implementation.** All A-tier and B-tier workers are automatic implementation candidates, routed by tier. Only Sol needs a grant (APEX). Automatic fallback and exploration cannot select Sol. A rejected B-tier round goes to an A-tier worker. Adaptive review (`lead-gated-adaptive`) selects this routing by default (`routing.policy:"external-first"`); classic routing uses the same tier table.
-
-**Evidence and review**
-
-- **Check worker claims.** Reported files and outcomes are checked against snapshot diffs and controller-run acceptance commands. Invalid claims require recovery.
-- **Concrete rejections.** Rejections need reasons and acceptance IDs; retries need file/line instructions. Two rejections for the same AC trigger reassignment. Ordinary workers have three rounds each; lead takeover is limited to one after available workers are exhausted.
-- **Red-first acceptance.** Acceptance commands must fail on the untouched baseline. Refactors that should already pass can use preserve verification, `verification:{kind:"preserve",protect:[...]}`, to prove protected tests/fixtures remain unchanged.
-- **AC trace and PR draft.** `acceptance_map` connects AC IDs to acceptance commands. `verification.json`, `report`, and `pr-draft.md` use the final net changes since the first worker baseline (`base-1`). Files not attributable to validated worker rounds appear separately as `unattributed_changes`. Commit and push remain user-directed.
-- **Independent delegated review.** Reviewers receive every net task change (diff up to 100,000 characters) and controller acceptance results, but not the worker's summary/test claims or earlier reviewers' conclusions. The implementer cannot review its own round. A rejection without a file/line finding is not applied as-is. See [review](references/review-protocol.md).
-- **Finding ledger and lead dispositions.** Review findings are collected with their raw evidence (`findings`), and the lead records a disposition and reason per finding. `@findings` forwards only accepted findings, and the dispositions become per-reviewer metrics. Grouping never removes raw evidence or mandatory review. See [findings](references/finding-ledger.md).
-- **Advice and committees.** One advisor can inspect a diff, or two committee members can investigate repeated failures. Before/after snapshots enforce the read-only contract; at most two slots run at once. See [consult](references/consult.md) and [read-only work](references/read-only-work.md).
-- **Inter-round drift checks.** A subsequent `begin` compares the tree with the previous `post_digest`, including writes to scoped files through Bash. A mismatch stops at `RECOVERY_REQUIRED` before acquiring a lease or consuming an attempt. Retained writes enter cumulative review but cannot count as worker contributions or receive policy approval. User edits present before the first `begin` are preserved. See [recovery](references/recovery-protocol.md).
-
-**Less work for the lead**
-
-- **Compact output and `next`.** CLI output defaults to a compact view; `--full` exposes all fields. `next` supplies the current command and known tokens/digests.
-- **Diagnose and resume.** Read-only `diagnose` reports why a task stopped with stable reason codes, and `resume` gives the next step for an interrupted task. `reconcile` runs only when granted at init. See [reconciliation](references/reconciliation.md).
-- **Optional discretion.** A task-level `delegation` grant at init lets the controller approve an eligible STANDARD round as `delegated-policy`, retry certain transient failures, and substitute unavailable reviewers from another company. Every condition must pass; otherwise the lead gate remains. See [supervisor](references/universal-supervisor.md#위임-승인-재량권).
-- **Autopilot.** Round execution and independent delegated review can run automatically within the recorded gates and budgets. `report.lead_load` distinguishes lead decisions, policy decisions, lead packets, and recovery counts.
-- **Resume after compaction.** A SessionStart hook injects the active task and next action once after a new session or compaction.
-- **Status line.** `fusion-state.mjs line`, the UserPromptSubmit hook, and `mods/hf-status` expose the same phase/worker/next-action line. See [operations](references/operations.md#작업-상태-표시).
-- **Local memory.** Approved lessons from errors, procedures, and episodes can be reused across sessions and workers without an external server. Writes and recalls require lead approval and are filtered by source and version; secret-shaped content is rejected. See [memory](references/memory.md) and [memory recall](references/memory-recall.md).
-- **Notifications.** `HF_NOTIFY_URL`, for example an ntfy endpoint, sends status-only completion and decision notifications.
-
-**Control and audit**
-
-- **Single writer.** One worker writes at a time, with round snapshots and artifacts. Interruptions enter recovery. There is no automatic commit, push, or deployment.
-- **Lead guard hooks.** PreToolUse blocks lead Edit/Write and non-read-only MCP tools while a worker owns the lease or worker budget remains; Stop reminds the lead about pending work. Bash writes are checked by snapshots and inter-round drift detection instead. See [operations](references/operations.md#리드-가드-훅).
-- **Worktree isolation and budgets.** Independent tasks can run in separate worktrees with isolated state and leases, reported cost limits, and time limits. Reviewed results are integrated separately. See [operations](references/operations.md).
-- **Local universal monitoring.** Implementation, review, and consultation share supervision (`status --monitor`, `monitor --once|--watch`). Silence is a QUIET warning, not progress or success. Monitoring makes no model calls.
-- **Linux, macOS, and Windows support.** CI currently covers Ubuntu and Windows.
-
-## Adaptive review (opt-in)
-
-Setting the review strategy to `lead-gated-adaptive` applies the review rules below and the final lead gate, and switches automatic assignment to External-First. The presets `setup-doctor` recommends when Claude and Codex are installed (`claude-codex`, `external-first`) and `hyperfusion.v03.config.example.json` use this strategy. Existing classic configurations and tasks in progress are not changed automatically. See [universal-supervisor](references/universal-supervisor.md).
-
-- **Owner-aware review.** Standard tasks keep one independent reviewer. Important/explicit-dual/risk-raised tasks use the pairs below, independently in parallel. Substitution needs a recorded reason; a supported rejection is not erased by another PASS. Conflicts and missing results stay at the lead gate. Existing assignments and approved Grok-free teams retain their previous rules.
-- **Final lead gate.** Results stop at `LEAD_DECISION_REQUIRED`; `auto_apply`, review adoption, and autopilot cannot skip it. Only an explicit task-level discretion grant can authorize policy approval, and unattributed changes block that approval.
-
-| Implementer | Important / dual / risk-raised pair |
-|---|---|
-| Grok | Sol xhigh + Sonnet max |
-| Luna / Terra | Sonnet max + Grok xhigh |
-| AGY / Haiku / Sonnet | Sol xhigh + Grok xhigh |
-| Authorized APEX Sol | Direct lead review, not a delegated pair |
-
-The lead sets criticality/strategy in the approved brief at init and checks `review_preview`. Unanimous evidence-backed NG can use an init-granted `redo_delegation`; disagreement cannot. A unanimous PASS goes to the lead unless a separate eligible approval policy was granted. Host model identity is not authenticated: `authority.model_verified:false` records this limitation. See [review-pairs](references/review-pairs.md).
-
-## Vendors and models
-
-- **AGY model family and effort.** Configure `executors.antigravity.model:"gemini-4-argon"` and `reasoning_effort:"high"` separately to select `gemini-4-argon-high`. A suffixed model keeps its effort; conflicting effort fails before launch. Resolved slugs are checked against `agy models`, and unavailable variants are not substituted. See [configuration](references/configuration.md#agy-모델-계열과-effort-분리-argon).
-- **Codex.** JSONL thread/turn usage is recorded, and a task-scoped implementation thread is resumed by exact ID only when compatible `exec resume` flags are confirmed. Reviews are always fresh and read-only. Operator-only build cache/network options and Claude/Grok turn ceilings are in [Codex runtime](references/codex-runtime.md).
-- **Vendor limits.** `allowed_vendors:["anthropic","openai"]` narrows implementation, review and consultation together; operator `HF_ALLOWED_VENDORS` is an upper bound repository configuration cannot widen. The bridge checks again before spawning. This is not a firewall/DLP or vendor attestation. New CLIs need audited adapters (`scripts/member-registry.mjs`).
-- **Default reasoning effort.** Implementation: Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 3.8 Flash high. Review seats: Sol xhigh, Sonnet max, Grok xhigh, separate from implementation effort. Override `reasoning_effort`; `null` omits the normal flag, not a mandatory role's effort.
-
-## Measurement
-
-- **Lead usage.** Generated hooks collect actual per-model usage from the local Claude Code transcript on Stop/SessionEnd/StopFailure. Missing evidence stays unknown; explicit `TASK_USAGE.json` observations take precedence. This is client-reported usage, not a billing API. See [metrics policy](references/metrics-policy.md).
-- **Benchmarks.** `benchmark.mjs cases` lists fixed pilot cases; `compare BASELINE.json HYPERFUSION.json` compares actual paired metrics. Failed tasks stay in cost numerators, and missing pairs or unknown usage suppress savings claims. `--suite large` selects cases built from real feature commits. First headless runs, one per case: on the small core cases the HyperFusion lead used 1.75–3× the solo lead tokens; on one large case (HF-L01) it used 22% fewer lead tokens but about 1.5× the known total cost and 1.8× the time. These are single runs, so no savings are claimed. See [repeated benchmark](references/benchmark-pilot.md).
-- **Usage and quota.** Include failed calls, reviews, consultations, and APEX implementation; unknown values remain `null`. `quota-policy.mjs record` accepts operator records; `collect-codex` reads local Codex `rate_limits` without a network/model call. Expired records become unknown.
-
-## Security
-
-These are **cooperative controls, not an OS sandbox**.
-
-- Control state, briefs, and snapshots live outside the workspace at `~/.hyperfusion/state/` (`HF_STATE_DIR` overrides it).
-- Snapshots watch Git settings/hooks, linked worktree `config.worktree`, `.env`, self-ignored `.gitignore`, `node_modules/.bin`, and the agy workspace folders (`.agents/`, `.agent/`, `_agents/`, `_agent/`). Before each controller Git call, effective configuration including conditional includes and worktree settings is re-read and runnable drivers are neutralized. Unreadable configuration stops with `GIT_CONFIG_UNREADABLE`.
-- The bridge reconstructs and validates dispatch requests before launch and passes only required worker environment variables.
-- Bash rules accept narrow test/lint/build command shapes. Relaxations such as disabling an implementation sandbox require operator environment variables. See [configuration](references/configuration.md#보안-관련-환경변수).
-- Read-only reviews and consultations are checked through before/after snapshots. AGY's `--sandbox` restricts its terminal, not its file-write tools.
-
-Workers with shell access can write outside the repository; snapshots cannot detect those writes. Ordinary ignored dependency contents, such as `node_modules/dep/index.js`, are not snapshot-hashed. Before controller acceptance execution, ignored-file metadata is compared and changes block execution unless explicitly handled. See [operations](references/operations.md#수용-테스트-자동-실행). For legacy in-workspace control storage, run `fusion-state.mjs migrate <repository>`; other incompatible schemas require the documented archive procedure. See [configuration](references/configuration.md) and [recovery](references/recovery-protocol.md).
-
-## Installation and usage
-
-Requirements: Node.js 24+, Git with `git config --show-scope --includes`, a **Git repository with an initial commit** (a remote is optional), and at least one installed/authenticated worker CLI among `claude`, `grok`, `agy`, and `codex`.
+You need:
+- Node.js 24 or later
+- a Git repository with an initial commit (no remote needed)
+- at least one of `claude`, `grok`, `agy` or `codex`, installed and signed in
 
 ```sh
 # Linux / macOS
@@ -153,56 +101,59 @@ git clone https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyper
 git clone https://github.com/prentice7725/hyperfusion.git "$env:USERPROFILE\.claude\skills\hyperfusion"
 ```
 
-Select Opus 5.5 in Claude Code, then invoke:
+Pick Opus 5.5 in Claude Code and run:
 
 ```text
-/hyperfusion <task description>
-/hyperfusion --executor sonnet <task description>
+/hyperfusion <task>
+/hyperfusion --executor sonnet <task>
 ```
 
-The lead follows [SKILL.md](SKILL.md). From the installed skill directory, run `node scripts/setup-doctor.mjs <repository>` to check worker CLI support. Configuration belongs to the target repository's `hyperfusion.config.json`; see `hyperfusion.config.example.json`.
+- **Check the setup:** `node scripts/setup-doctor.mjs <repository>` looks at the installed CLIs and recommends a configuration.
+- **Configuration:** `hyperfusion.config.json` in the target repository. See `hyperfusion.config.example.json`.
+- **Lead guard hooks (recommended):** merge the `hooks` printed by `npm run guard:settings` into `~/.claude/settings.json`. They stop the lead from editing files while a worker is on the job. → [Details](references/details.en.md#installation-and-usage)
+- **What next:** at any stage, `node scripts/fusion-state.mjs next <repository>` prints the next command.
 
-**Lead guard hooks.** Run `npm run guard:settings` in the skill directory and merge the printed `hooks` into `~/.claude/settings.json` or the target repository's `.claude/settings.json`. The output uses absolute paths and includes PreToolUse, Stop, SessionStart, UserPromptSubmit, PreModelSwitch, PostModelSwitch, SessionEnd and StopFailure. Blocking guard commands carry `onFailure: "block"` (Claude Code v2.1.295+), so a crashed or timed-out guard blocks the tool call. Existing installs must merge the new usage commands, the MCP tool guard (`mcp__.*`) entry and the model-switch entries as well; preserve unrelated hooks and avoid duplicating existing commands.
+## Safety
 
-**Autopilot.** Run `node scripts/fusion-state.mjs autopilot <repository>` for an initialized task; `next` suggests it for the first round at any difficulty when these conditions hold. Acceptance commands must have a recorded red baseline, or a recorded green baseline for preserve verification. Classic review also requires `review.auto_apply:true`; adaptive review stops at the lead gate regardless of that setting. VERIFY, design decisions, recovery, BLOCKED, and takeover return control to the lead. Explicit discretion can continue eligible policy-approved work through verification to CLOSE. See [operations](references/operations.md#오토파일럿).
+- Text sent to workers has email, key and password patterns masked.
+- Task state lives outside the repository in `~/.hyperfusion/state/`.
+- Nothing is committed, pushed or deployed automatically.
 
-Acceptance execution also requires child-process shutdown proof. Missing proof stops at RECOVERY_REQUIRED. Time limits cover acceptance and final verification too.
+**These are collaboration rules, not an OS sandbox.** A worker with a shell can reach files outside the repository. For company code, set your own file-access and data-transfer policy. → [Security details](references/details.en.md#security)
 
-Outgoing brief/diff/prior-result text masks email, IP, key, and password patterns by default. Vendor authentication variables are retained. This is not DLP for repository files that a CLI reads directly; apply your own file-access and external-transfer policies. See [transmission scope](references/operations.md#외부-전송-마스킹).
+## More to read
 
-## Documentation
+- [Details](references/details.en.md): all features, adaptive review, vendor settings, measurement, security, tests
+- [CHANGELOG](CHANGELOG.md) (Korean): changes by version. The current package version is `0.32.0`.
+- New here? Start with [runtime](references/runtime.md) (commands) and [configuration](references/configuration.md) (settings). The English lead summary is [executor-quickstart](references/executor-quickstart.md).
 
-Reference documents are primarily Korean. Start with [runtime](references/runtime.md) and [configuration](references/configuration.md); the English [executor quickstart](references/executor-quickstart.md) is a short map for the lead.
-
-| Topic | References |
+| Topic | Documents |
 |---|---|
-| State and commands | [runtime](references/runtime.md), [state-actions](references/state-actions.md), [state-schema](references/state-schema.json), [operations](references/operations.md) |
-| Configuration | [configuration](references/configuration.md), [codex-runtime](references/codex-runtime.md) |
-| Workers and routing | [executor-runtime](references/executor-runtime.md), [routing](references/routing.md), [herdr](references/herdr.md) (optional observer panes) |
-| Contracts | [delegation-protocol](references/delegation-protocol.md), [result-protocol](references/result-protocol.md) |
-| Review | [review-protocol](references/review-protocol.md), [review-pairs](references/review-pairs.md), [finding-ledger](references/finding-ledger.md), [consult](references/consult.md), [read-only-work](references/read-only-work.md), [universal-supervisor](references/universal-supervisor.md) |
-| Failure and recovery | [failure-protocol](references/failure-protocol.md), [recovery-protocol](references/recovery-protocol.md), [reconciliation](references/reconciliation.md) |
-| Projects, memory, metrics | [project](references/project.md), [workflow-plan](references/workflow-plan.md), [memory](references/memory.md), [memory-recall](references/memory-recall.md), [metrics-policy](references/metrics-policy.md), [benchmark-pilot](references/benchmark-pilot.md) |
-| Experimental tools | [evidence-retrieval-experiment](references/evidence-retrieval-experiment.md), [controller-overhead](references/controller-overhead.md) |
-| Design and historical records | [app-handoff-design](references/app-handoff-design.md), [archive](references/archive/README.md) |
+| State and commands | [runtime](references/runtime.md) · [state-actions](references/state-actions.md) · [operations](references/operations.md) |
+| Configuration | [configuration](references/configuration.md) · [codex-runtime](references/codex-runtime.md) |
+| Workers | [executor-runtime](references/executor-runtime.md) · [routing](references/routing.md) · [herdr](references/herdr.md) |
+| Briefs and results | [delegation-protocol](references/delegation-protocol.md) · [result-protocol](references/result-protocol.md) |
+| Review | [review-protocol](references/review-protocol.md) · [review-pairs](references/review-pairs.md) · [finding-ledger](references/finding-ledger.md) · [consult](references/consult.md) · [universal-supervisor](references/universal-supervisor.md) |
+| Failure and recovery | [failure-protocol](references/failure-protocol.md) · [recovery-protocol](references/recovery-protocol.md) · [reconciliation](references/reconciliation.md) |
+| Projects, memory, metrics | [project](references/project.md) · [memory](references/memory.md) · [metrics-policy](references/metrics-policy.md) · [benchmark-pilot](references/benchmark-pilot.md) |
 
-## Tests and limitations
+## Tests and limits
 
 ```sh
 npm test
 ```
 
-Automated tests cover state transitions, adapters, routing, reviews, discretion/recovery, memory, project workflows, security, redaction, and autopilot. Live CLI tests require `HF_LIVE=1`. CI is configured for Ubuntu/Windows × Node 24. Windows runs test files serially (a full run on one Windows machine takes hours), so CI splits the Windows job across four runners (`HF_TEST_SHARD`); other platforms use concurrency 2. Tests creating actual orphan processes run separately after the main suite. `npm run spawns` counts subprocesses by command and calling site.
+- CI runs on Ubuntu and Windows with Node 24.
+- The `grok`, `agy`, `claude` and `codex` in the tests are fake CLIs. The tests do not check real model quality, sign-in or image generation.
+- The only real-model measurements are the [measured results](#measured-results) above.
 
-**The test `grok`/`agy`/`claude`/`codex` executables are fake CLIs.** These tests do not validate live model quality, authentication, or image generation. Missing required CLI flags cause `ADAPTER_UNAVAILABLE` before execution. Adapter flags follow the cited [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), and [Claude Code](https://code.claude.com/docs/en/headless) documentation. Transient-error classification is based on fake-CLI coverage; inspect early live `recovery-*.json` reasons. Real-model cost/time savings are unmeasured.
+License: [MIT](LICENSE).
 
-Licensed under [MIT](LICENSE).
+## Inspired by
 
-## References and inspiration
-
-- [Orca](https://github.com/stablyai/orca), [Paseo](https://github.com/getpaseo/paseo): advisors/committees, located feedback, notifications. Their worktree competition model was not adopted.
-- [AnchorMind](https://github.com/jinho-von-choi/memento-mcp): memory ideas including duplicate merging, contradiction review, decay, and provenance; implemented locally rather than integrated as a service.
-- [cli-dispatch](https://github.com/rbinar/cli-dispatch): AGY model-name checks, post-compaction context, and local Codex quota reading. Its patch/worktree approach was not adopted.
-- [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills): from doubt-driven development, "do not hand the reviewer your claim" and its finding classes (contract misread, actionable, trade-off, noise).
-- [cursor/plugins pstack](https://github.com/cursor/plugins/tree/main/pstack): interrogate's lead judgment (Act on / Consider / Noted / Dismissed, with visible dismissal reasons) shaped per-finding dispositions.
-- [mattpocock/skills](https://github.com/mattpocock/skills): standards-vs-spec review axes and dependency-graph task breakdown were reviewed. Parallel implementation was not adopted because of the single-writer rule.
+- [Orca](https://github.com/stablyai/orca), [Paseo](https://github.com/getpaseo/paseo): advisor/committee consults, line-level feedback, notifications
+- [AnchorMind](https://github.com/jinho-von-choi/memento-mcp): memory-layer design (merging duplicates, contradiction review, decay, provenance)
+- [cli-dispatch](https://github.com/rbinar/cli-dispatch): agy model-name checks, state injection after compaction, reading Codex quota
+- [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills): keeping the worker's claims from reviewers, finding categories
+- [cursor/plugins pstack](https://github.com/cursor/plugins/tree/main/pstack): per-finding dispositions (Act on / Consider / Noted / Dismissed)
+- [mattpocock/skills](https://github.com/mattpocock/skills): reviews split into standards and spec, task breakdown by dependency graph
