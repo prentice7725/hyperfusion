@@ -2,146 +2,94 @@
 
 [English](README.md) | 한국어 | [日本語](README.ja.md)
 
-**Claude Opus 5.5는 지시하고 검수만 하고, 코드는 다른 모델들이 쓴다.** 구현과 테스트를 Terra·Grok·Sonnet·Luna·Haiku·Antigravity에게 시키고, 리뷰는 Sol에게 맡길 수 있는 Claude Code 스킬이다.
+**Opus는 계획하고 검수만 한다. 코드는 다른 모델이 쓴다.**
 
-> **버전.** 패키지 릴리스는 `0.32.0`(`package.json`)이다. 저장 스키마 4, 아키텍처 식별자 `opus-lead-v0.3`, wire protocol `hyperfusion-opus-lead-v0.5`는 패키지 버전과 별개의 호환성 식별자다(정본은 `scripts/versions.mjs`). 버전별 변경은 [CHANGELOG](CHANGELOG.md).
-
-## 최근 변경
-
-**0.32.0**
-
-- **환경 탓 실패도 리뷰어에게 간다.** 일꾼이 일을 마쳤지만 호스트 때문에 일부 검사를 못 돌렸으면(통과하지 못한 테스트마다 `environment_error`가 있으면), 일꾼이 `blocked`로 보고했든 `failed`로 보고했든 오토파일럿이 멈추지 않고 리뷰어에게 보낸다. 이 라운드의 컨트롤러 수용 실행이 통과해야만 승인할 수 있다. Windows TEMP 우회 폴더 `.hf-tmp`는 `finish`에서 지운다.
-- **일꾼은 바꾼 부분의 테스트만 돌린다.** 전체 저장소 스위트는 브리프나 `lead_feedback`이 요구할 때만 돌린다. 수용 판정은 지금처럼 컨트롤러가 수용 명령을 돌려서 한다.
-- **더 길고 튼튼한 일꾼 라운드.** 구현 라운드 시간 한도는 40분(이전 20분), Grok 모델 루프 상한은 60(이전 40)이다. 결과 없이 끝난 라운드는 새 세션으로 다시 시작하고, 같은 일꾼이 연속 두 번 그러면 다른 일꾼이 맡는다. 사용량 한도에 걸린 CLI는 그 작업 동안 쓰지 않는다. Grok 결과 문자열 안의 잘못된 백슬래시는 고쳐 읽는다.
-- **수렴하지 않는 반려는 리드가 정한다.** 앞선 라운드에서 이미 두 번 반려된 기준만 되풀이하는 위임 반려는 리드를 기다리고, 다시 돌려보내려면 `unmet_stated_items`가 필요하다. `decide`로 남긴 결정은 계약 정정으로 리뷰어에게 간다.
-- **벤치마크 품질 채점.** `benchmark.mjs score`가 시험 트리의 사본에서 숨긴 시험을 돌리고 편집 허용 경로 밖의 변경을 센다. → [benchmark](references/benchmark-pilot.md#quality-scoring-with-hidden-tests)
-- **외부 보안 검토 반영.** 보호 파일 읽기는 정션이나 심볼릭 링크를 거쳐도 저장소 밖으로 나가지 않고, 루트의 `__proto__` 파일 변경을 감지하며, 문자열이 아닌 `task_id`는 거절한다.
-
-**0.31.0**
-
-- **A급·B급 일꾼.** A급(Terra medium, Grok 4.7 high, Sonnet medium)이 이 순서로 중·고난도 코드, 테스트, 리팩터를 맡고, B급(Luna, Haiku, Gemini 3.8 Flash high의 Antigravity)이 쉬운 코드, 문서, UI를 맡는다. B급 라운드가 반려되면 A급으로 넘긴다. Sonnet과 Terra는 승인 없이 구현한다. 리뷰 자리는 Sol xhigh, Sonnet max, Grok xhigh다. → [배치](references/routing.md)
-- **모든 난이도에서 오토파일럿.** 수용 명령이 init에서 red로 확인된 작업이면 `low`가 아니어도 `next`가 첫 라운드에 `autopilot`을 권한다. 리드 게이트와 VERIFY에서 멈추는 것은 그대로다.
-- **수용 명령 없는 작업은 다른 계열 리뷰로 닫힌다.** `acceptance_commands`가 없는 작업은 구현자와 다른 계열 모델의 통과 리뷰가 있어야 CLOSE된다(`SAME_FAMILY_REVIEW`, `SAME_FAMILY_VERIFICATION`).
-- **리뷰어가 보호된 수용 테스트를 본다.** 위임 리뷰어가 테스트가 objective와 모든 AC를 제대로 검사하는지도 판정한다.
-- **선택적 Herdr 관측 pane.** Herdr 안에서 실행하면 일꾼마다 읽기 전용 모니터 pane이 열린다. → [herdr](references/herdr.md)
-- **큰 벤치마크 과제 묶음.** `--suite large`(HF-L01~L05)는 실제 기능 커밋으로 과제를 만든다. → [벤치마크](references/benchmark-pilot.md#large-suite-historical-feature-commits)
-- **Windows의 Codex.** 샌드박스에 막힌 Codex 라운드는 그 작업이 끝날 때까지 Codex가 아닌 일꾼으로 넘어가고, 호스트 샌드박스가 하위 프로세스를 막으면(테스트를 못 돌림) 라우터가 Terra와 Luna를 맨 뒤로 보낸다. `HF_CODEX_WINDOWS_SANDBOX=mxc`로 MXC 샌드박스를 고르면 호환 Windows 11에서 Codex가 테스트를 돌린다. → [Codex 운영](references/codex-runtime.md)
+HyperFusion은 Claude Code 스킬이다. 비싼 Claude Opus 5.5가 팀장(리드)을 맡고, 실제 구현과 테스트는 Terra·Grok·Sonnet·Luna·Haiku·Antigravity 같은 다른 모델(일꾼)이 한다. 리뷰는 구현하지 않은 다른 회사 모델이 맡는다.
 
 ## 왜 만들었나
 
-1. **토큰 절약.** 비싼 모델(Opus)이 코드를 쓰고 테스트를 돌리며 로그를 읽는 데 토큰을 태우는 건 낭비다. Opus는 계획, 반려, 최종 검수만 하고, 구현과 테스트 반복은 더 싼 모델이나 다른 구독의 모델이 한다. 성공한 작업당 Opus 토큰을 핵심 지표로 재고 기록한다.
-2. **리드만 상대하면 된다.** 여러 에이전트를 한 화면에서 관리하는 도구는 이미 있다. 이 스킬은 반대로 사용자가 **Opus 하나만 상대하고, 일꾼 관리는 Opus가 한다.** 일꾼의 "다 했어요"를 믿지 않고, 빈 반려 없이 구체적인 명령서로 갈구고, 같은 실수를 두 번 하면 다른 일꾼으로 교체한다.
+Opus가 코드를 쓰고, 테스트를 돌리고, 긴 로그를 읽으면 비싼 토큰이 빨리 닳는다. 그 일은 더 싼 모델이나 다른 구독의 모델도 할 수 있다.
+
+그래서 일을 나눈다.
+
+- **Opus:** 무엇을 할지 정하고, 결과를 보고, 통과 또는 반려를 정한다.
+- **일꾼:** 코드를 쓰고 테스트를 돌린다.
+- **사용자:** Opus 하나와만 이야기한다. 일꾼 관리는 Opus가 한다.
+
+> 목표: **Opus 토큰은 줄이고, 품질은 그대로. 대신 시간은 더 걸려도 된다.**
+
+## 어떻게 일하나
+
+```text
+  사용자
+    │  "이 기능 만들어 줘"
+    ▼
+  리드 (Opus) ── 작업지시서와 합격 기준(수용 테스트)을 쓴다
+    │
+    ▼
+  일꾼 (Terra, Grok, Sonnet …) ── 코드를 쓰고 테스트를 돌린다
+    │
+    ▼
+  컨트롤러 ── 바뀐 파일을 직접 비교하고, 수용 테스트를 직접 돌린다
+    │           (일꾼의 "다 했어요"는 믿지 않는다)
+    ▼
+  리뷰어 (구현하지 않은 다른 모델) ── 변경을 읽기 전용으로 검토한다
+    │
+    ▼
+  리드 (Opus) ── 통과 → 끝 / 반려 → 구체적인 수정 지시와 함께 다시 일꾼에게
+```
+
+- **수용 테스트는 먼저 실패해야 한다.** 시작할 때 손대지 않은 코드로 테스트를 돌려, 실패하는지 먼저 확인한다. 처음부터 통과하는 엉터리 관문을 막기 위해서다.
+- **반려에는 이유가 있어야 한다.** "다시 해"는 안 된다. 어느 기준(AC1, AC2…)이 왜 안 됐는지 적어야 한다.
+- **같은 실수를 두 번 하면 일꾼을 바꾼다.**
+- **한 번에 한 일꾼만 파일을 고친다.** 라운드마다 스냅샷을 남긴다.
+- **오토파일럿.** 일꾼 실행부터 리뷰까지는 자동으로 돌고, 리드는 판정할 때만 깨어난다.
+
+## 측정 결과
+
+큰 과제 5개(L01~L05)를 같은 조건으로 돌려 리드(Opus) 토큰을 비교했다. 과제는 이 저장소의 실제 기능 커밋으로 만들었고, 품질은 일꾼과 리드가 보지 못한 숨김 시험으로 채점했다.
+
+| 과제 | HyperFusion 리드 토큰 (1회 / 2회) | Opus 혼자 (1회 / 2회) |
+|---|---|---|
+| L01 | 221K / 477K | 434K / 414K |
+| L02 | 240K / 272K | 642K / 429K |
+| L03 | 623K / 736K | 1.04M / 719K |
+| L04 | 293K / 131K | 256K / 206K |
+| L05 | 149K / 307K | 307K / 411K |
+| **합계** | **1.53M / 1.92M (평균 1.73M)** | **2.68M / 2.18M (평균 2.43M)** |
+
+- **Opus 토큰:** 평균 **약 29% 적게** 썼다. 다만 과제마다 차이가 크다. 작은 과제(L04)에서는 혼자 하는 쪽이 더 적게 쓴 적도 있다.
+- **품질:** 숨김 시험 통과는 HyperFusion 48/50(1회 25/25, 2회 23/25), Opus 혼자 24/25(2회)였다.
+- **시간:** 훨씬 오래 걸린다. 과제 하나에 HyperFusion은 17~108분, Opus 혼자는 3~7분(2회)이었다.
+
+**읽는 법과 한계**
+- 토큰 수치는 입력 환산값이다. 캐시 쓰기는 1.25배, 캐시 읽기는 0.1배, 출력은 5배로 쳐서 더했다.
+- 일꾼 모델이 쓴 토큰과 비용은 이 표에 없다. 일꾼은 다른 구독이나 더 싼 모델을 쓴다고 가정했다.
+- 각각 두 번씩만 돌렸다. 회차 사이에 스킬도 고쳤다(2회차에는 #112, #114가 들어갔다).
+- 2026-11-10~11, Windows 11 한 대에서 측정했다.
+- 방법은 [벤치마크 문서](references/benchmark-pilot.md)에 있다.
 
 ## 팀
 
-| 팀원 | 모델 | 기본 역할 |
+| 팀원 | 모델 | 맡는 일 |
 |---|---|---|
-| **Opus (리드)** | claude-opus-5-5 | 팀 구성, 계획, 반려, 최종 검수. 일꾼이 남아 있는 한 코드를 쓰지 않는다 |
-| Terra | gpt-6.1-terra (Codex) | A급 1순위: 중·고난도 코드, 테스트, 리팩터 (medium) |
-| Grok | Grok 4.7 CLI | A급 구현(high), 이미지 애셋. 리뷰 자리는 xhigh |
-| Sonnet | claude-sonnet-5-5 | A급 구현(medium). 리뷰 자리는 max |
-| Luna | gpt-6-luna (Codex) | B급: 소규모 수정, 기계적 대량 편집, 이미지 애셋 보조 |
-| Haiku | claude-haiku-5-5 | B급: 쉬운 코드, 문서, 테스트 보강 (Sonnet과 같은 Claude Code CLI) |
-| Antigravity | agy (Gemini 3.8 Flash high) | B급: UI·프론트엔드, 문서 (이미지 생성 기능 없음) |
-| Sol | gpt-6.1-sol (Codex) | 기본은 리뷰(xhigh)·위원회 상담. APEX 승인 라운드에서만 구현 가능 |
+| **Opus (리드)** | claude-opus-5-5 | 계획, 판정, 최종 검수. 일꾼이 남아 있으면 코드를 쓰지 않는다 |
+| Terra | gpt-6.1-terra (Codex) | 어렵거나 중간 난이도의 코드, 테스트, 리팩터 |
+| Grok | Grok 4.7 CLI | 구현, 이미지 애셋, 리뷰 |
+| Sonnet | claude-sonnet-5-5 | 구현, 리뷰 |
+| Luna | gpt-6-luna (Codex) | 작은 수정, 반복적인 대량 편집 |
+| Haiku | claude-haiku-5-5 | 쉬운 코드, 문서, 테스트 보강 |
+| Antigravity | agy (Gemini 3.8 Flash high) | UI, 프론트엔드, 문서 |
+| Sol | gpt-6.1-sol (Codex) | 주로 리뷰와 상담 |
 
-기본 배치는 출발점이다. 프로젝트마다 리드가 바꾸고, 종류·난이도별 실적에 시간 감쇠와 재탐색을 적용해 배치를 조정한다. 설치되지 않은 일꾼은 건너뛴다. 실행 전 CLI 확인이 일시적으로 실패하면 시도 예산을 쓰지 않고 재시도할 수 있고, 담당 일꾼의 실행 파일이 사라지면 다른 일꾼으로 교체할 수 있다. 모델 ID는 설정 기본값이며 실제 CLI·계정의 지원 여부는 따로 확인한다.
-
-## 한 작업의 흐름
-
-```text
-리드: 계획(brief + 수용 명령) → init → begin
-일꾼: 단일 writer로 구현 → 결과 보고
-컨트롤러: finish(스냅샷 diff, 수용 테스트 직접 실행, 프로세스 종료 확인)
-리뷰: 구현하지 않은 다른 모델이 일꾼의 주장 없이 읽기 전용으로 검토
-리드: 지적별 처분 + 판정(pass / redo / alternative / decision / takeover) → verify → CLOSE
-```
-
-CLOSE까지 가야 성공이다. 어느 단계에서든 지금 칠 명령은 `node scripts/fusion-state.mjs next <저장소>`가 알려 준다.
-
-## 특징
-
-**배치와 팀**
-
-- **팀 구성 → 승인 → 마일스톤 → 체크포인트.** 기획 문서를 읽은 리드가 누가 무엇을 맡을지 팀을 짜서 보고하고, 승인 전에는 작업이 시작되지 않는다. `project.mjs draft`가 설치된 팀원으로 초안을 채우고 미설치 팀원은 거절한다. 마일스톤이 끝나면 보고하고, 확인을 받아야 다음으로 넘어간다. `project.mjs schedule`은 작업 의존성을 고정 계획으로 관리한다(구현은 직렬). → [project](references/project.md) · [작업 계획](references/workflow-plan.md)
-- **능력 기반 배치.** 이름이 아니라 능력(`caps`: code, ui, docs, image-gen…)으로 후보를 거르고, 내 저장소의 실적(반려율)으로 순서를 정한다. 실적 없는 신입은 가끔 먼저 시켜 본다. 기존 어댑터의 모델 ID·능력은 설정으로 바꾸고, 새 제공자는 별도 어댑터 구현이 필요하다. → [routing](references/routing.md)
-- **설치 상태 점검과 계약 스모크.** `setup-doctor.mjs`가 설정을 바꾸지 않고 설치된 CLI에 맞는 프리셋을 추천한다. `--smoke`는 일꾼마다 임시 저장소에서 아주 작은 작업을 실제로 시켜 CLI 플래그·출력 형식·결과 계약이 맞는지 본다. 설치 확인은 인증·잔량 검증이 아니다. → [operations](references/operations.md#doctor-계약-스모크)
-- **External-First 배치.** A급·B급 일꾼 모두 자동 구현 후보이며 등급별로 배치한다. grant가 필요한 일꾼은 Sol(APEX 라운드)뿐이고, 자동 폴백·신입 우대는 Sol을 고르지 않는다. B급 라운드가 반려되면 A급으로 넘긴다. 적응형 리뷰(`lead-gated-adaptive`)를 켜면 이 배치가 기본이 된다(`routing.policy:"external-first"`). classic 배치도 같은 등급표를 쓴다.
-
-**일꾼을 믿지 않고 확인하기**
-
-- **일꾼 말은 믿지 않는다.** 변경 파일, 테스트 통과 주장은 스냅샷 diff와 컨트롤러의 재실행으로만 인정한다. 거짓 신고는 복구 단계로 간다.
-- **엄격한 반려.** 반려에는 사유가 필수고, 재지시에는 파일·줄 단위의 명령서가 필수다. 같은 수용 기준(AC1…)으로 두 번 반려되면 일꾼을 교체한다. 일꾼당 3라운드, 리드 takeover는 모든 일꾼이 소진된 뒤 1회뿐이다.
-- **red-first 수용 테스트.** 컨트롤러가 수용 명령을 직접 돌린다. 시작할 때 손대지 않은 트리에서 실패하는지 먼저 확인해서, 처음부터 통과하는 엉터리 관문을 막는다. 리팩터링처럼 처음부터 통과해야 정상인 작업은 **보존 검증**(`verification:{kind:"preserve",protect:[...]}`)으로, 테스트·픽스처가 작업 내내 바뀌지 않았음을 컨트롤러가 스냅샷으로 증명한다.
-- **AC 추적표와 PR 초안.** `acceptance_map`으로 수용 기준(AC1…)과 그걸 증명하는 명령을 잇는다. 끝나면 AC별 판정표와 PR 설명 초안(`pr-draft.md`)을 남긴다. 변경 목록은 첫 일꾼 시작(`base-1`) 대비 최종 누적 변경이고, 일꾼 라운드에 귀속되지 않는 파일은 `unattributed_changes`로 별도 표시한다. 커밋·푸시는 사용자가 지시한다.
-- **독립 리뷰 위임.** 라운드 리뷰를 Sol 같은 다른 모델이 읽기 전용으로 한다. 리뷰어는 누적 diff(최대 100,000자)와 컨트롤러가 돌린 수용 결과를 받고, 일꾼의 요약·테스트 보고와 이전 리뷰어의 결론은 받지 않는다. 구현한 모델은 자기 리뷰를 할 수 없다. 근거(파일·줄) 없는 반려는 그대로 적용되지 않는다. → [review](references/review-protocol.md)
-- **지적 원장과 리드 처분.** 리뷰 지적을 원본 근거와 함께 모으고(`findings`), 리드가 지적마다 처분과 사유를 남긴다. 다음 라운드에는 `@findings`로 받아들인 지적만 넘기고, 처분 기록은 리뷰어별 실효성 지표가 된다. 묶어 보여 줘도 원본 근거와 필수 리뷰는 그대로다. → [지적 원장](references/finding-ledger.md)
-- **상담.** 일꾼 한 명(advisor)이 diff를 먼저 검사하거나, 두 명(committee)이 반복 실패의 원인을 분석한다. 읽기 전용이며 상담 전후 스냅샷으로 보증한다(동시에 최대 2슬롯). → [consult](references/consult.md) · [읽기 전용 작업](references/read-only-work.md)
-- **라운드 사이 변경도 검토.** 후속 `begin`은 현재 트리를 직전 `post_digest`와 비교한다. 범위 안 파일을 Bash로 썼더라도 불일치하면 lease·시도 예산을 쓰기 전에 `RECOVERY_REQUIRED`로 멈춘다. 복구로 유지한 변경은 누적 리뷰 대상이 되지만 일꾼 실적이나 자동 승인으로 인정하지 않는다. 첫 `begin` 전에 있던 사용자 변경은 보존한다. → [recovery](references/recovery-protocol.md)
-
-**리드의 부담 줄이기**
-
-- **짧은 출력과 `next`.** 명령줄 출력은 기본이 compact 보기다(전체는 `--full`). `next`는 지금 단계에서 칠 명령 한 줄과, token·digest 같은 컨트롤러가 아는 값을 미리 채운 입력 틀을 준다.
-- **진단과 재개.** 읽기 전용 `diagnose`가 멈춘 이유를 고정 코드로, `resume`이 중단된 작업의 다음 단계를 알려 준다. 정산(`reconcile`)은 init에서 허용했을 때만 명시적으로 실행한다. → [재개·정산](references/reconciliation.md)
-- **재량권(opt-in).** 리드가 init에서 작업 단위로 `delegation`을 주면, 컨트롤러가 조건을 전부 확인했을 때 STANDARD 라운드를 승인하고(`delegated-policy`로 기록), 일시 장애로 결과 없이 끝난 일꾼 실행을 다시 시도하고, 못 끝낸 리뷰어를 다른 회사 모델로 바꾼다. 조건이 하나라도 모자라면 리드 게이트에서 멈춘다. → [universal-supervisor](references/universal-supervisor.md#위임-승인-재량권)
-- **오토파일럿.** `autopilot`이 라운드 실행과 독립 위임 리뷰를 자동으로 진행한다(아래 [설치와 사용](#설치와-사용)). `report`의 `lead_load`는 리드가 직접 판정한 횟수와 컨트롤러가 승인한 횟수, 리드가 읽어야 했던 게이트 수, 자동·수동 복구 수를 보여 준다.
-- **요약 뒤에도 이어 가기.** 리드 가드의 SessionStart 훅이 대화가 요약되거나 새 세션이 시작될 때 진행 중인 작업과 다음 명령을 한 번 알려 준다.
-- **작업 상태 한 줄.** `fusion-state.mjs line`, UserPromptSubmit 훅, 프롬프트 위 띠 모드(`mods/hf-status`)가 같은 한 줄로 단계·일꾼 라운드·다음 동작을 보여 준다. → [운영 설명](references/operations.md#작업-상태-표시)
-- **내장 기억 계층.** 시행착오(에러, 절차, 경험)를 외부 서버 없이 로컬에 쌓아 다음 세션과 다른 일꾼에게 넘긴다. 쓰기와 읽기 모두 리드의 승인을 거치고, 출처·버전으로 거른다. 비밀값은 저장하지 않는다. → [memory](references/memory.md) · [기억 회수](references/memory-recall.md)
-- **알림.** `HF_NOTIFY_URL`(예: ntfy)로 일꾼 완료나 리드 판단이 필요할 때 휴대폰 푸시를 받는다. 본문은 상태만 담는다.
-
-**안전과 감사**
-
-- **단일 writer와 감사 기록.** 한 번에 한 일꾼만 쓰고, 라운드마다 스냅샷과 산출물이 남는다. 중단되면 복구 절차로 이어간다. 자동 commit·push·배포는 없다.
-- **리드 가드 훅.** lease가 걸려 있거나 일꾼 예산이 남은 동안 리드의 Edit/Write와 쓰기 가능한 MCP 도구를 차단하고(PreToolUse), 리드 차례인 작업을 두고 턴을 끝내려 하면 한 번 막는다(Stop). Bash 쓰기는 이 훅이 아니라 스냅샷과 라운드 사이 drift 검사가 확인한다. → [operations](references/operations.md#리드-가드-훅)
-- **독립 worktree와 작업 상한.** 작업마다 상태와 writer lease를 격리하고, 보고된 비용과 경과 시간에 상한을 둔다. 결과는 각각 검수한 뒤 통합한다. → [병렬 실행·상한](references/operations.md)
-- **범용 로컬 감시.** 모든 implement/review/consult 호출을 같은 supervisor가 관측한다(`status --monitor`, `monitor --once|--watch`). 무신호는 QUIET 경고일 뿐이며 진행률·성공을 만들어 내지 않는다. 감시는 모델을 부르지 않는다.
-- **Linux·macOS·Windows.**
-
-## 적응형 리뷰 (옵트인)
-
-리뷰 전략을 `lead-gated-adaptive`로 두면 아래 리뷰 규칙과 최종 리드 게이트가 적용되고, 자동 구현 배치는 External-First가 된다. Claude·Codex가 설치돼 있을 때 `setup-doctor`가 권하는 프리셋(`claude-codex`, `external-first`)과 `hyperfusion.v03.config.example.json`이 이 전략을 쓴다. 기존 classic 설정·진행 중 작업은 자동으로 바뀌지 않는다. 자세한 내용은 [universal-supervisor](references/universal-supervisor.md).
-
-- **작성자별 리뷰.** 일반 작업은 독립 리뷰어 1명, 중요·명시적 이중 리뷰·위험 경로는 아래 페어가 독립·병렬 검토한다. 구현자는 자기 라운드를 리뷰하지 못한다. 대체에는 사유가 필요하며 기존 반려는 다른 PASS로 지워지지 않는다. 충돌·누락은 리드 게이트에 남는다. 이전 배정과 승인된 Grok 미포함 팀은 기존 규칙을 유지한다.
-- **최종 리드 게이트.** 결과는 `LEAD_DECISION_REQUIRED`에서 멈춘다. `auto_apply`, 리뷰 채택, 오토파일럿으로 건너뛸 수 없고, 작업 단위 재량권만 정책 승인을 허가한다.
-
-| 구현자 | 중요·이중·위험 경로 리뷰 페어 |
-|---|---|
-| Grok | Sol xhigh + Sonnet max |
-| Luna / Terra | Sonnet max + Grok xhigh |
-| AGY / Haiku / Sonnet | Sol xhigh + Grok xhigh |
-| 승인된 APEX Sol | 페어 위임 대신 리드 직접 리뷰 |
-
-리드는 init의 승인된 작업지시서에 중요도·전략을 정하고 `review_preview`를 확인한다. 근거 있는 전원 NG만 init에 부여한 `redo_delegation`으로 재작업시킬 수 있고, 의견 충돌은 리드가 판단한다. 전원 PASS도 별도의 적격 승인 위임이 없으면 리드에게 보고한다. 호스트가 실제 Opus인지는 인증할 수 없으므로 `authority.model_verified:false`로 기록한다. → [상세 규칙](references/review-pairs.md)
-
-## 벤더·모델 설정
-
-- **AGY 모델 계열과 effort.** `executors.antigravity.model:"gemini-4-argon"`과 `reasoning_effort:"high"`를 따로 설정하면 `gemini-4-argon-high`를 고른다. 접미사로 고정한 모델은 그 강도를 유지하고, 충돌하는 effort는 실행 전에 거절한다. 최종 슬러그는 `agy models`로 검사하고 없는 변형으로 대체하지 않는다. → [설정](references/configuration.md#agy-모델-계열과-effort-분리-argon)
-- **Codex.** JSONL thread·turn 사용량을 기록하고, 호환 `exec resume` 플래그를 확인한 경우에만 작업 단위 구현 세션을 정확한 ID로 재개한다. 리뷰는 매번 새 읽기 전용 세션이다. 운영자 전용 빌드 캐시·네트워크 옵션과 Claude/Grok 턴 상한은 [Codex 운영 안내](references/codex-runtime.md)를 따른다.
-- **벤더 제한.** `allowed_vendors:["anthropic","openai"]`가 구현·리뷰·상담을 함께 제한하고, 운영자 `HF_ALLOWED_VENDORS`는 저장소가 넓힐 수 없는 상한이다. 브리지가 실행 직전에 다시 검사한다. 방화벽·DLP나 벤더 인증은 아니다. 새 CLI는 검증된 어댑터가 필요하다(`scripts/member-registry.mjs`).
-- **기본 추론 강도.** 구현은 Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 3.8 Flash high다. 리뷰 자리는 Sol xhigh, Sonnet max, Grok xhigh로 구현 강도와 따로 간다. `reasoning_effort:null`은 일반 플래그 생략이며 필수 리뷰 역할의 강도를 해제하지 않는다.
-
-## 측정
-
-- **리드 사용량.** 생성된 훅이 Stop/SessionEnd/StopFailure 때 로컬 Claude Code transcript의 실제 모델별 사용량을 수집한다. 증거가 없으면 미측정으로 남기며 명시적인 `TASK_USAGE.json` 관측이 우선한다. 클라이언트 보고치이며 청구 API가 아니다. → [지표 정책](references/metrics-policy.md)
-- **벤치마크.** `benchmark.mjs cases`는 고정 파일럿 과제를, `compare BASELINE.json HYPERFUSION.json`은 실제 paired 지표를 비교한다. 실패 비용도 분자에 넣고, 쌍 누락·미측정이 있으면 절감률을 내지 않는다. `--suite large`는 실제 기능 커밋으로 만든 과제를 고른다. 과제당 한 번씩 헤드리스로 처음 돌려 본 결과, 작은 기본 과제에서는 HyperFusion 리드가 단독 리드의 1.75~3배 토큰을 썼고, 큰 과제 하나(HF-L01)에서는 리드 토큰이 22% 적었지만 확인된 전체 비용은 약 1.5배, 시간은 1.8배였다. 한 번씩 돌린 결과라 절감 효과를 주장하지 않는다. → [반복 벤치마크](references/benchmark-pilot.md)
-- **사용량 계측과 쿼터.** 구현·검수·상담·실패 호출과 APEX Sol을 포함해 기록하고, 미측정은 `null`로 둔다. 쿼터는 `scripts/quota-policy.mjs`로 운영자가 직접 적거나(`record`), Codex 세션 기록의 `rate_limits`를 읽어 기록한다(`collect-codex`, 네트워크·모델 없음). 출처와 유효 시간이 지나면 '모름'으로 취급한다.
-
-## 보안
-
-일꾼이 사용자 파일을 마음대로 건드리지 못하게 여러 겹으로 막는다. 다만 이것은 **협업 통제이지 OS 샌드박스가 아니다.**
-
-- 제어 파일(상태, brief, 스냅샷)은 작업 폴더 밖 `~/.hyperfusion/state/`에 둔다(`HF_STATE_DIR`로 변경). 일꾼이 범위를 스스로 넓힐 수 없다.
-- 스냅샷이 `.git` 설정·훅, 연결 worktree의 전용 `config.worktree`, `.env`, 무시된 `.gitignore`, `node_modules/.bin`, agy 작업 폴더(`.agents/`, `.agent/`, `_agents/`, `_agent/`)까지 본다. 컨트롤러의 git은 include·조건부 include·worktree를 포함한 실제 적용 설정을 호출 직전에 다시 읽고 실행 가능한 드라이버를 무력화한다. 설정 조회 실패는 `GIT_CONFIG_UNREADABLE`로 중단한다.
-- 브리지는 실행 직전에 요청을 다시 만들어 대조한다. 일꾼에게는 필요한 환경변수만 넘긴다.
-- Bash 허용 규칙은 테스트·린트·빌드 모양만 받는다. 샌드박스 해제 같은 완화는 저장소 설정이 아니라 운영자의 환경변수로만 켠다([configuration](references/configuration.md#보안-관련-환경변수)).
-- 읽기 전용 상담·리뷰는 도구의 샌드박스가 아니라 전후 스냅샷 비교로 보증한다(어긴 답변은 버린다). Antigravity의 `--sandbox`는 터미널만 제한하고 파일 쓰기 도구는 막지 못한다.
-
-셸을 쓸 수 있는 일꾼은 작업 폴더 밖 파일에 닿을 수 있고, 스냅샷 비교는 저장소 밖에 쓴 것을 잡지 못한다. 이미 무시된 일반 의존성 파일(예: `node_modules/dep/index.js`)의 내용 변경은 스냅샷이 감시하지 않는다. 컨트롤러가 수용 테스트를 직접 돌릴 때는 무시된 파일의 메타데이터를 비교해 바뀌었으면 실행하지 않는다([operations](references/operations.md#수용-테스트-자동-실행)). 이전 작업 폴더 안에 제어 파일을 둔 설치는 `fusion-state.mjs migrate <저장소>`로 이전한다. 호환되지 않는 저장 스키마는 문서의 archive 절차를 따른다. 자세한 건 [configuration](references/configuration.md), [recovery](references/recovery-protocol.md).
+설치된 일꾼만 쓴다. 하나만 있어도 된다. 배치는 출발점일 뿐이고, 일꾼마다 반려된 기록을 보고 리드가 바꾼다. → [배치 규칙](references/routing.md)
 
 ## 설치와 사용
 
-필요한 것: Node.js 24+, `git config --show-scope --includes`를 지원하는 Git, **초기 커밋이 있는 Git 저장소**(원격 없이 로컬 전용이어도 된다), 설치·인증된 `claude`, `grok`, `agy`, `codex` 중 하나 이상.
+필요한 것:
+- Node.js 24 이상
+- 초기 커밋이 있는 Git 저장소(원격 저장소는 없어도 된다)
+- 설치·인증된 `claude`, `grok`, `agy`, `codex` 중 하나 이상
 
 ```sh
 # Linux / macOS
@@ -153,38 +101,41 @@ git clone https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyper
 git clone https://github.com/prentice7725/hyperfusion.git "$env:USERPROFILE\.claude\skills\hyperfusion"
 ```
 
-Claude Code에서 Opus 5.5를 고르고:
+Claude Code에서 Opus 5.5를 고르고 이렇게 쓴다.
 
 ```text
 /hyperfusion <작업 내용>
 /hyperfusion --executor sonnet <작업 내용>
 ```
 
-리드가 [SKILL.md](SKILL.md)에 따라 컨트롤러와 브리지를 호출한다. 먼저 `node scripts/setup-doctor.mjs <저장소>`로 설치 상태를 점검한다. 설정은 대상 저장소의 `hyperfusion.config.json`(예시: `hyperfusion.config.example.json`).
+- **설치 점검:** `node scripts/setup-doctor.mjs <저장소>`가 설치된 CLI를 보고 알맞은 설정을 추천한다.
+- **설정 파일:** 대상 저장소의 `hyperfusion.config.json`이다. 예시는 `hyperfusion.config.example.json`에 있다.
+- **리드 가드 훅(권장):** `npm run guard:settings`가 출력하는 `hooks`를 `~/.claude/settings.json`에 합친다. 일꾼이 일하는 동안 리드가 직접 파일을 고치지 못하게 막는다. → [자세히](references/details.md#설치와-사용)
+- **다음에 할 일:** 어느 단계에서든 `node scripts/fusion-state.mjs next <저장소>`가 다음 명령을 알려 준다.
 
-**리드 가드 훅 설치(권장).** `npm run guard:settings`가 이 PC의 절대 경로로 된 훅 설정(PreToolUse, Stop, SessionStart, UserPromptSubmit, PreModelSwitch, PostModelSwitch, SessionEnd, StopFailure)을 출력한다. 막는 가드 명령에는 `onFailure: "block"`(Claude Code v2.1.295 이상)이 붙어, 가드가 죽거나 시간을 넘기면 도구 호출이 막힌다. 그 `hooks` 항목을 `~/.claude/settings.json`(또는 대상 저장소의 `.claude/settings.json`)에 합친다. 기존 설치도 각 이벤트의 새 사용량 수집 명령, MCP 도구 가드(`mcp__.*`) 항목, 모델 전환 항목을 합쳐야 한다. 다른 훅은 보존하고 기존 명령은 중복 추가하지 않는다.
+## 안전에 대해
 
-**오토파일럿.** 초기화된 작업은 `node scripts/fusion-state.mjs autopilot <저장소>`로 라운드 실행과 독립 위임 리뷰를 자동 진행할 수 있다. 아래 조건을 갖추면 난이도와 상관없이 `next`가 첫 라운드에 이것을 권한다. 리드가 정한 `acceptance_commands`가 있어야 하고, 기준 트리에서 실패가 확인된(red) 명령이어야 한다(보존 검증 작업은 반대로 이미 통과가 확인돼야 한다). classic 리뷰에서는 `review.auto_apply:true`도 필요하다(`lead-gated-adaptive`는 어차피 리드 게이트에서 멈추므로 요구하지 않는다). VERIFY·설계 결정·BLOCKED·takeover에서 리드에게 제어를 돌려주며, 정지·스냅샷·예산·검증 확인에 실패하면 멈춘다. 리드가 재량권을 준 작업은 컨트롤러가 승인한 라운드의 verify까지 이어 간다([운영 설명](references/operations.md#오토파일럿)).
+- 일꾼에게 넘기는 글에서는 이메일, 키, 비밀번호 패턴을 가린다.
+- 작업 상태 파일은 저장소 밖 `~/.hyperfusion/state/`에 둔다.
+- 자동 커밋, 푸시, 배포는 하지 않는다.
 
-수용 테스트도 자식 프로세스 종료를 확인한다. 종료 증거가 없으면 RECOVERY_REQUIRED에서 멈추고 리드의 정지 확인을 기다린다. 작업 시간 상한은 수용 테스트와 최종 검증에도 적용된다.
+**이것은 협업 규칙이지 OS 샌드박스가 아니다.** 셸을 쓸 수 있는 일꾼은 저장소 밖 파일에도 닿을 수 있다. 회사 코드에 쓴다면 파일 접근과 외부 전송 정책을 따로 정해야 한다. → [보안 상세](references/details.md#보안)
 
-외부로 보내는 brief·diff·이전 결과에는 이메일·IP·키·비밀번호 패턴 마스킹이 기본 적용된다. 인증에 필요한 벤더 환경변수는 유지한다. CLI가 직접 읽어 보내는 저장소 파일까지 가리는 DLP 기능은 아니므로, 회사 코드 사용 시 파일 접근과 외부 전송 정책도 별도로 통제해야 한다([전송 범위](references/operations.md#외부-전송-마스킹)).
+## 더 읽을거리
 
-## 문서
-
-처음이면 [runtime](references/runtime.md)(명령)과 [configuration](references/configuration.md)(설정)부터 본다. 리드용 영어 요약은 [executor-quickstart](references/executor-quickstart.md).
+- [상세 설명](references/details.md): 전체 기능, 적응형 리뷰, 벤더 설정, 측정, 보안, 테스트
+- [CHANGELOG](CHANGELOG.md): 버전별 변경. 지금 패키지 버전은 `0.32.0`이다.
+- 처음이면 [runtime](references/runtime.md)(명령)과 [configuration](references/configuration.md)(설정)부터 본다. 리드용 영어 요약은 [executor-quickstart](references/executor-quickstart.md)에 있다.
 
 | 주제 | 문서 |
 |---|---|
-| 상태와 명령 | [runtime](references/runtime.md) · [state-actions](references/state-actions.md)(자동 생성) · [state-schema](references/state-schema.json) · [operations](references/operations.md)(운영·오토파일럿·훅·수용 테스트) |
-| 설정 | [configuration](references/configuration.md)(환경변수 포함) · [codex-runtime](references/codex-runtime.md) |
-| 일꾼 | [executor-runtime](references/executor-runtime.md)(Windows 포함) · [routing](references/routing.md) · [herdr](references/herdr.md)(선택: Herdr 관측 pane) |
-| 계약 | [delegation-protocol](references/delegation-protocol.md)(brief) · [result-protocol](references/result-protocol.md) |
-| 검수 | [review-protocol](references/review-protocol.md) · [review-pairs](references/review-pairs.md) · [finding-ledger](references/finding-ledger.md) · [consult](references/consult.md) · [read-only-work](references/read-only-work.md) · [universal-supervisor](references/universal-supervisor.md)(v0.3·재량권) |
+| 상태와 명령 | [runtime](references/runtime.md) · [state-actions](references/state-actions.md) · [operations](references/operations.md) |
+| 설정 | [configuration](references/configuration.md) · [codex-runtime](references/codex-runtime.md) |
+| 일꾼 | [executor-runtime](references/executor-runtime.md) · [routing](references/routing.md) · [herdr](references/herdr.md) |
+| 작업지시서와 결과 | [delegation-protocol](references/delegation-protocol.md) · [result-protocol](references/result-protocol.md) |
+| 검수 | [review-protocol](references/review-protocol.md) · [review-pairs](references/review-pairs.md) · [finding-ledger](references/finding-ledger.md) · [consult](references/consult.md) · [universal-supervisor](references/universal-supervisor.md) |
 | 실패와 복구 | [failure-protocol](references/failure-protocol.md) · [recovery-protocol](references/recovery-protocol.md) · [reconciliation](references/reconciliation.md) |
-| 프로젝트·기억·지표 | [project](references/project.md) · [workflow-plan](references/workflow-plan.md) · [memory](references/memory.md) · [memory-recall](references/memory-recall.md) · [metrics-policy](references/metrics-policy.md) · [benchmark-pilot](references/benchmark-pilot.md) |
-| 실험 도구 | [evidence-retrieval-experiment](references/evidence-retrieval-experiment.md) · [controller-overhead](references/controller-overhead.md) |
-| 설계 메모와 과거 기록 | [app-handoff-design](references/app-handoff-design.md)(후속 설계) · [archive](references/archive/README.md)(시점별 검증·감사 기록) |
+| 프로젝트·기억·지표 | [project](references/project.md) · [memory](references/memory.md) · [metrics-policy](references/metrics-policy.md) · [benchmark-pilot](references/benchmark-pilot.md) |
 
 ## 테스트와 한계
 
@@ -192,17 +143,17 @@ Claude Code에서 Opus 5.5를 고르고:
 npm test
 ```
 
-자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 재량권과 자동 복구, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 24에서 실행하도록 구성돼 있다. Windows에서는 테스트 파일을 순차 실행하므로(Windows 한 대로 전체를 돌리면 몇 시간 걸린다) CI는 Windows 작업을 러너 4대로 나눠 돌리고(`HF_TEST_SHARD`, 다른 OS는 병렬도 2), 실제 고아 프로세스를 만드는 회귀 테스트는 병렬 테스트 뒤에 따로 돌린다. `npm run spawns`가 테스트(또는 지정한 명령)가 만드는 하위 프로세스를 명령별·호출 지점별로 센다.
-
-**테스트의 `grok`/`agy`/`claude`/`codex`는 대역 CLI다.** 실제 모델 호출, 인증, 이미지 생성은 이 저장소의 테스트로 검증되지 않았다. 설치된 CLI에 필요한 플래그가 없으면 실행 전에 `ADAPTER_UNAVAILABLE`로 거절한다. CLI 플래그는 [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), [Claude Code](https://code.claude.com/docs/en/headless) 문서를 기준으로 했다. 재량권의 자동 복구가 "다시 해도 같은 실패"를 가려내는 문구 판별은 대역 CLI 기준이라, 실제 CLI에서 처음 몇 번은 `recovery-*.json`의 `reason`을 확인하는 것이 좋다. 실모델 비용·시간 절감은 미측정이다.
+- CI는 Ubuntu와 Windows에서 Node 24로 돈다.
+- 테스트 속 `grok`, `agy`, `claude`, `codex`는 흉내 낸 가짜 CLI다. 실제 모델의 품질, 인증, 이미지 생성은 이 테스트로 확인하지 않는다.
+- 실제 모델로 잰 결과는 위 [측정 결과](#측정-결과)뿐이다.
 
 라이선스는 [MIT](LICENSE).
 
 ## 참고한 것
 
-- [Orca](https://github.com/stablyai/orca), [Paseo](https://github.com/getpaseo/paseo): advisor/committee, 줄 단위 피드백, 알림. worktree 경쟁은 단일 작업 트리 원칙과 맞지 않아 들이지 않았다.
-- [AnchorMind](https://github.com/jinho-von-choi/memento-mcp): 기억 계층의 설계(중복 병합, 모순 검토, 감쇠, 출처 표시). 붙지 않고 설계만 들여와 직접 구현했다.
-- [cli-dispatch](https://github.com/rbinar/cli-dispatch): 다른 회사 CLI에 일을 맡기는 비슷한 플러그인. agy 모델명 검증, 컴팩션 뒤 상태 주입, Codex 잔량 읽기를 참고했다. worktree 패치 방식은 단일 writer 원칙과 맞지 않아 들이지 않았다.
-- [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills): doubt-driven development에서 "리뷰어에게 주장을 주지 않는다"와 지적 분류(계약 오독·반영·트레이드오프·노이즈)를 들여왔다.
-- [cursor/plugins pstack](https://github.com/cursor/plugins/tree/main/pstack): interrogate의 리드 판단(Act on / Consider / Noted / Dismissed, 기각 사유 공개)을 지적별 처분에 반영했다.
-- [mattpocock/skills](https://github.com/mattpocock/skills): 규칙 축과 명세 축을 나눈 리뷰, 의존 그래프 기반 작업 분해를 검토했다. 병렬 구현은 단일 writer 원칙과 맞지 않아 들이지 않았다.
+- [Orca](https://github.com/stablyai/orca), [Paseo](https://github.com/getpaseo/paseo): 상담(advisor/committee), 줄 단위 피드백, 알림
+- [AnchorMind](https://github.com/jinho-von-choi/memento-mcp): 기억 계층 설계(중복 병합, 모순 검토, 감쇠, 출처 표시)
+- [cli-dispatch](https://github.com/rbinar/cli-dispatch): agy 모델명 검증, 컴팩션 뒤 상태 주입, Codex 잔량 읽기
+- [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills): 리뷰어에게 일꾼의 주장을 주지 않기, 지적 분류
+- [cursor/plugins pstack](https://github.com/cursor/plugins/tree/main/pstack): 지적별 처분(Act on / Consider / Noted / Dismissed)
+- [mattpocock/skills](https://github.com/mattpocock/skills): 규칙과 명세를 나눈 리뷰, 의존 그래프 기반 작업 분해
