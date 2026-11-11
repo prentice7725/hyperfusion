@@ -9,6 +9,7 @@ import {modelEffort,supportedAgyEfforts,selectAgyModel} from './adapters/agy-mod
 import {validCodingPolicy} from './coding-policy.mjs';
 import {grantOnlyMembers,reservedMembers,excludedMembers} from './team-roles.mjs';
 import {MEMBER_PROFILES} from './model-registry.mjs';
+import {loadTeam,applyTeam,teamFilePath} from './team-file.mjs';
 
 // 구현 일꾼 명단(A급 Terra·Grok·Sonnet, B급 Luna·Haiku·Antigravity). 누가 grant 없이 자동 구현하는지는 리드 계열에 따른 역할(team-roles)이 정한다.
 export const EXECUTORS=Object.keys(MEMBERS).filter(n=>MEMBERS[n].implement);
@@ -124,9 +125,14 @@ const validCaps=v=>v===undefined||(Array.isArray(v)&&v.every(x=>CAPABILITIES.inc
 const validModelMap=v=>v===undefined||(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length>0
  &&Object.entries(v).every(([d,m])=>DIFFICULTIES.includes(d)&&typeof m==='string'&&/^[\w.:/-]{1,80}$/.test(m)&&!modelEffort(m)));
 
-export function config(root) {
+export function config(root,{teamFile=teamFilePath()}={}) {
  const file=path.join(root,'hyperfusion.config.json');
  const v=fs.existsSync(file)?read(file):structuredClone(DEFAULT_CONFIG);
+ // 팀 파일보다 앞서는 값은 저장소 설정 파일이 직접 적은 값뿐이다. 내장 기본값보다는 팀 파일이 앞선다.
+ const own=fs.existsSync(file)?v:{};
+ const explicit={reviewers:own.review?.reviewers!==undefined,
+  models:new Set(Object.keys(own.executors??{}).filter(n=>own.executors[n]?.model!==undefined)),
+  efforts:new Set(Object.keys(own.executors??{}).filter(n=>own.executors[n]?.reasoning_effort!==undefined))};
  if(v.allowed_vendors!==undefined)validateVendors(v.allowed_vendors);
  validCodingPolicy(v.coding_policy);
  // Validate operator policy even if no particular executor is selected yet.
@@ -137,6 +143,11 @@ export function config(root) {
  v.lead_model_source=fs.existsSync(file)&&v.lead_model!==undefined?'config':'default';
  v.lead??='opus';v.lead_model??='claude-opus-5-5';v.lead_takeover??=true;v.external??=structuredClone(DEFAULT_CONFIG.external);
  v.executors??={};v.executors.antigravity??=structuredClone(DEFAULT_CONFIG.executors.antigravity);
+ v.review={...structuredClone(DEFAULT_CONFIG.review),...(v.review??{})};
+ // 이 컴퓨터의 팀 파일(scripts/team-file.mjs). 쓸 일꾼과 리뷰어를 좁히고, 저장소 설정이 적지 않은 모델·강도를 채운다.
+ const team=loadTeam(teamFile);
+ v.team=team?applyTeam(v,team,{file:teamFile,explicit}):null;
+ const teamEfforts=new Set((v.team?.filled??[]).filter(x=>x.endsWith('.reasoning_effort')).map(x=>x.split('.')[0]));
  // 운영자가 직접 적은 강도인지 기록한다. 파일에 같은 키가 있어도 컨트롤러가 다시 계산해 덮어쓴다.
  const effortSource={};
  for(const [k,e] of Object.entries(DEFAULT_EFFORT)){
@@ -145,11 +156,10 @@ export function config(root) {
   if(pin&&value!==undefined&&value!==null&&value!==pin)throw Error(`EFFORT_CONFLICT: AGY model ${o.model} pins ${pin} but reasoning_effort is ${value}`);
   if(value===undefined){o.reasoning_effort=pin??e;effortSource[k]=pin?'model':'default';}
   else if(value===null){delete o.reasoning_effort;effortSource[k]='cli-default';}
-  else effortSource[k]='config';
+  else effortSource[k]=teamEfforts.has(k)?'team':'config';
  }
  v.effort_source=effortSource;
  v.routing={...structuredClone(DEFAULT_CONFIG.routing),...(v.routing??{})};
- v.review={...structuredClone(DEFAULT_CONFIG.review),...(v.review??{})};
  if(v.review.strategy==='lead-gated-adaptive'&&v.routing.policy==='classic')throw Error('Adaptive review requires external-first routing');
  if(v.routing.policy!==undefined&&!ROUTING_POLICIES.includes(v.routing.policy))throw Error('Invalid HyperFusion configuration: routing.policy must be classic or external-first');
  if(v.routing.claude_reserve!==undefined&&typeof v.routing.claude_reserve!=='boolean')throw Error('Invalid HyperFusion configuration: routing.claude_reserve must be boolean');
@@ -178,7 +188,7 @@ export function config(root) {
   if(o.reasoning_effort!==undefined&&!efforts.includes(o.reasoning_effort))throw Error(`EFFORT_UNSUPPORTED: ${k} reasoning_effort must be one of ${efforts.join(', ')||'(none)'}`);
   if(k==='antigravity'){
    // 운영자가 직접 적은 강도만 막는다. 기본 강도(DEFAULT_EFFORT)는 모델이 없으면 selectAgyModel이 빼고 CLI 기본값으로 돈다.
-   if(v.effort_source.antigravity==='config'&&o.model==null&&o.models_by_difficulty===undefined)throw Error('EFFORT_NEEDS_MODEL: executors.antigravity.reasoning_effort has no effect without a model; agy reads effort from the model id. Set executors.antigravity.model (e.g. gemini-4-argon with reasoning_effort, or gemini-4-argon-high), or remove reasoning_effort');
+   if(['config','team'].includes(v.effort_source.antigravity)&&o.model==null&&o.models_by_difficulty===undefined)throw Error('EFFORT_NEEDS_MODEL: executors.antigravity.reasoning_effort has no effect without a model; agy reads effort from the model id. Set executors.antigravity.model (e.g. gemini-4-argon with reasoning_effort, or gemini-4-argon-high), or remove reasoning_effort');
    selectAgyModel(o);
    for(const model of Object.values(o.models_by_difficulty??{}))selectAgyModel({...o,model});
   }

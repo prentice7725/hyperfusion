@@ -11,6 +11,8 @@ import {repoId} from '../scripts/control-dir.mjs';
 process.env.CLAUDECODE??='1';
 // Herdr 안에서 테스트를 돌려도 픽스처 라운드마다 실제 관측 pane이 열리지 않게 끈다. 관측 시험은 값을 직접 넣는다.
 process.env.HYPERFUSION_HERDR='0';
+// 시험은 이 컴퓨터의 실제 팀 파일(~/.hyperfusion/team.json)을 읽지 않는다. 팀 파일 시험은 경로를 직접 준다.
+process.env.HF_TEAM_FILE='off';
 
 // 테스트 전용 대역 CLI. 실제 Grok/Antigravity 모델을 호출하지 않는다.
 const FAKE_COMMON=`#!/usr/bin/env node

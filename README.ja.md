@@ -109,6 +109,7 @@ Claude CodeでOpus 5.5を選び、次のように使います。
 ```
 
 - **インストールの点検：** `node scripts/setup-doctor.mjs <リポジトリ>`がインストール済みのCLIを見て、合う設定を勧めます。
+- **チームファイル：** `--write-team`を付けると、インストール済みのCLIから`~/.hyperfusion/team.json`の下書きを書きます。使うワーカー、モデル、強度はそのファイルで直します。→ [チームファイル](references/configuration.md#이-컴퓨터의-팀-파일-hyperfusionteamjson)（韓国語）
 - **設定ファイル：** 対象リポジトリの`hyperfusion.config.json`です。例は`hyperfusion.config.example.json`にあります。
 - **リードガードフック（推奨）：** `npm run guard:settings`が出力する`hooks`を`~/.claude/settings.json`にマージします。ワーカーの作業中にリードが自分でファイルを編集するのを防ぎます。→ [詳しく](references/details.ja.md#インストールと使い方)
 - **次にすること：** どの段階でも`node scripts/fusion-state.mjs next <リポジトリ>`が次のコマンドを教えてくれます。

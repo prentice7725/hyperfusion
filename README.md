@@ -109,6 +109,7 @@ Pick Opus 5.5 in Claude Code and run:
 ```
 
 - **Check the setup:** `node scripts/setup-doctor.mjs <repository>` looks at the installed CLIs and recommends a configuration.
+- **Team file:** add `--write-team` to draft `~/.hyperfusion/team.json` from the installed CLIs. Edit that file to choose the workers, models and efforts on this machine. → [Team file](references/configuration.md#이-컴퓨터의-팀-파일-hyperfusionteamjson) (Korean)
 - **Configuration:** `hyperfusion.config.json` in the target repository. See `hyperfusion.config.example.json`.
 - **Lead guard hooks (recommended):** merge the `hooks` printed by `npm run guard:settings` into `~/.claude/settings.json`. They stop the lead from editing files while a worker is on the job. → [Details](references/details.en.md#installation-and-usage)
 - **What next:** at any stage, `node scripts/fusion-state.mjs next <repository>` prints the next command.
