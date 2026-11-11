@@ -29,6 +29,40 @@
 | 일꾼 | Sonnet (`claude --model claude-sonnet-5-5`) | 3라운드 |
 | auto | 배치표 + 실적 + 설치 상태로 선택 | — |
 
+## 이 컴퓨터의 팀 파일 (`~/.hyperfusion/team.json`)
+
+저장소 설정은 프로젝트마다 다르지만, 어떤 CLI가 설치·로그인돼 있는지는 컴퓨터마다 다르다. 팀 파일은 이 컴퓨터에서 쓸 일꾼과 일꾼별 모델·강도를 적는 운영자 파일이다. 저장소 밖에 둔다.
+
+```sh
+node scripts/setup-doctor.mjs <저장소> --write-team          # 설치된 CLI로 초안을 쓴다
+node scripts/setup-doctor.mjs <저장소> --write-team --force  # 있는 파일을 초안으로 바꾼다
+```
+
+```json
+{
+  "version": 1,
+  "members": {
+    "terra": {"enabled": true, "model": "gpt-6.1-terra", "reasoning_effort": "medium"},
+    "grok": {"enabled": false, "note": "미설치 또는 CLI 계약 불일치"},
+    "antigravity": {"enabled": true, "model": "gemini-4-argon-high"},
+    "sol": {"enabled": true}
+  },
+  "reviewers": ["sol", "sonnet"]
+}
+```
+
+- 초안은 설치 점검(프로브)을 통과한 일꾼을 켜고, 나머지는 끄고 이유를 `note`에 적는다. 프로브는 CLI 옵션만 본다. 로그인, 남은 사용량, 그 계정에서 쓸 수 있는 모델은 확인하지 않으므로 사람이 고친다.
+- 파일에 없는 일꾼은 쓰지 않는다. 새 CLI를 설치했으면 직접 추가하거나 `--write-team --force`로 다시 만든다.
+- 합치는 규칙:
+  - `external.available`과 `review.reviewers`는 팀 파일이 켠 일꾼으로 좁힌다. 팀 파일로 일꾼을 늘릴 수는 없다.
+  - 저장소 설정이 `review.reviewers`를 적지 않았으면 팀 파일의 `reviewers` 순서를 쓴다.
+  - `model`과 `reasoning_effort`는 저장소 설정 파일이 그 일꾼에 적지 않았을 때 팀 파일 값을 쓴다. 내장 기본값보다는 팀 파일이 앞선다.
+  - 켠 구현 일꾼이나 리뷰어가 하나도 남지 않으면 `TEAM_FILE_EMPTY`, 저장소 설정의 `external.default`를 팀 파일이 껐으면 `TEAM_FILE_CONFLICT`로 거절한다.
+- 샌드박스 해제 같은 보안 완화와 리드 선택은 팀 파일로 할 수 없다. 모르는 키는 거절한다.
+- 다른 경로는 `HF_TEAM_FILE=<경로>`, 끄려면 `HF_TEAM_FILE=off`. `npm test`는 실제 팀 파일을 읽지 않도록 끈다.
+- 설정은 init 때 상태에 고정된다. 적용 결과는 상태의 `configuration.team`(켠 일꾼, 뺀 일꾼, 채운 값)에 남는다.
+- `setup-doctor`는 팀 파일을 실제 설치와 비교한다. 켰지만 설치되지 않은 일꾼이 있으면 경고하고, 출력의 `team.drift`에 둘 다 적는다.
+
 ## 모델과 작업 상한
 
 `executors.sonnet.model`은 실제 `--model` 인자로 전달한다. Grok·Antigravity의 model은 설치된 CLI가 정확한 `--model` 옵션을 광고할 때만 전달하고, 지원하지 않으면 preflight에서 거절한다. `lead_model`은 `claude-opus-*` 모델 ID를 받으며 기본값은 `claude-opus-5-5`다. 대상 모델 ID를 설정해도 호스트 모델 자체를 바꾸지는 않는다.

@@ -109,6 +109,7 @@ Claude Code에서 Opus 5.5를 고르고 이렇게 쓴다.
 ```
 
 - **설치 점검:** `node scripts/setup-doctor.mjs <저장소>`가 설치된 CLI를 보고 알맞은 설정을 추천한다.
+- **팀 파일:** `--write-team`을 붙이면 설치된 CLI로 `~/.hyperfusion/team.json` 초안을 쓴다. 쓸 일꾼, 모델, 강도를 그 파일에서 고친다. → [팀 파일](references/configuration.md#이-컴퓨터의-팀-파일-hyperfusionteamjson)
 - **설정 파일:** 대상 저장소의 `hyperfusion.config.json`이다. 예시는 `hyperfusion.config.example.json`에 있다.
 - **리드 가드 훅(권장):** `npm run guard:settings`가 출력하는 `hooks`를 `~/.claude/settings.json`에 합친다. 일꾼이 일하는 동안 리드가 직접 파일을 고치지 못하게 막는다. → [자세히](references/details.md#설치와-사용)
 - **다음에 할 일:** 어느 단계에서든 `node scripts/fusion-state.mjs next <저장소>`가 다음 명령을 알려 준다.

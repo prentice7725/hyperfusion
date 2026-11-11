@@ -13,6 +13,7 @@ import {SCHEMA_VERSION} from './versions.mjs';
 import {smoke} from './smoke.mjs';
 import {installationRoster,recommendPreset} from './installation.mjs';
 import {hookObservation} from './hook-observation.mjs';
+import {teamFilePath,loadTeam,draftTeam,writeTeam,teamDrift} from './team-file.mjs';
 
 // 실행 전 점검. 일꾼 CLI는 모두 프로브해서 교체 가능한 인력을 미리 파악한다.
 const checks=[];
@@ -23,15 +24,18 @@ const probeMember=name=>{
   return probeEvidence[name];
  }
  // 실행 전 점검(Codex의 Windows 샌드박스 등)도 같이 본다. 실패하면 이 일꾼은 사용 불가로 보고된다.
- try{const p=adapter(name).probe(c.executors[name]??{});const sandbox=adapter(name).preflight?.({root:process.argv[2]??process.cwd()});if(sandbox)p.sandbox=sandbox;probeEvidence[name]={...p,help:p.help};return p;}
+ try{const p=adapter(name).probe((c??base)?.executors?.[name]??{});const sandbox=adapter(name).preflight?.({root:process.argv[2]??process.cwd()});if(sandbox)p.sandbox=sandbox;probeEvidence[name]={...p,help:p.help};return p;}
  catch(e){probeEvidence[name]={error:e.message,...e.probe};throw e;}
 };
 const check=(name,fn)=>{try{checks.push({name,ok:true,detail:fn()});}catch(e){checks.push({name,ok:false,detail:e.message,error:errorRecord(e)});}};
 check('node',()=>{if(Number(process.versions.node.split('.')[0])<24)throw Error('Node 24+ required');return process.version;});
 // 옵션: --executor NAME, --smoke[=NAME,NAME] (설치된 일꾼에게 작은 작업을 실제로 시킨다. 비용이 든다)
-const argv=process.argv.slice(3),flags=[];let smokeWanted=null;
-for(const a of argv){if(a==='--smoke')smokeWanted='installed';else if(a.startsWith('--smoke='))smokeWanted=a.slice(8).split(',').filter(Boolean);else flags.push(a);}
-let selected,c;
+//       --write-team [--force] (설치된 CLI로 이 컴퓨터의 팀 파일 초안을 쓴다. 이미 있으면 --force가 있어야 바꾼다)
+const argv=process.argv.slice(3),flags=[];let smokeWanted=null,writeTeamWanted=false,force=false;
+for(const a of argv){if(a==='--smoke')smokeWanted='installed';else if(a.startsWith('--smoke='))smokeWanted=a.slice(8).split(',').filter(Boolean);else if(a==='--write-team')writeTeamWanted=true;else if(a==='--force')force=true;else flags.push(a);}
+let selected,c,base;
+// 팀 파일을 뺀 설정. 팀 파일이 잘못돼도 초안을 다시 쓸 수 있고, 초안이 모든 일꾼을 보게 한다.
+try{base=config(process.argv[2]??process.cwd(),{teamFile:null});}catch{}
 check('executor',()=>{c=config(process.argv[2]??process.cwd());if(flags.length&&(flags.length!==2||flags[0]!=='--executor'))throw Error('Use --executor NAME');selected=selectExecutor(c,flags[1]);return selected==='auto'?'auto (router picks per task)':selected;});
 const bench=[];
 for(const name of c?.external.available??[]){
@@ -83,8 +87,23 @@ let memory=null;
 try{const w=c?workspaceOf(c):null;if(w){memory={...memoryStats(w),binding:root?bindingStatus(w,repoId(root)):'unknown'};if(memory.binding==='foreign'||memory.binding==='unclaimed')warnings.push(`memory workspace "${w}" is ${memory.binding==='foreign'?'bound to other repositories':'not bound to any repository'}; memory commands will refuse until the user approves: node memory.mjs bind REPO`);}}catch(e){memory={error:e.message};}
 let project=null;
 try{if(root)project=projectStatus(root);}catch(e){project={error:e.message};}
-const installation=c?installationRoster(c,probeMember):[];
-const recommended_preset=c?recommendPreset(installation):null;
+const installation=base?installationRoster(base,probeMember):[];
+const recommended_preset=base?recommendPreset(installation):null;
+// 팀 파일: 있으면 실제 설치와 비교하고, --write-team이면 설치된 CLI로 초안을 쓴다.
+const teamFile=teamFilePath();
+let team={file:teamFile,exists:!!teamFile&&fs.existsSync(teamFile),applied:c?.team??null};
+if(team.exists){
+ try{const t=loadTeam(teamFile);team.drift=teamDrift(t,installation);
+  if(team.drift.enabled_not_installed.length)warnings.push(`team file enables workers that are not installed or failed their probe: ${team.drift.enabled_not_installed.join(', ')}; edit ${teamFile} or install them`);
+ }catch(e){team.error=e.message;}
+}
+if(writeTeamWanted)check('team-file',()=>{
+ if(!base)throw Error('cannot draft a team file: the repository configuration is invalid');
+ const draft=draftTeam(installation,base);
+ writeTeam(teamFile,draft,{force});
+ team={...team,exists:true,written:true,draft};
+ return teamFile+' written ('+Object.keys(draft.members).filter(n=>draft.members[n].enabled).join(', ')+' enabled); edit it, then rerun setup-doctor';
+});
 let probe_file=null;
 if(root&&!isLegacy(root)){
  try{ensureControl(root);probe_file=controlPath(root,'doctor',`probes-${Date.now()}-${process.pid}.json`);atomic(probe_file,{at:new Date().toISOString(),probes:probeEvidence});}
@@ -101,6 +120,6 @@ if(smokeWanted&&c){
   check('smoke',()=>{const broken=smoke_results.filter(r=>!r.ok);if(broken.length)throw Error('Contract broken: '+broken.map(r=>`${r.executor} at ${r.stage}: ${r.error}`).join(' | '));return smoke_results.map(r=>`${r.executor} ok ${Math.round(r.ms/1000)}s`).join(', ');});
  }
 }
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,hook_observation,smoke:smoke_results,bench,reviewers,memory,project,probe_file,review:c?.review??null,
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,team,hook_observation,smoke:smoke_results,bench,reviewers,memory,project,probe_file,review:c?.review??null,
  installation,recommended_preset,roster:{lead:`${c?.lead_model??'Claude Opus'} (host)`,workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;
