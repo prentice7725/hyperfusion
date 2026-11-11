@@ -94,3 +94,36 @@ test('a Claude worker that hits its limit is recorded the same way',async t=>{
  await assert.rejects(execute(f.root),/PROVIDER_LIMIT: sonnet/);
  assert.equal(JSON.parse(fs.readFileSync(task(f,'limit-failure-1.json'),'utf8')).cli,MEMBERS.sonnet.binary);
 });
+
+// 2026-11-11 HF 반복 2회차 L05: Terra가 첫 라운드에서 Codex 한도에 걸리자 재량권 없는 오토파일럿이 멈췄고,
+// 리드가 약 10번 호출해 손으로 복구하고 Grok에게 넘겼다. 손대지 않은 한도 라운드는 컨트롤러가 다른 일꾼에게 넘긴다.
+test('autopilot hands a usage-limited round to a worker on another CLI without discretion',async t=>{
+ const f=fixture(t,{initialize:false});
+ fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({review:{by:'delegate',strategy:'lead-gated-adaptive'}}));
+ const mark=path.join(f.temp,'green');
+ const cmd=`node -e "process.exit(require('fs').existsSync(process.argv[1])?0:1)" "${mark}"`;
+ run(f.root,'init',{...f.brief,executor:'terra',acceptance_commands:[cmd],acceptance_map:{AC1:[cmd]}});
+ fs.writeFileSync(mark,'1');
+ f.mode('codex-limit');
+ const {autopilot}=await import('../scripts/autopilot.mjs');
+ const out=await autopilot(f.root);
+ const s=f.state();
+ assert.equal(s.limit_recoveries,1,JSON.stringify(out));
+ assert.equal(s.auto_recoveries,undefined,'a limit does not use the discretion retry budget');
+ assert.equal(s.last_auto_recovery.kind,'provider-limit');
+ assert.ok(s.iteration>=2,JSON.stringify(out));
+ const second=JSON.parse(fs.readFileSync(task(f,'brief-2.json'),'utf8'));
+ assert.equal(codex(JSON.parse(fs.readFileSync(task(f,'dispatch-2.json'),'utf8')).executor),false);
+ assert.match(JSON.stringify(second.lead_feedback),/ended before it produced a result/);
+});
+
+test('without discretion, auto-recover only takes a limit recorded for the current round and worker',async t=>{
+ const f=fixture(t,{executor:'grok'});
+ f.mode('fail-once');f.begin();
+ await assert.rejects(execute(f.root));
+ assert.throws(()=>run(f.root,'auto-recover',{error:'grok exited with code 2'}),/no discretion was granted/);
+ // 앞선 라운드의 한도 기록은 이번 라운드의 실패를 한도로 만들지 않는다.
+ fs.writeFileSync(task(f,'limit-failure-0.json'),JSON.stringify({executor:'grok',cli:MEMBERS.grok.binary,round:0}));
+ assert.throws(()=>run(f.root,'auto-recover',{error:'grok exited with code 2'}),/no discretion was granted/);
+ assert.equal(f.state().phase,'EXECUTING');
+});
