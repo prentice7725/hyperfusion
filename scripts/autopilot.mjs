@@ -17,7 +17,8 @@ const proofText=q=>q?`${q.reason}${q.remaining?.length?`; remaining ${JSON.strin
 const STOPS=new Set(['VERIFY','LEAD_DECISION_REQUIRED','DECISION_REQUIRED','BLOCKED','TAKEOVER_REQUIRED','RECOVERY_REQUIRED','CLOSE','ARCHIVED']);
 const failure=(code,message)=>Object.assign(Error(message),{code});
 
-// Uses the same controller actions as the lead. No decision, recovery, scope expansion or final verification.
+// Uses the same controller actions as the lead. No decision, scope expansion or final verification. Recovery only through
+// auto-recover: with discretion for a transient failure, or for a usage limit, which moves the round to another worker.
 export async function autopilot(root,{max_steps=64,signal}={}) {
  if(!Number.isSafeInteger(max_steps)||max_steps<1||max_steps>256)throw failure('INVALID_INPUT','max_steps must be an integer from 1 to 256');
  if(signal!==undefined&&(typeof signal?.addEventListener!=='function'||typeof signal?.removeEventListener!=='function'))throw failure('INVALID_INPUT','signal must be an AbortSignal');
@@ -119,7 +120,9 @@ export async function autopilot(root,{max_steps=64,signal}={}) {
      catch(e){
       // 재량권이 있는 작업: 결과 없이 끝난 일시 장애는 컨트롤러 증거(종료 증명, 트리 불변)가 맞으면 복구해서 다시 시도한다.
       // 사정이 맞지 않으면 지금까지처럼 쓰기 권한을 쥔 채 멈춘다.
-      if(s.delegation&&e?.quiescence?.quiescent===true){
+      // 한도에 걸린 라운드는 재량권이 없어도 auto-recover로 다른 일꾼에게 넘긴다(같은 일꾼 재시도는 하지 않는다).
+      const limited=/^PROVIDER_LIMIT/.test(e?.message??'');
+      if((s.delegation||limited)&&e?.quiescence?.quiescent===true){
        try{settle('auto-recover',{error:e.message});continue;}
        catch(refusal){if(refusal.code!=='AUTO_RECOVER_REFUSED')throw refusal;}
       }

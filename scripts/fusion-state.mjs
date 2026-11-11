@@ -47,7 +47,7 @@ import {planReview,panelSeats,reviewCoverage,takeAssignment,sameAssignment,sameP
 import {apexMember,specialistMember,reservedMembers,delegableOwners,memberFamilyOf} from './team-roles.mjs';
 import {gradeOf,MEMBERS} from './member-registry.mjs';
 import {SANDBOX_REPORT,sandboxFailureFile,WORKER_TEMP_DIR} from './codex-sandbox.mjs';
-import {LIMIT_FAILURE_FILE} from './provider-limit.mjs';
+import {LIMIT_FAILURE_FILE,limitFailureFile} from './provider-limit.mjs';
 import {independent} from './model-registry.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
@@ -1949,18 +1949,24 @@ function policyApprove(c) {
 // 증거는 전부 컨트롤러 기록이다: 실패한 실행의 프로세스 종료 증명, 결과 파일 없음, 트리가 라운드 시작과 같음.
 // 일꾼이 아무것도 바꾸지 않은 일시 장애(네트워크, 한도 초과가 아닌 종료 코드, 시간 초과, 형식 오류)만 대상이다.
 // 권한 거부, 인증·한도, 변조·출처 불일치는 다시 시도해도 같으므로 리드에게 올린다. 횟수는 작업당 AUTO_RECOVERY_CAP번.
+// 예외: 이 라운드 일꾼이 사용량·요금 한도에 걸려(브리지가 limit-failure-<round>.json을 남김) 아무것도 바꾸지 못하고 끝났으면
+// 재량권 없이도 되돌린다. 같은 일꾼을 다시 돌리지 않는다. 그 CLI는 이 작업 동안 막히므로 recover가 다른 일꾼(ALTERNATIVE_REQUIRED)으로 넘긴다.
+// 판정·승인이 아니라 손대지 않은 라운드의 일꾼 교체일 뿐이고, 증거 확인(결과 없음, 종료 증명, 트리 불변, 예산)은 그대로다.
+// (2026-11-11 HF 반복 2회차 L05: Terra가 Codex 한도에 걸리자 오토파일럿이 멈췄고, 리드가 약 10번 호출해 손으로 Grok에게 넘겼다.)
 function autoRecover(c,input) {
   const s=c.s,n=s.iteration,why=[];
   const d=s.delegation;
-  if(!d||!sameDelegation(c.optional('delegation.json'),d))throw Object.assign(Error('AUTO_RECOVER_REFUSED: no discretion was granted at init'),{code:'AUTO_RECOVER_REFUSED'});
+  const limit=n>0&&s.owner!=='lead'?c.optional(limitFailureFile(String(n))):null;
+  const limited=limit?.executor===s.owner&&limit?.round===n;
+  if(!limited&&(!d||!sameDelegation(c.optional('delegation.json'),d)))throw Object.assign(Error('AUTO_RECOVER_REFUSED: no discretion was granted at init'),{code:'AUTO_RECOVER_REFUSED'});
   if(s.phase!=='EXECUTING'||!c.writerHeld())why.push('there is no failed running round to recover');
   const message=typeof input.error==='string'?input.error.replace(/\s+/g,' ').slice(0,300):'';
   if(!message)why.push('the failure message is missing');
   // 분류는 오류 문구만이 아니라 실행 기록(envelope)의 종료 사유와 stderr 끝부분도 본다. 컨트롤러가 남긴 기록이다.
   const envelope=c.optional(`envelope-${n}.json`);
   const evidence=[message,envelope?.reason,String(envelope?.stderr??'').slice(-2000)].filter(Boolean).join(' ');
-  if(NON_RETRYABLE.test(evidence))why.push('this failure will not change on a retry (permission, authentication, quota or provenance)');
-  if((s.auto_recoveries??0)>=AUTO_RECOVERY_CAP)why.push(`${AUTO_RECOVERY_CAP} automatic recoveries were already used on this task`);
+  if(!limited&&NON_RETRYABLE.test(evidence))why.push('this failure will not change on a retry (permission, authentication, quota or provenance)');
+  if(!limited&&(s.auto_recoveries??0)>=AUTO_RECOVERY_CAP)why.push(`${AUTO_RECOVERY_CAP} automatic recoveries were already used on this task`);
   if(c.optional(`result-${n}.json`))why.push('the worker produced a result; finish it instead');
   if(!c.optional(`envelope-${n}.json`))why.push('there is no record of a finished run');
   if(c.optional(`quiescence-${n}.json`)?.quiescent!==true)why.push('process shutdown of the failed run is not proven');
@@ -1971,10 +1977,13 @@ function autoRecover(c,input) {
   // 실패한 라운드가 새로 열기로 한 일꾼 세션은 CLI가 만들기 전에 죽었을 수 있다(결과·세션 기록 없음). 그대로 두면 다음 라운드가 없는 세션을 이어받으려다 실패하므로 비운다.
   const dispatched=c.optional(`dispatch-${n}.json`);
   if(dispatched&&dispatched.cli?.resume===false&&!c.optional(`session-${n}.json`))s.sessions[s.owner]=null;
-  s.auto_recoveries=(s.auto_recoveries??0)+1;
-  s.last_auto_recovery={round:n,reason:message,at:new Date().toISOString()};
+  if(limited)s.limit_recoveries=(s.limit_recoveries??0)+1;
+  else s.auto_recoveries=(s.auto_recoveries??0)+1;
+  s.last_auto_recovery={round:n,reason:message,at:new Date().toISOString(),...(limited?{kind:'provider-limit'}:{})};
   c.save();
-  return recover(c,{token:s.writer.token,quiescent:true,reason:'auto-recover (delegated, '+s.auto_recoveries+'/'+AUTO_RECOVERY_CAP+'): '+message});
+  return recover(c,{token:s.writer.token,quiescent:true,reason:limited
+    ?`auto-recover (usage limit, ${s.owner} is set aside for this task): ${message}`
+    :'auto-recover (delegated, '+s.auto_recoveries+'/'+AUTO_RECOVERY_CAP+'): '+message});
 }
 
 // 재량권 아래에서, 리뷰어 자리가 비었을 때(한도·장애) 구현자와 다른 회사의 모델을 골라 delegate-review 입력을 만든다.
