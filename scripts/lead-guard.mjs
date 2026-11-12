@@ -339,6 +339,16 @@ export function decideAgy(raw,event) {
  return out?{decision:'deny',reason:out.hookSpecificOutput.permissionDecisionReason}:{decision:'allow'};
 }
 
+// agy 훅 한 번의 응답. 입력을 못 읽거나 판정이 예외를 내면 PreToolUse는 막고 Stop은 멈춘다. 빈 응답은 돌려주지 않는다.
+export function agyHookReply(readInput,event,decideFn=decideAgy) {
+ const fallback=reason=>event==='PreToolUse'?{decision:'deny',reason}:event==='Stop'?{decision:'stop'}:{};
+ let raw;
+ try{raw=JSON.parse(String(readInput()).replace(/^\uFEFF/,''));}
+ catch{return fallback('HyperFusion: hook input unreadable');}
+ try{return decideFn(raw,event);}
+ catch(e){return fallback('HyperFusion: lead guard failed ('+(e?.message??e)+')');}
+}
+
 // agy는 Windows에서 훅 명령을 셸 없이 공백으로만 나눠 실행한다. 따옴표가 글자 그대로 넘어가 "C:/…"가 hooks.json 폴더 기준 상대 경로가 되고,
 // 훅이 실패하면 도구 호출이 막힌다(agy 1.4.7 실측). 그래서 경로를 따옴표 없이 쓰고, 공백·따옴표가 든 경로로는 설정을 만들지 않는다.
 export function agyCommandPath(file) {
@@ -384,12 +394,12 @@ if(isMain(import.meta.url)) {
  const at=process.argv.indexOf('--host'),host=at>=0?process.argv[at+1]:'claude-code';
  if(process.argv[2]==='--print-settings'){console.log(JSON.stringify(settingsSnippet({host}),null,2));process.exit(0);}
  if(host==='antigravity'){
-  // agy는 출력이 있어야 판정한다. 입력을 못 읽으면 작업 여부를 알 수 없으므로 도구 호출을 막는다.
-  const ev=process.argv[process.argv.indexOf('--event')+1];
-  let raw;try{raw=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));}
-  catch{console.log(JSON.stringify(ev==='PreToolUse'?{decision:'deny',reason:'HyperFusion: hook input unreadable'}:ev==='Stop'?{decision:'stop'}:{}));process.exit(0);}
-  console.log(JSON.stringify(decideAgy(raw,ev)));process.exit(0);
+  // agy 1.5.6은 빈 출력에 exit 0이면 도구를 실행한다(실측). 그래서 모든 경로에서 결정을 출력하고,
+  // process.exit로 끊지 않고 쓰기가 끝난 뒤 스스로 끝나게 한다.
+  const ev=process.argv.includes('--event')?process.argv[process.argv.indexOf('--event')+1]:undefined;
+  process.stdout.write(JSON.stringify(agyHookReply(()=>fs.readFileSync(0,'utf8'),ev))+'\n');
  }
+ else{
  let input;
  try{input=JSON.parse(fs.readFileSync(0,'utf8').replace(/^\uFEFF/,''));}
  catch(e){console.error('lead-guard: invalid hook input: '+e.message);process.exit(0);}
@@ -397,4 +407,5 @@ if(isMain(import.meta.url)) {
  const out=event==='Stop'?decideStop(input,{host}):event==='SessionStart'?decideSessionStart(input):event==='UserPromptSubmit'?decideUserPrompt(input)
   :event==='PreModelSwitch'?decideModelSwitch(input):decide(input,{host});
  if(out)console.log(JSON.stringify(out));
+ }
 }
