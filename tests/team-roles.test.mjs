@@ -15,7 +15,9 @@ test('an Opus lead keeps the fixed names for every seat; A-tier Sonnet implement
  assert.deepEqual(delegableOwners(c),['grok','antigravity','sonnet','haiku','luna','terra']);
  assert.equal(automaticImplementer(c,'sonnet'),true);assert.equal(automaticImplementer(c,'terra'),true);assert.equal(automaticImplementer(c,'sol'),false);
  // Haiku는 B급 일꾼이라 운영자가 claude_reserve를 켤 때만 자동 후보에서 빠진다.
- assert.equal(automaticImplementer(c,'haiku'),true);assert.equal(automaticImplementer({...c,routing:{...c.routing,claude_reserve:true}},'haiku'),false);assert.deepEqual(excludedMembers(c),[]);
+ assert.equal(automaticImplementer(c,'haiku'),true);assert.equal(automaticImplementer({...c,routing:{...c.routing,claude_reserve:true}},'haiku'),false);
+ // Opus는 Fable 리드에서만 일꾼이다. Opus 리드에서는 제외 목록에 있다.
+ assert.deepEqual(excludedMembers(c),['opus']);
  assert.equal(compatibleLead(c),true);
  // 레지스트리에 없는 이전 Opus도 계열은 접두사로 anthropic이다.
  assert.equal(apexMember(conf('claude-opus-4-7')),'sol');
@@ -29,7 +31,7 @@ test('a Codex lead swaps the specialist and the APEX seat',()=>{
  assert.equal(automaticImplementer(astra,'luna'),true);
  const sol=conf('gpt-6.1-sol-high');
  // Sol 리드에서는 같은 계열 frontier인 Terra가 전문가 자리다.
- assert.deepEqual(excludedMembers(sol),['sol']);assert.equal(specialistMember(sol),'terra');
+ assert.deepEqual(excludedMembers(sol),['sol','opus']);assert.equal(specialistMember(sol),'terra');
  assert.equal(take(sol,{task_criticality:'important',assignment_strategy:'sonnet_implementation',assignment_reason:'x'}).authorized_implementer,'terra');
  const argon=conf('gemini-4-argon');
  // 리드 계열 일반 일꾼은 claude_reserve를 켰을 때만 자동 후보에서 빠진다.

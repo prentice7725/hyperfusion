@@ -13,8 +13,8 @@ import {loadTeam,applyTeam,teamFilePath} from './team-file.mjs';
 
 // 구현 일꾼 명단(A급 Terra·Grok·Sonnet, B급 Luna·Haiku·Antigravity). 누가 grant 없이 자동 구현하는지는 리드 계열에 따른 역할(team-roles)이 정한다.
 export const EXECUTORS=Object.keys(MEMBERS).filter(n=>MEMBERS[n].implement);
-// 리뷰·상담까지 포함한 명단. Sol은 이 구현 명단에 넣지 않는다. APEX 구현은 라운드 승인으로만 연다.
-export const REVIEWERS=['sol',...EXECUTORS];
+// 리뷰·상담까지 포함한 명단. Sol과 Opus는 이 구현 명단에 넣지 않는다. 둘의 구현은 라운드 승인으로만 연다.
+export const REVIEWERS=['sol',...EXECUTORS,'opus'];
 // 위임 리뷰는 라운드당 이 횟수까지(리뷰어가 실패하면 한 번 더). 상담 예산과 별도다.
 export const REVIEW_RUNS_PER_ROUND=2;
 // 위임 리뷰가 앞선 라운드에서 같은 수용 기준을 이 횟수만큼 반려했으면, 그 기준의 다음 반려는 자동 적용하지 않고 리드에게 넘긴다.
@@ -166,7 +166,7 @@ export function config(root,{teamFile=teamFilePath()}={}) {
  // 사용자가 규칙을 쓰지 않았으면 External-First 배치표로 바꾼다. 사용자가 쓴 규칙의 Sonnet/Sol은 router가 거른다.
  if(!userRules&&externalFirst(v))v.routing.rules=structuredClone(EXTERNAL_FIRST_RULES);
  const ext=v.external;
- const ok=v.lead==='opus'&&typeof v.lead_model==='string'&&/^claude-opus-[\w.-]{1,60}$/.test(v.lead_model)&&typeof v.lead_takeover==='boolean'&&ext&&Array.isArray(ext.available)&&ext.available.length&&ext.available.every(x=>EXECUTORS.includes(x))
+ const ok=v.lead==='opus'&&typeof v.lead_model==='string'&&/^claude-(?:opus|fable)-[\w.-]{1,60}$/.test(v.lead_model)&&typeof v.lead_takeover==='boolean'&&ext&&Array.isArray(ext.available)&&ext.available.length&&ext.available.every(x=>EXECUTORS.includes(x))
   &&(ext.default==='auto'||ext.available.includes(ext.default))&&typeof (v.executors.antigravity.sandbox??true)==='boolean'
   &&Array.isArray(v.routing.rules)&&v.routing.rules.length&&v.routing.rules.every(r=>validRule(r,v,userRules))&&typeof v.routing.learn==='boolean'
   &&Object.entries(v.executors).every(([k,o])=>REVIEWERS.includes(k)&&o&&typeof o==='object'&&(o.timeout_ms===undefined||(Number.isSafeInteger(o.timeout_ms)&&o.timeout_ms>0))
@@ -209,7 +209,8 @@ export function config(root,{teamFile=teamFilePath()}={}) {
 export function selectExecutor(c,requested) {
  const name=requested??c.external.default;
  if(name==='auto')return 'auto';
- if(['claude','opus'].includes(name))throw Error('Opus is the lead, not a worker. Executor must be '+EXECUTORS.join(', ')+' or auto');
+ if(name==='claude')throw Error('Opus is the lead, not a worker. Executor must be '+EXECUTORS.join(', ')+' or auto');
+ if(name==='opus')throw Error('Executor must be an implementer; opus only reviews and advises under a Fable lead, and implements only when the lead reassigns a round to it');
  if(name==='sol')throw Error('Executor must be an implementer; sol only reviews and advises');
  if(!EXECUTORS.includes(name))throw Error('Executor must be '+EXECUTORS.join(', ')+' or auto');
  if(!c.external.available.includes(name))throw Error('Executor not enabled in configuration: '+name);

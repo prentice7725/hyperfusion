@@ -3,7 +3,7 @@
 // 아직 컨트롤러에 연결하지 않았다. Opus 리드의 기존 정책(legacy-v1, cross-vendor-pairs-v1)은 review-plan.mjs가 그대로 맡고,
 // 여기의 family-rules-v1은 비 Claude 리드를 위한 일반 규칙이다.
 
-import {MEMBER_PROFILES,UNKNOWN,familyOf,modelBase,memberFamily,memberTier,independent} from './model-registry.mjs';
+import {MEMBER_PROFILES,UNKNOWN,familyOf,modelBase,memberFamily,memberTier,independent,memberEligible} from './model-registry.mjs';
 
 export const FAMILY_RULES_POLICY='family-rules-v1';
 export const ROLES=['external_top','external_specialist','external_general','lead_family_specialist','lead_family_general','probation','excluded'];
@@ -19,8 +19,8 @@ export function compose({lead,candidates=[],models={},probation=[],lead_family_r
   const model=models[name]??MEMBER_PROFILES[name].model;
   members[name]={family:memberFamily(name,models[name]),tier:memberTier(name,models[name]),model,review_rank:MEMBER_PROFILES[name].review_rank};
  }
- // 리드와 같은 모델은 일꾼 자리를 내놓는다.
- const excluded=Object.keys(members).filter(n=>leadBase&&modelBase(members[n].model)===leadBase);
+ // 리드와 같은 모델은 일꾼 자리를 내놓는다. 특정 리드 아래에서만 쓰는 일꾼(Fable 리드의 Opus)도 다른 리드에서는 뺀다.
+ const excluded=Object.keys(members).filter(n=>leadBase&&modelBase(members[n].model)===leadBase||!memberEligible(n,lead?.model));
  const active=Object.keys(members).filter(n=>!excluded.includes(n));
  const trusted=active.filter(n=>!probation.includes(n)&&members[n].family!==UNKNOWN);
  // R0: 리드를 포함해 정식 후보의 계열이 둘 이상이어야 한다. unknown과 수습은 세지 않는다.

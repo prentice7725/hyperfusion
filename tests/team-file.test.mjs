@@ -66,7 +66,7 @@ test('a team file that enables nothing usable, or disables the configured defaul
 
 test('team file validation names the bad field',t=>{
  const {dir,team:file}=temp(t);
- const bad=[[team({opus:{enabled:true}}),/unknown member opus/],[team({terra:{enabled:'yes'}}),/terra\.enabled/],
+ const bad=[[team({gpt5:{enabled:true}}),/unknown member gpt5/],[team({terra:{enabled:'yes'}}),/terra\.enabled/],
   [team({terra:{enabled:true,reasoning_effort:'max'}}),/terra\.reasoning_effort/],[team({terra:{enabled:true,sandbox:false}}),/unknown keys sandbox/],
   [team({terra:{enabled:true},sol:{enabled:false}},{reviewers:['sol']}),/reviewers must be enabled.*sol/],
   [{version:2,members:{}},/version must be 1/],[{...team({}),lead:'fable'},/unknown keys lead/]];

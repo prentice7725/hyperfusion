@@ -48,7 +48,7 @@ import {apexMember,specialistMember,reservedMembers,delegableOwners,memberFamily
 import {gradeOf,MEMBERS} from './member-registry.mjs';
 import {SANDBOX_REPORT,sandboxFailureFile,WORKER_TEMP_DIR} from './codex-sandbox.mjs';
 import {LIMIT_FAILURE_FILE,limitFailureFile} from './provider-limit.mjs';
-import {independent} from './model-registry.mjs';
+import {independent,memberEligible} from './model-registry.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 // 상담 위원에게 직접 넣어 주는 diff의 최대 길이. 12,000자로는 리뷰어가 변경 대부분을 보지 못했다.
@@ -287,6 +287,7 @@ function init(c,input) {
   const lead=leadIdentity(c.root,configuration);
   const powers=leadPowers(lead);
   configuration={...configuration,lead_model:lead.model,...(lead.enforced?{lead:'host'}:{}),...(powers.takeover?{}:{lead_takeover:false})};
+  configuration=opusSeat(configuration);
   const adaptive=configuration.review?.strategy==='lead-gated-adaptive';
   // Sol(일반 명단 밖의 grant 일꾼)은 승인 작업에서만 init이 이 이름을 받는다.
   const requested=pickExecutor(configuration,adaptive,input.executor);
@@ -1121,7 +1122,7 @@ function begin(c,input) {
   // 프로브와 인자 검증은 lease 획득·시도 소모 전에 끝낸다.
   // 실패해도 phase와 시도 예산을 유지해 같은 일꾼으로 다시 시작할 수 있다.
   const cli=a?a.probe(planned.options):null;
-  if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options:planned.options,apexGrant:planned.apexGrant});
+  if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options:planned.options,apexGrant:planned.apexGrant,granted:planned.granted});
 
   if(acceptanceBaseline(c,input)===false)return s;
   // Probes and baseline checks run before the lease. Do not absorb writes from
@@ -1715,6 +1716,17 @@ function nextGrant(s,executor,strategy,criticality,reason) {
 }
 
 // 옵트인 작업의 최종 판정. 모델 호출은 하지 않고, APPROVE도 CLOSE로 가지 않는다.
+// Opus 리뷰 자리. Opus보다 위 모델(Fable)이 리드일 때만 Opus를 리뷰어 명단 끝에 넣고, 그 밖의 리드에서는 명단에서 뺀다.
+// 팀 파일이나 벤더 정책이 Opus를 껐으면 넣지 않는다. 결과는 작업 동안 고정된다.
+function opusSeat(configuration) {
+  const reviewers=configuration.review.reviewers;
+  const eligible=memberEligible('opus',configuration.lead_model);
+  const off=(configuration.team&&!configuration.team.enabled.includes('opus'))||!vendorAllowed(configuration,'opus');
+  const next=eligible&&!off?[...new Set([...reviewers,'opus'])]:reviewers.filter(e=>e!=='opus');
+  if(!next.length)throw Error('Invalid HyperFusion configuration: review.reviewers lists only opus, which reviews only under a Fable lead');
+  return next.length===reviewers.length&&next.every((e,i)=>e===reviewers[i])?configuration:{...configuration,review:{...configuration.review,reviewers:next}};
+}
+
 function leadDecision(c,input) {
   const s=c.s;
   if(s.configuration.review?.strategy!=='lead-gated-adaptive')throw Error('LEAD_DECISION: the lead gate is only for lead-gated-adaptive');

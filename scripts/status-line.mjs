@@ -17,12 +17,13 @@ const PHASE_LABEL={
  VERIFY:'검증 차례',RECOVERY_REQUIRED:'복구 필요'
 };
 
-// 일꾼의 라운드 사용량. Sol은 별도 상한(APEX_ROUND_CAP)을 쓴다. 상한에 닿으면 REDO가 거절되므로 표시해 둔다.
+// 일꾼의 라운드 사용량. 구현 명단 밖의 일꾼(Sol, Opus)은 별도 상한(APEX_ROUND_CAP)을 쓴다. 상한에 닿으면 REDO가 거절되므로 표시해 둔다.
 function rounds(s) {
  const owner=s.owner;
  if(!owner)return null;
- const used=owner==='sol'?s.apex_rounds??0:s.attempts?.[owner]??0;
- const cap=owner==='sol'?APEX_ROUND_CAP:CAP[owner];
+ const separate=owner!=='lead'&&CAP[owner]===undefined;
+ const used=separate?s.apex_rounds??0:s.attempts?.[owner]??0;
+ const cap=separate?APEX_ROUND_CAP:CAP[owner];
  if(cap===undefined)return owner;
  return `${owner} ${used}/${cap}${used>=cap?' 상한':''}`;
 }

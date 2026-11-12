@@ -99,9 +99,10 @@ test('vendor policy blocks consult/review and a newly denied bridge before spawn
  assert.ok(!fs.existsSync(path.join(f.control,'tasks/HF-test/launch-2.json')));
 });
 test('built-in registry is the source for roles, capabilities, vendors and budgets',()=>{
- assert.equal(Object.keys(MEMBERS).length,7);
+ // Opus는 Fable 리드 아래에서만 쓰는 리뷰·상담 일꾼이라 8번째로 등록돼 있지만 구현 명단에는 없다.
+ assert.equal(Object.keys(MEMBERS).length,8);
  for(const n of EXECUTORS){assert.deepEqual(CATALOG[n].owns,MEMBERS[n].owns);assert.deepEqual(DEFAULT_CAPS[n],MEMBERS[n].caps);assert.equal(CAP[n],MEMBERS[n].rounds);assert.ok(vendorOf(n));}
- assert.equal(EXECUTORS.includes('sol'),false);
+ assert.equal(EXECUTORS.includes('sol'),false);assert.equal(EXECUTORS.includes('opus'),false);
 });
 test('turn ceilings are configurable per difficulty with explicit override precedence',t=>{
  const f=fixture(t,{initialize:false});write(f,{executors:{grok:{max_turns_by_difficulty:{low:20,high:80}},sonnet:{max_turns:60,max_turns_by_difficulty:{high:90}}}});

@@ -33,7 +33,7 @@ export function verifyExecute(root,state,dir,request,lease) {
  const n=state.iteration,owner=state.owner,a=adapter(owner);
  if(state.configuration?.review?.strategy==='lead-gated-adaptive'){
   if(!sameAssignment(read(path.join(dir,'assignment.json')),state.assignment))throw Error('ROLE_GATE: assignment differs from controller record');
-  if(owner==='sol'||owner==='sonnet'){
+  if(owner==='sol'||owner==='sonnet'||owner==='opus'){
    const grant=state.implement_grant;
    if(!grant||grant.round!==n||!sameGrant(read(path.join(dir,`implement-grant-${grant.revision}.json`)),{...grant,round:null}))throw Error('ROLE_GATE: active grant differs from controller record');
    assertImplementRound({...state,implement_grant:{...grant,round:null}},owner);
