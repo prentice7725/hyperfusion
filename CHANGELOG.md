@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+- Fable 리드를 추가했다. Claude Code가 Fable(`claude-fable-5-2`)을 리드로 보고하면 Opus가 리뷰·상담 전용 일꾼이 된다(`claude --model claude-opus-5-5`, 리뷰 max). Fable을 쓸 수 있는 요금제(Max 등)에서만 생기는 경우이고, Opus 리드에서는 아무것도 바뀌지 않는다.
+  - init이 Opus를 리뷰어 명단 끝에 넣는다. 팀 파일이나 벤더 정책이 막으면 넣지 않는다.
+  - 적응형 리뷰는 계열 규칙으로 자리를 정한다. Opus는 Terra·Luna 라운드를 먼저 리뷰하고, 같은 회사(Sonnet·Haiku·Fable) 라운드는 리뷰하지 않는다.
+  - `REASSIGN_TO_SONNET`은 전문가 자리로 넘기며, Fable 리드에서는 Opus다. 승인 없이는 Claude 어댑터가 Opus의 쓰기를 거절한다.
+  - `lead_model`에 `claude-fable-*`를 적을 수 있다. Codex·agy 호스트 리드는 훅 실측이 필요해 다음 단계로 남긴다.
 - 이 컴퓨터의 팀 파일(`~/.hyperfusion/team.json`)을 추가했다. `setup-doctor --write-team`이 설치 점검을 통과한 CLI로 초안을 쓰고, 사람이 쓸 일꾼·모델·강도를 고친다. 설정을 읽을 때 일꾼과 리뷰어 명단을 팀 파일이 켠 일꾼으로 좁히고, 저장소 설정이 적지 않은 모델·강도를 채운다. 일꾼을 늘리거나 보안 완화·리드 선택은 할 수 없다. doctor는 팀 파일과 실제 설치가 어긋나면 경고한다. `HF_TEAM_FILE`로 경로를 바꾸거나 끈다. 리드 교체(Fable 리드 등)는 다음 단계다.
 - 구현 라운드의 일꾼이 사용량·요금 한도에 걸려 아무것도 바꾸지 못하고 끝나면, 재량권이 없어도 오토파일럿이 `auto-recover`로 라운드를 되돌리고 다른 CLI의 일꾼에게 넘긴다. 조건은 이 라운드·이 일꾼의 한도 기록, 결과 없음, 종료 증명, 트리 불변, 예산이다. 같은 일꾼 재시도는 여전히 하지 않고, 재량권의 재시도 횟수와 따로 `limit_recoveries`로 센다. 계기는 HF 반복 2회차 L05다. Terra가 첫 라운드에서 Codex 한도에 걸리자 오토파일럿이 멈췄고, 리드가 약 10번 호출해 손으로 복구하고 Grok에게 넘겼다.
 - 리드가 `review`에 `pass`를 낼 때 `blocking_criteria`를 생략해도 빈 목록으로 받는다. 검토 입력이 모자라면 "Invalid review evidence" 뒤에 빠진 칸 이름을 붙인다. 계기는 HF 반복 2회차다. L01과 L03의 리드가 각각 빈 `blocking_criteria`를 빠뜨려 거절당했고, 오류 원인을 찾으려 스킬 소스를 grep하느라 호출을 두 번씩 더 썼다.

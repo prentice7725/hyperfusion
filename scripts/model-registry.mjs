@@ -8,6 +8,7 @@ export const UNKNOWN='unknown';
 
 // model_base → 계열·등급. 강도 접미사를 뗀 이름이 키다. aliases는 호스트가 보내는 표시 이름이다.
 export const MODELS={
+ 'claude-fable-5-2':{family:'anthropic',tier:'frontier',aliases:['Claude Fable 5.2']},
  'claude-opus-5-5':{family:'anthropic',tier:'frontier',aliases:['Claude Opus 5.5']},
  'claude-sonnet-5-5':{family:'anthropic',tier:'frontier',aliases:['Claude Sonnet 5.5']},
  'claude-haiku-5-5':{family:'anthropic',tier:'fast',aliases:['Claude Haiku 5.5']},
@@ -30,8 +31,13 @@ export const MEMBER_PROFILES={
  antigravity:{cli:'agy',model:null,default_family:'google',tier:'standard',review_rank:4},
  luna:{cli:'codex',model:'gpt-6-luna',review_rank:5},
  haiku:{cli:'claude',model:'claude-haiku-5-5',review_rank:6},
- terra:{cli:'codex',model:'gpt-6.1-terra',review_rank:7}
+ terra:{cli:'codex',model:'gpt-6.1-terra',review_rank:7},
+ // Opus는 Opus보다 위 모델(Fable)이 리드일 때만 일꾼이 된다. Fable을 쓸 수 있는 요금제(Max 등)라는 뜻이기도 하다.
+ // 리뷰·상담 전용이고, A급이 실패한 일은 리드가 전문가 자리로 넘길 때만 구현한다. 리뷰 순번은 Grok 다음, Sonnet 앞이다.
+ opus:{cli:'claude',model:'claude-opus-5-5',review_rank:2.5,review_effort:'max',only_under:['claude-fable-5-2']}
 };
+// 리드 모델 아래에서 이 일꾼을 쓸 수 있는지. only_under가 있으면 그 리드일 때만이다.
+export const memberEligible=(name,leadModel)=>{const only=MEMBER_PROFILES[name]?.only_under;return !only||only.includes(modelBase(leadModel));};
 
 const EFFORT_SUFFIX=/-(?:low|medium|high)$/;
 const HOST_CHOSEN=['auto','default',''];

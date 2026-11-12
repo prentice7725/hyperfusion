@@ -8,11 +8,11 @@ import {vendorOf,MEMBERS} from './member-registry.mjs';
 import {vendorAllowed} from './vendor-policy.mjs';
 import {independent,UNKNOWN} from './model-registry.mjs';
 import {compose,familyReviewPlan,FAMILY_RULES_POLICY} from './team-composer.mjs';
-import {apexMember,specialistMember,reservedMembers,compatibleLead} from './team-roles.mjs';
+import {apexMember,specialistMember,reservedMembers,compatibleLead,upperLead} from './team-roles.mjs';
 
 export const CRITICALITIES=['standard','important','apex'];
 export const ASSIGNMENT_STRATEGIES=['external_primary','dual_review','sonnet_implementation','sol_apex'];
-const OWNERS=['grok','antigravity','haiku','luna','terra','sonnet','sol','lead'];
+const OWNERS=['grok','antigravity','haiku','luna','terra','sonnet','sol','opus','lead'];
 
 // 이름을 받아 적기만 하면 승인된 것처럼 보이므로 아직 거절한다.
 const LATER=['explicit_repair'];
@@ -135,8 +135,8 @@ export function takeAssignment(configuration,input) {
  const authorized_implementer=strategy==='sonnet_implementation'?specialistMember(configuration):strategy==='sol_apex'?apexMember(configuration):null;
  if((strategy==='sonnet_implementation'||strategy==='sol_apex')&&!authorized_implementer)throw Error('ROLE_GATE: '+strategy+' has no eligible member for this lead');
  const base={criticality,strategy,reason:reason.trim(),revision:1,final_decider:'lead',set_by:'controller',authorized_implementer};
- // 비 Claude 리드는 일반 규칙(family-rules-v1)으로 리뷰한다. 팀(리드 모델·후보)을 기록해 이후 계산이 같은 값을 쓰게 한다.
- if(!compatibleLead(configuration)){
+ // 비 Claude 리드와 Opus보다 위 Claude 리드(Fable)는 일반 규칙(family-rules-v1)으로 리뷰한다. Fable 리드에서는 Opus가 리뷰·전문가 자리에 든다. 팀(리드 모델·후보)을 기록해 이후 계산이 같은 값을 쓰게 한다.
+ if(!compatibleLead(configuration)||upperLead(configuration)){
   const candidates=Object.keys(MEMBERS).filter(n=>vendorAllowed(configuration,n)&&(configuration?.external?.available?.includes(n)||configuration?.review?.reviewers?.includes(n)));
   const team={lead_model:configuration.lead_model,candidates};
   compose({lead:{model:team.lead_model},candidates});
@@ -216,7 +216,9 @@ export function implementDispatch(state,owner) {
  const c=state.configuration;
  const opened=owner===apexMember(c)?grant?.strategy==='sol_apex'&&grant?.criticality==='apex':owner===specialistMember(c)&&SPECIALIST_STRATEGIES.includes(grant?.strategy);
  const apexGrant=!!(active&&grant.sandbox==='workspace-write'&&grantProfile(owner).sandbox==='workspace-write'&&opened);
- return {options,apexGrant};
+ // 평소 리뷰 전용인 Claude 일꾼(Opus)에 쓰기를 여는 것도 승인된 자리의 grant뿐이다.
+ const granted=!!(active&&opened);
+ return {options,apexGrant,granted};
 }
 
 export function executionAllowed(state) {

@@ -82,6 +82,8 @@ Opus가 코드를 쓰고, 테스트를 돌리고, 긴 로그를 읽으면 비싼
 | Antigravity | agy (Gemini 3.8 Flash high) | UI, 프론트엔드, 문서 |
 | Sol | gpt-6.1-sol (Codex) | 주로 리뷰와 상담 |
 
+Fable을 쓸 수 있는 요금제(Max 등)에서 Fable이 리드면, Opus는 리뷰·상담 일꾼이 되고 A급이 실패한 일을 넘겨받는다. → [Fable 리드](references/configuration.md#fable-리드와-opus-일꾼)
+
 설치된 일꾼만 쓴다. 하나만 있어도 된다. 배치는 출발점일 뿐이고, 일꾼마다 반려된 기록을 보고 리드가 바꾼다. → [배치 규칙](references/routing.md)
 
 ## 설치와 사용

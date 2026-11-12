@@ -20,6 +20,7 @@
 - `executors.<이름>.timeout_ms`: 일꾼 한 번 실행의 상한. 기본값은 구현 라운드 2,400,000(40분), 리뷰·상담 1,200,000(20분)이다. 값을 주면 두 경우 모두 그 값을 쓴다. Windows에서 agy가 멈추는 문제가 있으면 짧게 잡는다.
 - `executors.antigravity.sandbox:false`는 바깥 샌드박스 안에서 agy `--sandbox`가 시작되지 못할 때만 쓴다(`sandbox_apply: Operation not permitted`). 저장소 안의 설정 파일은 일꾼이나 복제한 저장소가 쓴 것일 수 있으므로, **운영자가 환경변수 `HF_ALLOW_UNSANDBOXED=1`을 직접 설정해야만** 받아들여진다(없으면 설정 오류). 허용해도 상담·리뷰는 항상 `--sandbox`로 실행한다. 끄면 구현 라운드의 agy 터미널 실행이 제한되지 않는다는 점을 사용자에게 알린다.
 - `lead: sol|astra` 등 main 브랜치(Codex 리드) 설정은 거절한다. 조용히 변환하지 않는다.
+- `lead_model`에는 `claude-opus-*`나 `claude-fable-*`를 적을 수 있다. 실제 리드는 호스트 훅이나 `HF_LEAD_MODEL`이 정하고, 적은 값과 계열이 다르면 init이 거절한다.
 
 | 역할 | 누구 | 예산 |
 |---|---|---|
@@ -28,6 +29,19 @@
 | 일꾼 | Antigravity (`agy`) | 3라운드 |
 | 일꾼 | Sonnet (`claude --model claude-sonnet-5-5`) | 3라운드 |
 | auto | 배치표 + 실적 + 설치 상태로 선택 | — |
+
+## Fable 리드와 Opus 일꾼
+
+Claude Code에서 리드가 Fable(`claude-fable-5-2`)이면 Opus가 일꾼이 된다. Fable을 쓸 수 있는 요금제(Max 등)에서만 생기는 경우다. 요금제를 직접 알아내지 않고, 호스트가 보고한 리드 모델로 판단한다. 리드가 Opus면 지금과 같고 Opus는 일꾼이 아니다.
+
+- **리뷰·상담 전용.** `claude --model claude-opus-5-5`로 돌고, 리뷰 강도는 max다. `--executor opus`로 고를 수 없고 자동 배정도 받지 않는다.
+- **리뷰어 명단.** init이 `review.reviewers` 끝에 Opus를 넣는다. 팀 파일이 Opus를 켜지 않았거나 벤더 정책이 Anthropic을 막으면 넣지 않는다. Opus 리드 작업에서는 명단에 있어도 뺀다.
+- **누구를 리뷰하나.** 다른 회사 모델이 쓴 라운드만 리뷰한다. 적응형 리뷰는 계열 규칙(`family-rules-v1`)으로 자리를 정한다.
+  - Terra·Luna(OpenAI) 라운드: Opus가 먼저 맡는다.
+  - Grok·Antigravity 라운드: Sol이 먼저 맡는다.
+  - Sonnet·Haiku·Opus·리드가 쓴 라운드: Opus는 리뷰하지 않는다.
+- **A급이 실패한 일.** 리드가 `lead-decision`의 `REASSIGN_TO_SONNET`을 내면 전문가 자리인 Opus가 승인을 받아 그 라운드를 구현한다. 승인이 없으면 Claude 어댑터가 Opus의 쓰기를 거절한다. 라운드 상한은 Sol APEX와 같은 별도 상한(3)이다.
+- 적응형 리뷰가 아닌 설정에서도 Fable 리드로 init할 수 있다. 이때 리뷰는 지금의 Claude 리드 규칙을 따르고, Opus는 위임 리뷰 명단의 마지막 순번이다.
 
 ## 이 컴퓨터의 팀 파일 (`~/.hyperfusion/team.json`)
 

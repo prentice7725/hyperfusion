@@ -48,7 +48,7 @@ export function collectRunUsage(root,state) {
 }
 
 export function summarizeUsage(runs,lead=null,leadModel=null) {
- const executors=['grok','antigravity','luna','terra','sol','sonnet','haiku'];
+ const executors=['grok','antigravity','luna','terra','sol','sonnet','haiku','opus'];
  const by_executor=Object.fromEntries(executors.map(executor=>{
   const rows=runs.filter(r=>r.executor===executor);
   return [executor,{calls:rows.length,roles:Object.fromEntries(['implement','review','consult'].map(role=>[role,rows.filter(r=>r.role===role).length])),tokens:completeSum(rows,'tokens'),cost_usd:completeSum(rows,'cost_usd'),unreported_calls:rows.filter(r=>!r.reported).length}];

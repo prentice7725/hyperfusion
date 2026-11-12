@@ -3,7 +3,7 @@
 // Opus 리드에서는 지금 동작과 같다: APEX는 Sol, 전문가는 Sonnet, 예비는 Haiku.
 
 import {compose} from './team-composer.mjs';
-import {MEMBER_PROFILES} from './model-registry.mjs';
+import {MEMBER_PROFILES,memberEligible} from './model-registry.mjs';
 import {MEMBERS} from './member-registry.mjs';
 
 export const DEFAULT_LEAD_MODEL='claude-opus-5-5';
@@ -37,3 +37,5 @@ export const leadFamily=c=>roleTeam(c).lead.family;
 export const memberFamilyOf=(c,name)=>name==='lead'?leadFamily(c):roleTeam(c).members[name]?.family??'unknown';
 // 기존 리뷰 정책(legacy-v1, cross-vendor-pairs-v1)은 Anthropic 리드의 역할 배치를 전제로 한다.
 export const compatibleLead=c=>leadFamily(c)==='anthropic';
+// Opus보다 위 모델(Fable)이 리드인지. 그러면 Opus가 일꾼이 되므로 적응형 리뷰는 일반 규칙(family-rules-v1)을 쓴다.
+export const upperLead=c=>memberEligible('opus',c?.lead_model??DEFAULT_LEAD_MODEL);

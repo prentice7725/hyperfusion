@@ -82,6 +82,8 @@ Opusがコードを書き、テストを回し、長いログを読むと、高�
 | Antigravity | agy（Gemini 3.8 Flash high） | UI、フロントエンド、ドキュメント |
 | Sol | gpt-6.1-sol（Codex） | 主にレビューと相談 |
 
+Fableを使えるプラン（Maxなど）でFableがリードのときは、Opusがレビューと相談のワーカーになり、A級が失敗した作業を引き継ぎます。→ [Fableリード](references/configuration.md#fable-리드와-opus-일꾼)（韓国語）
+
 インストールされたワーカーだけを使い、1つだけでも動きます。この割り当ては出発点で、ワーカーごとの差し戻し記録を見てリードが変えます。→ [配置ルール](references/routing.md)
 
 ## インストールと使い方

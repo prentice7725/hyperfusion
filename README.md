@@ -82,6 +82,8 @@ We ran five large tasks (L01–L05) under the same conditions and compared the l
 | Antigravity | agy (Gemini 3.8 Flash high) | UI, frontend, documentation |
 | Sol | gpt-6.1-sol (Codex) | Mostly reviews and advice |
 
+On a plan that offers Fable (such as Max), Fable can lead. Opus then becomes a review and advice worker and takes over rounds that A-tier workers failed. → [Fable lead](references/configuration.md#fable-리드와-opus-일꾼) (Korean)
+
 Only installed workers are used, and one is enough. These roles are a starting point: the lead changes them based on each worker's rejection history. → [Routing](references/routing.md)
 
 ## Install and use

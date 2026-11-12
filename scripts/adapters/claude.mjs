@@ -28,16 +28,18 @@ export function commandOrders(text,rules,brief) {
 export const requiredFlags=['--model','--output-format','--json-schema','--resume','--session-id','--safe-mode','--tools','--allowedTools','--disallowedTools','--permission-mode'];
 export const binary=()=>memberBinary('sonnet');
 
-function member(name,{model:MODEL,label}) {
+// canWrite:false인 일꾼(Opus)은 리뷰·상담만 한다. 구현 라운드는 컨트롤러가 연 승인(granted)이 있을 때만 받는다.
+function member(name,{model:MODEL,label,canWrite=true}) {
  // 추론 강도(--effort)는 설정했을 때만 필수 플래그로 확인한다.
  const probe=(options={})=>probeCli(`Claude Code (${label})`,binary(),[...requiredFlags,...(options.reasoning_effort?['--effort']:[])],['--effort'],{executor:name});
  const newSession=()=>crypto.randomUUID();
 
- function dispatch(brief,lease,{session,resume,probe:cli,options={}}) {
+ function dispatch(brief,lease,{session,resume,probe:cli,options={},granted=false}) {
   const model=options.model??MODEL;
   if(options.reasoning_effort&&!cli.supports?.['--effort'])throw Error(`EFFORT_UNSUPPORTED: ${label} requires --effort support for a reasoning_effort setting`);
   if(!session)throw Error(`${label} requires a preallocated session UUID`);
   const edit=brief.allowed_actions.includes('edit')&&!brief.consult;
+  if(edit&&!canWrite&&!granted)throw Error(`ROLE_GATE: ${label} reviews and advises only; it implements only a round the lead reassigned to it`);
   const allowed=['Read','Glob','Grep',...(edit?['Edit','Write']:[]),...bashRules(brief)];
   // 상담은 Bash 자체를 주지 않는다. 읽기 도구만 있으면 트리를 바꿀 수단이 없다.
   const tools=brief.consult?'Read,Glob,Grep':edit?'Read,Glob,Grep,Edit,Write,Bash':'Read,Glob,Grep,Bash';
@@ -69,9 +71,11 @@ function member(name,{model:MODEL,label}) {
   const text=e?.is_error===true&&typeof e.result==='string'?e.result.replace(/\s+/g,' ').trim():'';
   return text&&LIMIT_TEXT.test(text)?`${label} reported: ${text.slice(0,300)}`:null;
  }
- return {name,MODEL,defaultModel:MODEL,requiredFlags,binary,probe,newSession,dispatch,parse,diagnose};
+ return {name,MODEL,defaultModel:MODEL,canWrite,requiredFlags,binary,probe,newSession,dispatch,parse,diagnose};
 }
 
 export const sonnet=member('sonnet',{model:MEMBERS.sonnet.model,label:'Sonnet'});
 // Haiku: 빠르고 싼 Claude. 쉬운 코드·문서·테스트 보조로 시작하고, 실적이 쌓이면 router가 자리를 정한다.
 export const haiku=member('haiku',{model:MEMBERS.haiku.model,label:'Haiku'});
+// Opus: Fable 리드 아래의 리뷰·상담 일꾼. 리드가 A급 실패 작업을 넘긴 라운드에서만 쓴다.
+export const opus=member('opus',{model:MEMBERS.opus.model,label:'Opus',canWrite:false});
