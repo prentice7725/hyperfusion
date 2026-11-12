@@ -116,6 +116,14 @@ file write or atomic rename. No production fault hook, fake process inventory or
 real provider CLI is used. Fixtures preserve an actual earlier rejection and
 task-scoped fake-CLI session, plus pre-existing user changes.
 
+The read-only `resume` packet also names a `disposition` for each boundary
+([recovery protocol](recovery-protocol.md)). `reconciliation-crash` tests pin it:
+uncertain dispatch, verification and terminal settlement are `outcome_uncertain`;
+worker evidence without a completion sidecar, a held controller lock and a pending
+acceptance marker are `shutdown_unverified`; a persisted worker completion and an
+open reviewer panel are `evidence_present` (go to the read-only `reconcile` preview).
+The disposition is a display only and never feeds a controller decision.
+
 | Interruption boundary | Restart disposition |
 | --- | --- |
 | Dispatch saved, worker not started | Uncertain dispatch; no launch |
