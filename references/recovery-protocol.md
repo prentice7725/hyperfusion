@@ -4,6 +4,20 @@
 
 후속 `begin`은 직전 라운드의 `post_digest`와 현재 트리를 비교한다. 범위 안 파일을 Bash로 썼더라도 일치하지 않으면 새 lease·시도 예산을 쓰기 전에 `RECOVERY_REQUIRED`로 멈춘다. 프리플라이트 도중 생긴 변경도 같은 방식으로 멈춘다. 쓰기 프로세스가 없음을 확인하고 누적 diff를 검토한 뒤 `recover`에 `quiescent:true`와 `reason`을 준다(lease가 없으면 token은 필요 없다). 복구는 확인한 현재 digest를 다음 시작의 기대값으로 기록하며, 변경을 일꾼이 쓴 것으로 인정하거나 승인하지 않는다.
 
+먼저 `node scripts/fusion-state.mjs resume REPO`로 읽기 전용 재개 패킷을 본다. 패킷의 `disposition`이 어느 절차로 갈지 알려 준다. 이유 코드(`reason_codes`)는 그대로 있고, `disposition_basis`는 그 처분을 고르게 한 코드만 담는다. 처분값은 표시일 뿐이다. 종료, 수용, 승인의 증거가 아니고 컨트롤러는 이 값을 읽지 않는다.
+
+| `disposition` | 뜻 | 갈 곳 |
+|---|---|---|
+| `unreadable` | 상태나 기록을 믿을 수 없다(다른 스키마, 모르는 단계·이유 코드, 깨진 파일, 첫 brief 없음) | 아래 1번. 다른 스키마면 5번(archive) |
+| `recovery_required` | 상태가 RECOVERY_REQUIRED다 | 아래 1~3번 뒤 `recover` |
+| `outcome_uncertain` | 발송·검증·종료 기록 중 하나가 반만 남았다 | [정산](reconciliation.md#uncertainty-and-rollout-limits). 다시 돌리지 않는다 |
+| `shutdown_unverified` | writer 잠금, 컨트롤러 잠금, 수용 표식이 남았다 | 아래 2~3번. 수용 표식이면 수용 복구 |
+| `evidence_present` | 실행·상담 기록이 있다(구현자 완료 기록이 있고 남은 것이 writer 잠금뿐인 경우 포함) | `reconcile` 미리보기(권한이 있을 때), 없으면 아래 수동 정산 |
+| `continue` | 이유 코드가 없다 | 패킷의 `next_action`. 프로세스가 끝났다는 증명은 아니다 |
+| `settled` | 이유 코드가 없고 종료 단계다 | 할 일 없음 |
+
+`participants`는 현재 라운드의 구현자와 열린 상담 참여자마다 `trace`(`invalid`, `completion_recorded`, `result_recorded`, `launched_only`, `not_launched`)를 준다. 파일 유무만 본 값이다.
+
 1. 상태, lock, 최신 brief, 결과, 라운드별 스냅샷, 실제 diff/status를 본다. 오래된 타임스탬프는 writer가 멈췄다는 증거가 아니다.
 2. `launch-N.json`, `process-N.json`, `envelope-N.json`으로 브리지와 일꾼 프로세스(POSIX는 프로세스 그룹, Windows는 프로세스 트리)가 모두 끝났는지 확인한다. Windows에서는 `process-N.json`의 pid를 부모로 가진 프로세스가 남았는지 직접 본다. 빠져나간 자손도 확인한다. 정지를 확인할 수 없으면 lock을 유지하고 BLOCKED로 보고한다.
 3. 컨트롤러가 죽어 control.lock이 남았으면: lock에는 소유자(pid, 호스트, 시각)가 적혀 있다. 같은 호스트에서 그 프로세스가 이미 없으면 다음 명령이 알아서 치운다. 살아 있거나 다른 호스트면 `EEXIST … held by pid N on HOST`로 거절하므로, 실행 중인 컨트롤러가 없음을 확인하고 기록한 뒤 그 파일만 지운다. writer.json을 지워 lease를 훔치지 않는다. `recover`에 token, `quiescent:true`, 근거 있는 reason을 넘긴다. 스냅샷 후 lease를 놓고 남은 예산 안에서 라우팅한다.

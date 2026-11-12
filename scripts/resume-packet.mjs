@@ -14,6 +14,58 @@ function record(file) {
  }catch(e){return {status:e.code==='ENOENT'?'missing':'invalid'};}
 }
 
+// 재개 패킷이 낼 수 있는 이유 코드 전부. 아래 처분 표가 이 목록을 모두 다뤄야 한다(테스트가 확인한다).
+export const REASON_CODES=['LEGACY_STATE','PHASE_UNKNOWN','ROUND_INVALID','CONTROLLER_LOCK_PRESENT','ACCEPTANCE_PENDING',
+ 'INITIAL_BRIEF_UNAVAILABLE','ARTIFACT_INVALID','EXISTING_LAUNCH','EXISTING_CONSULT','PROCESS_SHUTDOWN_UNVERIFIED',
+ 'DISPATCH_OUTCOME_UNCERTAIN','RECOVERY_REQUIRED','VERIFICATION_OUTCOME_UNCERTAIN','TERMINAL_SETTLEMENT_INCOMPLETE'];
+
+// 이유 코드 조합을 처분값 하나로 줄인다(HF-I09, openrig의 복원 결과 보고에서 착안). 위에서부터 먼저 맞는 것이다.
+// 리드가 어느 절차로 갈지 고르는 데 쓰는 표시일 뿐이다. 컨트롤러의 어느 판단도 이 값을 읽지 않는다.
+// 이름은 패킷이 증명하지 못하는 것(종료, 수용, 승인)을 말하지 않게 골랐다.
+export const DISPOSITIONS=[
+ ['unreadable',['LEGACY_STATE','PHASE_UNKNOWN','ROUND_INVALID','ARTIFACT_INVALID','INITIAL_BRIEF_UNAVAILABLE']],
+ ['recovery_required',['RECOVERY_REQUIRED']],
+ ['outcome_uncertain',['DISPATCH_OUTCOME_UNCERTAIN','VERIFICATION_OUTCOME_UNCERTAIN','TERMINAL_SETTLEMENT_INCOMPLETE']],
+ ['shutdown_unverified',['PROCESS_SHUTDOWN_UNVERIFIED','CONTROLLER_LOCK_PRESENT','ACCEPTANCE_PENDING']],
+ ['evidence_present',['EXISTING_LAUNCH','EXISTING_CONSULT']]
+];
+
+// 순수 함수. 표에 없는 코드가 하나라도 있으면 unreadable이다. 모르는 코드를 continue로 흘리지 않는다.
+// 예외 하나: 구현자의 완료 기록(completion-N)이 있고 멈춘 이유가 남은 writer 잠금(PROCESS_SHUTDOWN_UNVERIFIED)뿐이면
+// evidence_present다. 완료 기록은 브리지가 종료를 확인한 뒤 쓰므로, 정산 표대로 reconcile 미리보기에서 finish 한 번으로 간다.
+// 미리보기가 다시 검증하므로 이 표시는 권한이 아니다.
+export function disposition(reasons,phase,{implementerCompleted=false}={}) {
+ const unknown=reasons.filter(r=>!REASON_CODES.includes(r));
+ if(unknown.length)return {disposition:'unreadable',basis:unknown};
+ for(const [name,codes] of DISPOSITIONS){
+  const basis=reasons.filter(r=>codes.includes(r));
+  if(name==='shutdown_unverified'&&implementerCompleted&&basis.length===1&&basis[0]==='PROCESS_SHUTDOWN_UNVERIFIED')continue;
+  if(basis.length)return {disposition:name,basis};
+ }
+ return {disposition:TERMINAL_PHASES.includes(phase)?'settled':'continue',basis:[]};
+}
+
+// 참여자별 흔적. 현재 라운드의 파일 유무만으로 정한다. 파일이 있다는 것은 종료나 수용의 증거가 아니다.
+const TRACES=[['invalid',files=>files.some(f=>f.status==='invalid')],
+ ['completion_recorded',(files,kinds)=>kinds.completion==='present'],
+ ['result_recorded',(files,kinds)=>kinds.result==='present'],
+ ['launched_only',(files,kinds)=>kinds.launch==='present'],
+ ['not_launched',()=>true]];
+const traceOf=kinds=>{const files=Object.values(kinds).map(status=>({status}));return TRACES.find(([,test])=>test(files,kinds))[0];};
+export function participants(s,artifacts) {
+ const n=s.iteration,status=name=>artifacts[name]?.status??'missing',out=[];
+ if(safeId(s.owner)&&Number.isSafeInteger(n)&&n>=0){
+  out.push({role:'implementer',member:s.owner,trace:traceOf({launch:status(`launch-${n}.json`),result:status(`result-${n}.json`),completion:status(`completion-${n}.json`)})});
+ }
+ const id=s.open_consult?.id;
+ if(safeId(id))for(const m of (Array.isArray(s.open_consult.members)?s.open_consult.members:[]).slice(0,6)){
+  if(!safeId(m?.member))continue;
+  out.push({role:'consult',member:m.member,trace:traceOf({launch:status(`launch-consult-${id}-${m.member}.json`),
+   result:status(`consult-result-${id}-${m.member}.json`),completion:status(`completion-consult-${id}-${m.member}.json`)})});
+ }
+ return out;
+}
+
 // No ensureControl, lock, transition hooks, probes or writes on this path.
 export function inspectionControl(root) {
  const dir=controlRoot(root),state=record(path.join(dir,'state.json'));
@@ -69,12 +121,14 @@ export function resumePacket(root) {
  if(s.phase==='VERIFY'&&artifacts['verification.json'].status!=='missing')reasons.push('VERIFICATION_OUTCOME_UNCERTAIN');
  if(s.schema_version===SCHEMA_VERSION&&['CLOSE','BLOCKED'].includes(s.phase)&&!s.ended_at)reasons.push('TERMINAL_SETTLEMENT_INCOMPLETE');
  const stopped=reasons.length>0;
+ const people=participants(s,artifacts);
+ const settled=disposition(reasons,s.phase,{implementerCompleted:people.some(p=>p.role==='implementer'&&p.trace==='completion_recorded')});
  const pick=(value,keys)=>Object.fromEntries(keys.filter(k=>value?.[k]!==undefined).map(k=>{
   const v=value[k];
   return [k,typeof v==='string'?v.slice(0,160):typeof v==='number'&&Number.isFinite(v)||typeof v==='boolean'?v:null];
  }));
  const initial=record(path.join(c.taskdir(),'initial-brief.json'));
- return {packet_revision:1,task_id:s.task_id,schema_version:Number.isSafeInteger(s.schema_version)?s.schema_version:null,
+ return {packet_revision:2,task_id:s.task_id,disposition:settled.disposition,disposition_basis:settled.basis,schema_version:Number.isSafeInteger(s.schema_version)?s.schema_version:null,
   ...pick(s,['phase','owner']),round:validRound?n:null,digest:typeof s.post_digest==='string'?s.post_digest.slice(0,128):null,
   frozen_policy:{assignment:pick(s.assignment,['criticality','strategy']),
    delegation:pick(s.delegation,['policy','revision','max_rounds','allow_preserve','granted_by']),
@@ -88,7 +142,7 @@ export function resumePacket(root) {
   process:{lease_status:lease.status,shutdown:'unverified',launch_present:!!launch,consult_open:!!s.open_consult},
   rejection_history:{count:(Array.isArray(s.reviews)?s.reviews:[]).filter(r=>['redo','alternative'].includes(r.verdict)).length,
    source:'state.json reviews; original history retained'},
-  artifacts,reason_codes:reasons,auto_resume:false,lead_required:stopped||!TERMINAL_PHASES.includes(s.phase),
+  participants:people,artifacts,reason_codes:reasons,auto_resume:false,lead_required:stopped||!TERMINAL_PHASES.includes(s.phase),
   next_action:stopped?'Inspect existing process and artifact evidence; settle through the controller after revalidation. Do not replay launches or consultations.':nextAction(s.phase,false),
   evidence_note:'Artifact presence does not establish validity, shutdown, acceptance or approval. No automatic settlement is enabled.'};
 }

@@ -54,7 +54,13 @@ console.error('Fault checkpoint was not reached');process.exitCode=78;
 `);
  const child=spawnSync(process.execPath,[file,f.root,action,boundary,JSON.stringify(input),consultId??''],{encoding:'utf8',timeout:120000,windowsHide:true});
  assert.equal(child.status,77,`${action}/${boundary}: ${child.error?.message??''}\n${child.stderr}`);
+ {const want=dispositionAt(boundary);assert.ok(want,'no expected disposition for '+boundary);assert.equal(run(f.root,'resume').disposition,want,boundary);}
 }
+
+// 중단 경계마다 재개 패킷의 처분값이 reconciliation.md 표의 재시작 처리와 같은 절차를 가리키는지 고정한다(HF-I09).
+const DISPOSITION={'dispatch-2.json':'outcome_uncertain','envelope-2.json':'shutdown_unverified','result-2.json':'shutdown_unverified',
+ 'completion-2.json':'evidence_present','verification.json':'outcome_uncertain','state:CLOSE':'outcome_uncertain','acceptance:verify':'shutdown_unverified'};
+const dispositionAt=boundary=>DISPOSITION[boundary]??(/^completion-consult-|^consult-result-/.test(boundary)?'evidence_present':/-finish\.json$/.test(boundary)?'shutdown_unverified':null);
 
 async function stoppedWithoutMutation(f,code) {
  const stateFile=path.join(f.control,'state.json'),before=fs.readFileSync(stateFile);

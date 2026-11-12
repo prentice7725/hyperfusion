@@ -1,6 +1,11 @@
 # 외부 저장소에서 들여올 것 (설계 초안)
 
-상태: 초안. 구현도 실측도 하지 않았다. 번호 HF-I08, HF-I09는 가칭이다.
+상태: HF-I09는 구현했다(`scripts/resume-packet.mjs`, `tests/resume-disposition.test.mjs`). HF-I08은 초안이고 0단계 측정 전이다. 번호 HF-I08, HF-I09는 가칭이다.
+
+HF-I09 구현에서 정한 것과 바뀐 것:
+- `packet_revision`은 2로 올렸다.
+- 구현자의 완료 기록(`completion-N`)이 있고 멈춘 이유가 남은 writer 잠금(`PROCESS_SHUTDOWN_UNVERIFIED`)뿐이면 `evidence_present`로 둔다. 표대로면 `shutdown_unverified`인데, [정산](reconciliation.md)의 중단 경계 표는 이 경우를 "finish 한 번"으로 처리한다. 경계별 처분값은 `reconciliation-crash` 테스트가 고정한다.
+- 리뷰 정산 기록 도중 멈춘 경우는 컨트롤러 잠금이 남아 `shutdown_unverified`다. 표의 "불확실한 의도"보다 거칠지만, 먼저 컨트롤러가 멈췄는지 확인하라는 뜻이라 어긋나지 않는다.
 
 두 저장소의 README를 읽고 뽑은 아이디어다. 코드는 보지 않았고 가져오지도 않는다.
 
