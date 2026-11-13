@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {fixture} from './support.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {controlPath} from '../scripts/control-dir.mjs';
-import {decideAgy,normalizeAgy,agyMcpName,agyCommandPath,settingsSnippet} from '../scripts/lead-guard.mjs';
+import {decideAgy,normalizeAgy,agyMcpName,agyCommandPath,agyHookReply,settingsSnippet} from '../scripts/lead-guard.mjs';
 import {leadIdentity} from '../scripts/lead-host.mjs';
 import {config} from '../scripts/executor-config.mjs';
 
@@ -74,4 +74,31 @@ test('agy hook settings, usage binding and lead identity',t=>{
  assert.deepEqual([row.host,row.lead_model,row.tool_name],['antigravity','gemini-4-argon-high','Bash']);
  const lead=leadIdentity(f.root,config(f.root),{env:{}});
  assert.deepEqual([lead.host,lead.family,lead.source,lead.grade,lead.enforced],['antigravity','google','host-hook','C',true]);
+});
+// agy 1.5.6은 빈 출력에 exit 0이면 도구를 실행하고 {}는 막는다(실측). 가드는 어떤 입력에도 결정을 출력해야 한다.
+test('the agy guard never answers with empty output',t=>{
+ const f=fixture(t);
+ const boom=()=>{throw Error('boom');};
+ assert.deepEqual(agyHookReply(boom,'PreToolUse'),{decision:'deny',reason:'HyperFusion: hook input unreadable'});
+ assert.deepEqual(agyHookReply(()=>'{}','PreToolUse',boom),{decision:'deny',reason:'HyperFusion: lead guard failed (boom)'});
+ assert.deepEqual(agyHookReply(()=>'{}','Stop',boom),{decision:'stop'});
+ assert.deepEqual(agyHookReply(()=>'﻿{}','SessionStart',boom),{});
+ const guard=path.join(SCRIPTS,'lead-guard.mjs');
+ const run=(event,input)=>spawnSync(process.execPath,[guard,'--host','antigravity','--event',event],{input,encoding:'utf8',env:process.env});
+ const write=JSON.stringify(raw(f,'write_file',{Path:path.join(f.root,'a.txt'),Content:'x'}));
+ for(const [event,input,want] of [['PreToolUse',write,'deny'],['PreToolUse','not json','deny'],['PreToolUse','null','allow'],['PreToolUse','','deny'],['Stop','not json','stop']]){
+  const out=run(event,input);
+  assert.equal(out.status,0,event+' '+input);
+  assert.equal(JSON.parse(out.stdout).decision,want,event+' '+input);
+ }
+ assert.deepEqual(JSON.parse(run('SessionStart','not json').stdout),{});
+});
+
+// agy 1.5.6 실측 도구 이름: 디렉터리도 read_file로 읽고, 편집은 write_file·edit_file이다. run_command에 BypassSandbox가 없다.
+test('agy 1.5.6 tool names follow the lease rules',t=>{
+ const f=fixture(t);
+ assert.equal(tool(f,'read_file',{Path:f.root}).decision,'allow');
+ assert.equal(tool(f,'write_file',{Path:path.join(f.root,'a.txt'),Content:'x',Overwrite:true}).decision,'deny');
+ assert.equal(tool(f,'edit_file',{Path:path.join(f.root,'a.txt'),Target:'a',Replacement:'b'}).decision,'deny');
+ assert.equal(tool(f,'run_command',{CommandLine:'curl https://example.com',WaitMsBeforeAsync:0}).decision,'allow');
 });

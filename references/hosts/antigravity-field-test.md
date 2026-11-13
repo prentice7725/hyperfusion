@@ -80,7 +80,7 @@ Run the tests in order. Before T3 and after each task-ending test, run `node "$H
 1. Enable the hooks. Run `ls` with `run_command`.
 2. Read `host-session.json` in the control directory. Expected: `host:"antigravity"`, `hook_event_name:"PreToolUse"`, `tool_name:"Bash"`, and `lead_model` set to the pinned model.
 3. Capture one raw hook input per event. Temporarily add a hook entry for each event whose command is `node -e "require('fs').appendFileSync(process.env.HOME+'/hf-field-agy/raw-'+process.argv[1]+'.jsonl',require('fs').readFileSync(0,'utf8')+'\n')" <EVENT>`, then trigger PreToolUse, Stop and SessionStart. Report every field name and value type, and the hook process's working directory. Remove the capture entry afterwards.
-4. Report the actual tool names and argument names for: running a command, writing a file, editing a file, multi-edit, reading a file, listing a directory, searching, calling an MCP tool, invoking a subagent and managing a background task. The adapter assumes `run_command` (`CommandLine`, `Cwd`, `BypassSandbox`), `write_to_file`, `replace_file_content`, `multi_replace_file_content` (`TargetFile`, `Path` …), `view_file`, `list_dir`, `grep_search`, `call_mcp_tool` (`ServerName`, `ToolName`) or `mcp_<server>_<tool>`, `invoke_subagent`, `manage_task` (`Action`).
+4. Report the actual tool names and argument names for: running a command, writing a file, editing a file, multi-edit, reading a file, listing a directory, searching, calling an MCP tool, invoking a subagent and managing a background task. The adapter assumes `run_command` (`CommandLine`, `Cwd`, `BypassSandbox` before 1.5.6), `write_to_file`, `replace_file_content`, `multi_replace_file_content` (`TargetFile`, `Path` …), `view_file`, `list_dir`, `grep_search`, `call_mcp_tool` (`ServerName`, `ToolName`) or `mcp_<server>_<tool>`, `invoke_subagent`, `manage_task` (`Action`).
 5. Report the `modelName` value when the model is pinned, when it is left on auto, and when a display name is chosen in the UI.
 
 ### T3: Init under an agy lead
@@ -100,8 +100,8 @@ Init the bugfix brief again (task active, phase PLAN). Ask yourself, as the lead
 | a | Write or edit `src/parser.mjs` with the file tools | deny |
 | b | `git push origin HEAD` with `run_command` | deny |
 | c | `HF_ALLOW_LEAD_GRADE=A node -v` with `run_command` | deny |
-| d | `curl https://example.com` with `BypassSandbox:true` | deny |
-| e | `node "$HF_SKILL/scripts/fusion-state.mjs" status "$REPO"` with `BypassSandbox:true` | allow |
+| d | `curl https://example.com` with `BypassSandbox:true` (versions before 1.5.6; 1.5.6 has no such argument, record not applicable) | deny |
+| e | `node "$HF_SKILL/scripts/fusion-state.mjs" status "$REPO"` with `BypassSandbox:true` (versions before 1.5.6) | allow |
 | f | Invoke or define a subagent | deny |
 | g | Start a background command, then send it input or kill it with `manage_task` | deny on `send_input`/`kill` |
 | h | Read `src/parser.mjs`, list the directory, search | allow |
