@@ -111,8 +111,8 @@ const validGlob=g=>typeof g==='string'&&g.length>0&&g.length<=200&&!g.startsWith
 
 export const DEFAULT_CONFIG={lead:'opus',lead_model:'claude-opus-5-5',lead_takeover:true,
  external:{default:'auto',available:['terra','grok','sonnet','luna','haiku','antigravity']},
- // B급 agy는 Gemini 3.8 Flash high로 돈다(agy는 모델 ID의 접미사가 강도다).
- executors:{antigravity:{sandbox:true,model:'gemini-3.8-flash-high'}},
+ // B급 agy는 Gemini 4 Hydrogen high로 돈다(일꾼 역량 시험 Q3, references/worker-capability-trial.md)(agy는 모델 ID의 접미사가 강도다).
+ executors:{antigravity:{sandbox:true,model:'gemini-4-hydrogen-high'}},
  routing:{rules:DEFAULT_RULES,learn:true,min_samples:3,demote_below:0.4,half_life_days:90,explore_every:10,newcomer_every:4},
  // 리뷰 주체. lead는 Opus가 직접, delegate는 다른 모델(기본 Codex 우선)이 읽기 전용으로 판정하고 그 판정을 적용한다.
  review:{by:'lead',reviewers:['sol','sonnet','grok'],auto_apply:true,risk_paths:RISK_PATHS}};

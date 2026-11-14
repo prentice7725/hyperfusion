@@ -17,6 +17,7 @@ export const MODELS={
  'gpt-6.1-terra':{family:'openai',tier:'frontier',aliases:['GPT 6.1 Terra']},
  'gpt-6-luna':{family:'openai',tier:'standard',aliases:['GPT 6 Luna']},
  'gemini-4-argon':{family:'google',tier:'frontier',aliases:['Gemini 4 Argon']},
+ 'gemini-4-hydrogen':{family:'google',tier:'fast',aliases:['Gemini 4 Hydrogen']},
  'gemini-3.8-flash':{family:'google',tier:'fast',aliases:['Gemini 3.8 Flash']}
 };
 

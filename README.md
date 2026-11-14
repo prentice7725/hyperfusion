@@ -2,6 +2,8 @@
 
 English | [한국어](README.ko.md) | [日本語](README.ja.md)
 
+![Opus plans at the drafting table; worker models write code; another model reviews in the glass booth](assets/hero.png)
+
 **Opus plans and reviews. Other models write the code.**
 
 HyperFusion is a Claude Code skill. The expensive model, Claude Opus 5.5, acts as the team lead. Other models do the implementation and testing as workers: Terra, Grok, Sonnet, Luna, Haiku and Antigravity. Reviews come from a model of another company that did not write the code.
@@ -69,6 +71,8 @@ We ran five large tasks (L01–L05) under the same conditions and compared the l
 - Measured on 2026-11-10 and 11-11 on one Windows 11 machine.
 - See the [benchmark document](references/benchmark-pilot.md) for the method.
 
+**Workers alone.** We also gave each worker the same five tasks with no lead and no reviewer, one round each, 15 times per worker (2026-11-14). Runs that passed every hidden test: Terra 15, Sonnet 15, Grok 13, Gemini 4 Hydrogen 12, Gemini 3.8 Flash 7. No run edited files outside its scope. Antigravity now uses Hydrogen by default; Hydrogen stays B-tier. → [worker capability trial](references/worker-capability-trial.md) (Korean)
+
 ## Team
 
 | Member | Model | Work |
@@ -79,7 +83,7 @@ We ran five large tasks (L01–L05) under the same conditions and compared the l
 | Sonnet | claude-sonnet-5-5 | Implementation, reviews |
 | Luna | gpt-6-luna (Codex) | Small fixes, repetitive bulk edits |
 | Haiku | claude-haiku-5-5 | Easy code, documentation, extra tests |
-| Antigravity | agy (Gemini 3.8 Flash high) | UI, frontend, documentation |
+| Antigravity | agy (Gemini 4 Hydrogen high) | UI, frontend, documentation |
 | Sol | gpt-6.1-sol (Codex) | Mostly reviews and advice |
 
 On a plan that offers Fable (such as Max), Fable can lead. Opus then becomes a review and advice worker and takes over rounds that A-tier workers failed. → [Fable lead](references/configuration.md#fable-리드와-opus-일꾼) (Korean)
@@ -127,7 +131,7 @@ Pick Opus 5.5 in Claude Code and run:
 ## More to read
 
 - [Details](references/details.en.md): all features, adaptive review, vendor settings, measurement, security, tests
-- [CHANGELOG](CHANGELOG.md) (Korean): changes by version. The current package version is `0.32.0`.
+- [CHANGELOG](CHANGELOG.md) (Korean): changes by version. The current package version is `0.33.0`.
 - New here? Start with [runtime](references/runtime.md) (commands) and [configuration](references/configuration.md) (settings). The English lead summary is [executor-quickstart](references/executor-quickstart.md).
 
 | Topic | Documents |

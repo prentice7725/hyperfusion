@@ -246,4 +246,4 @@ Hydrogen의 실패 3회는 모두 L02다(3/5, 4/5, 3/5). 다른 네 과제는 15
 - **Q2. A급 순서: 지금 순서 유지.** terra 15, sonnet 15, grok 13으로 차이가 3회 미만이다.
 - **Q3. antigravity 기본 모델: Hydrogen으로 바꾼다(변동 없음).** Hydrogen 12회가 3.8 Flash 7회 이상이고 범위 밖 수정은 둘 다 0회다. 오류도 Hydrogen 0회, Flash 2회다.
 
-배치표와 설정에는 아직 반영하지 않았다. Q3을 반영하려면 `configuration.md`와 `model-registry`의 antigravity 기본 모델을 `gemini-4-hydrogen`으로 바꾼다.
+Q3은 0.33.0에서 반영했다: `executor-config.mjs`의 antigravity 기본 모델이 `gemini-4-hydrogen-high`이고, 모델 레지스트리에 `gemini-4-hydrogen`(google fast)을 더했다. Q1·Q2는 바꿀 것이 없다.
