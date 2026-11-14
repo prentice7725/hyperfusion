@@ -64,7 +64,7 @@
 - **AGYモデル系統とeffort。** `executors.antigravity.model:"gemini-4-argon"`と`reasoning_effort:"high"`を別々に設定すると`gemini-4-argon-high`を選びます。接尾辞で固定したモデルはその強度を維持し、矛盾するeffortは起動前に拒否します。最終slugを`agy models`で確認し、利用できない組み合わせを別モデルに置き換えません。→ [設定案内](configuration.md#agy-모델-계열과-effort-분리-argon)
 - **Codex。** JSONL thread・turn使用量を記録し、互換性のある`exec resume`フラグを確認できた場合だけ、タスク内の実装セッションを正確なIDで再開します。レビューは毎回新しい読み取り専用セッションです。運用者専用のビルドキャッシュ・ネットワーク設定とClaude/Grokのターン上限は[Codex運用案内](codex-runtime.md)を参照してください。
 - **ベンダー制限。** `allowed_vendors:["anthropic","openai"]`は実装・レビュー・相談をまとめて制限し、運用者の`HF_ALLOWED_VENDORS`はリポジトリ側で広げられない上限です。ブリッジも起動直前に再検査します。ファイアウォール・DLPやベンダー認証ではありません。新CLIには検証済みアダプターが必要です（`scripts/member-registry.mjs`）。
-- **既定の推論強度。** 実装はTerra medium、Grok high、Sonnet medium、Luna xhigh、Haiku max、Antigravity Gemini 3.8 Flash highです。レビュー席はSol xhigh、Sonnet max、Grok xhighで、実装の強度とは別です。`reasoning_effort:null`は通常フラグの省略で、必須レビュー役割の強度は解除しません。
+- **既定の推論強度。** 実装はTerra medium、Grok high、Sonnet medium、Luna xhigh、Haiku max、Antigravity Gemini 4 Hydrogen highです。レビュー席はSol xhigh、Sonnet max、Grok xhighで、実装の強度とは別です。`reasoning_effort:null`は通常フラグの省略で、必須レビュー役割の強度は解除しません。
 
 ## 測定
 

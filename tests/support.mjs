@@ -85,7 +85,7 @@ const FAKE_AGY=FAKE_COMMON+`
 if(args.includes('--version')){console.log('FAKE agy for protocol tests');process.exit(0);}
 if(args.includes('--help')){console.error('Usage of agy.EXE:\\n  --add-dir\\n  --conversation\\n  --json-schema\\n  --mode\\n  --output-format\\n  -p\\n  --print\\n  --print-timeout\\n  --sandbox\\n  --effort\\n  --model');process.exit(2);}
 // agy 1.2+의 모델 목록: 한 줄에 slug<TAB>표시 이름. agy-no-models는 목록을 못 얻는 경우(로그인 전 등).
-if(args[0]==='models'){if(mode==='agy-no-models'){console.error('not signed in');process.exit(1);}console.log('gemini-3.5-flash\\tGemini 3.5 Flash\\ngemini-3.6-pro-high\\tGemini 3.6 Pro (High)\\ngemini-3.8-flash-medium\\tGemini 3.8 Flash (Medium)\\ngemini-3.8-flash-high\\tGemini 3.8 Flash (High)\\ngemini-4-argon-high\\tGemini 4 Argon (High)\\ngemini-4-argon-medium\\tGemini 4 Argon (Medium)');process.exit(0);}
+if(args[0]==='models'){if(mode==='agy-no-models'){console.error('not signed in');process.exit(1);}console.log('gemini-3.5-flash\\tGemini 3.5 Flash\\ngemini-3.6-pro-high\\tGemini 3.6 Pro (High)\\ngemini-3.8-flash-medium\\tGemini 3.8 Flash (Medium)\\ngemini-3.8-flash-high\\tGemini 3.8 Flash (High)\\ngemini-4-argon-high\\tGemini 4 Argon (High)\\ngemini-4-argon-medium\\tGemini 4 Argon (Medium)\\ngemini-4-hydrogen-high\\tGemini 4 Hydrogen (High)');process.exit(0);}
 if(mode==='agy-signed-out'){console.error('Error: not signed in. Run agy to sign in.');process.exit(1);}
 fs.writeFileSync(HERE+'/fake-agy-args.json',JSON.stringify(args));
 // 컨트롤러는 스키마를 파일 경로로 넘긴다(명령줄 길이). 인라인 JSON이 오면 계약 위반으로 실패한다.

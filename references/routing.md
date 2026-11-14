@@ -43,7 +43,7 @@ External-First(적응형 리뷰 `lead-gated-adaptive`를 켜면 기본)도 아�
 | docs | * | Antigravity → Haiku → Luna → A급 | 문서는 B급부터 |
 | (없음) | * | Terra → Grok → Sonnet | 기본은 A급 |
 
-**등급.** A급은 Terra(medium)·Grok 4.7(high)·Sonnet(medium), B급은 Luna·Haiku·Antigravity(Gemini 3.8 Flash high)다. External-First도 같은 표를 쓴다. B급 라운드가 반려되면 리드 게이트는 A급으로의 `REASSIGN_OTHER`를 권하고, 반려 위임은 같은 B급 일꾼에게 돌려보내지 않으며, 리드가 그 일꾼에게 다시 맡기려면 `keep_owner_reason`이 필요하다. 교체 순번(`begin` auto)도 A급을 먼저 고른다.
+**등급.** A급은 Terra(medium)·Grok 4.7(high)·Sonnet(medium), B급은 Luna·Haiku·Antigravity(Gemini 4 Hydrogen high)다. External-First도 같은 표를 쓴다. B급 라운드가 반려되면 리드 게이트는 A급으로의 `REASSIGN_OTHER`를 권하고, 반려 위임은 같은 B급 일꾼에게 돌려보내지 않으며, 리드가 그 일꾼에게 다시 맡기려면 `keep_owner_reason`이 필요하다. 교체 순번(`begin` auto)도 A급을 먼저 고른다.
 
 첫 번째로 맞는 규칙만 쓴다. 배치표에 없지만 고용되고 능력이 있는 일꾼은 맨 뒤 예비 인력이 된다. 능력이 없는 일꾼은 예비 인력으로도 넣지 않는다. 이 표는 출발점일 뿐 측정된 사실이 아니다. `hyperfusion.config.json`의 `routing.rules`로 통째로 바꿀 수 있다.
 

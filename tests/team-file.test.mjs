@@ -33,7 +33,7 @@ test('the team file narrows workers and reviewers and fills models the repositor
  assert.deepEqual(c.external.available,['terra','sonnet','antigravity']);
  assert.deepEqual(c.review.reviewers,['sonnet','sol']);
  assert.equal(c.executors.terra.reasoning_effort,'high');assert.equal(c.effort_source.terra,'team');
- // 내장 기본값(gemini-3.8-flash-high)보다 팀 파일이 앞선다.
+ // 내장 기본값(gemini-4-hydrogen-high)보다 팀 파일이 앞선다.
  assert.equal(c.executors.antigravity.model,'gemini-4-argon-high');
  assert.deepEqual(c.team.removed,['grok','luna','haiku']);
  assert.equal(c.team.reviewers_from,'team-file');

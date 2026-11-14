@@ -2,6 +2,8 @@
 
 [English](README.md) | [한국어](README.ko.md) | 日本語
 
+![Opusが製図台で計画し、ワーカーモデルがコードを書き、別のモデルがガラスのブースでレビューする](assets/hero.png)
+
 **Opusは計画と検収だけ。コードは他のモデルが書きます。**
 
 HyperFusionはClaude Codeのスキルです。高価なClaude Opus 5.5がチームリーダー（リード）を務め、実装とテストはTerra・Grok・Sonnet・Luna・Haiku・Antigravityといった他のモデル（ワーカー）が行います。レビューは、実装していない別の会社のモデルが担当します。
@@ -69,6 +71,8 @@ Opusがコードを書き、テストを回し、長いログを読むと、高�
 - 2026-11-10〜11、Windows 11の1台で測定しました。
 - 方法は[ベンチマーク文書](references/benchmark-pilot.md)にあります。
 
+**ワーカー単独。** リードとレビュアーなしで、同じ5つの課題を各ワーカーに1ラウンドずつ、ワーカーごとに15回任せました（2026-11-14）。隠しテストをすべて通過した回数はTerra 15、Sonnet 15、Grok 13、Gemini 4 Hydrogen 12、Gemini 3.8 Flash 7です。範囲外のファイルを変更した回はありませんでした。そのためAntigravityの既定モデルをHydrogenに変え、HydrogenはB級に置きます。→ [ワーカー能力試験](references/worker-capability-trial.md)（韓国語）
+
 ## チーム
 
 | メンバー | モデル | 担当 |
@@ -79,7 +83,7 @@ Opusがコードを書き、テストを回し、長いログを読むと、高�
 | Sonnet | claude-sonnet-5-5 | 実装、レビュー |
 | Luna | gpt-6-luna（Codex） | 小さな修正、繰り返しの多い大量編集 |
 | Haiku | claude-haiku-5-5 | 易しいコード、ドキュメント、テストの補強 |
-| Antigravity | agy（Gemini 3.8 Flash high） | UI、フロントエンド、ドキュメント |
+| Antigravity | agy（Gemini 4 Hydrogen high） | UI、フロントエンド、ドキュメント |
 | Sol | gpt-6.1-sol（Codex） | 主にレビューと相談 |
 
 Fableを使えるプラン（Maxなど）でFableがリードのときは、Opusがレビューと相談のワーカーになり、A級が失敗した作業を引き継ぎます。→ [Fableリード](references/configuration.md#fable-리드와-opus-일꾼)（韓国語）
@@ -127,7 +131,7 @@ Claude CodeでOpus 5.5を選び、次のように使います。
 ## さらに読む
 
 - [詳細説明](references/details.ja.md)：機能の全体、適応型レビュー、ベンダー設定、測定、セキュリティ、テスト
-- [CHANGELOG（韓国語）](CHANGELOG.md)：バージョンごとの変更。現在のパッケージバージョンは`0.32.0`です。
+- [CHANGELOG（韓国語）](CHANGELOG.md)：バージョンごとの変更。現在のパッケージバージョンは`0.33.0`です。
 - 初めてなら[runtime](references/runtime.md)（コマンド）と[configuration](references/configuration.md)（設定）から読んでください。リード向けの英語の要約は[executor-quickstart](references/executor-quickstart.md)です。
 
 | テーマ | 文書 |

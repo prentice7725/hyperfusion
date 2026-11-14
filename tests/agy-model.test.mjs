@@ -93,8 +93,8 @@ test('unknown/default models remain unknown and effort pairs cannot collide',()=
 test('without a model, agy gets no --effort and no effort is recorded; an operator effort with no model is refused',async t=>{
  assert.deepEqual(selectAgyModel({reasoning_effort:'high'}),{model:null,model_family:null,reasoning_effort:null,effort_flag:null});
  const f=fixture(t,{initialize:false});
- // 기본 설정은 B급 agy를 Gemini 3.8 Flash high로 돌린다. 강도는 모델 ID에 들어 있어 --effort를 따로 주지 않는다.
- assert.deepEqual(selectAgyModel(config(f.root).executors.antigravity),{model:'gemini-3.8-flash-high',model_family:'gemini-3.8-flash',reasoning_effort:'high',effort_flag:null});
+ // 기본 설정은 B급 agy를 Gemini 4 Hydrogen high로 돌린다. 강도는 모델 ID에 들어 있어 --effort를 따로 주지 않는다.
+ assert.deepEqual(selectAgyModel(config(f.root).executors.antigravity),{model:'gemini-4-hydrogen-high',model_family:'gemini-4-hydrogen',reasoning_effort:'high',effort_flag:null});
  // 모델을 지우면 기본 강도가 채워지지만 모델이 없으니 빠진다(CLI 기본값으로 돈다).
  write(f,{});
  run(f.root,'init',{...f.brief,executor:'antigravity'});
