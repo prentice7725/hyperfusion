@@ -21,7 +21,10 @@ const USAGE_KEYS=['model','model_family','reasoning_effort','wall_ms','input_tok
 const optional=file=>fs.existsSync(file)?read(file):null;
 
 // 한 번의 시험. 어느 단계에서 깨져도 기록 한 줄을 돌려준다(실패한 시험을 빼면 통과율이 부풀려진다).
-export async function trial({caseId,target,worker,model,effort,label,source,hidden=defaultHiddenDir(),cases=LARGE_CASES,timeoutMs=60*60*1000}) {
+// defer이면 일꾼 라운드까지만 돌리고 finish(수용 테스트)와 채점은 settle로 미룬다. 여러 일꾼을 동시에 돌릴 때
+// 수용 테스트·숨김 시험이 서로 CPU를 빼앗아 시간 제한에 걸리지 않게 하려는 것이다. writer lease에는 만료가 없어
+// finish를 나중에 불러도 된다.
+export async function trial({caseId,target,worker,model,effort,label,source,hidden=defaultHiddenDir(),cases=LARGE_CASES,timeoutMs=60*60*1000,defer=false}) {
  if(!MEMBERS[worker]?.implement)throw Error(`worker-trial: ${worker} is not an implementing worker (${Object.keys(MEMBERS).filter(n=>MEMBERS[n].implement).join(', ')})`);
  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1000)throw Error('worker-trial: timeout must be at least one second');
  const record={case_id:caseId,label:label??worker,worker,requested_model:model??null,requested_effort:effort??null,started_at:new Date().toISOString(),
@@ -37,6 +40,7 @@ export async function trial({caseId,target,worker,model,effort,label,source,hidd
    executors:{[worker]:{timeout_ms:timeoutMs,...(model?{model}:{}),...(effort?{reasoning_effort:effort}:{})}}},null,1));
   const brief=read(fixture.brief_file);
   const dir=controlPath(root,'tasks',brief.task_id);
+  record.task_id=brief.task_id;
   record.stage='init';run(root,'init',brief);
   record.stage='begin';run(root,'begin',brief);
   record.stage='execute';
@@ -46,22 +50,37 @@ export async function trial({caseId,target,worker,model,effort,label,source,hidd
    const usage=optional(path.join(dir,'usage-1.json'));
    if(usage)record.usage=Object.fromEntries(USAGE_KEYS.filter(k=>usage[k]!==undefined).map(k=>[k,usage[k]]));
   }
-  record.stage='finish';
-  const state=run(root,'finish',{token:read(controlPath(root,'state.json')).writer.token,quiescent:true});
-  record.phase=state.phase;record.acceptance_passed=state.phase==='REVIEW';
-  record.worker_status=optional(path.join(dir,'result-1.json'))?.status??null;
-  record.stage='done';
+  record.stage='executed';
  }catch(e){record.error=String(e.message??e).slice(0,500);}
+ record.worker_ms=Date.now()-started;
+ if(defer){record.settled=false;record.total_ms=record.worker_ms;return record;}
+ return settle(record,{hidden,cases});
+}
+
+// 일꾼 라운드가 끝난 기록을 마무리한다: finish(수용 테스트)를 부르고 숨김 시험으로 채점한다.
+// 이미 finish를 지난 저장소(마무리 도중 끊긴 경우)는 finish를 다시 부르지 않고 상태만 읽는다.
+export async function settle(record,{hidden=defaultHiddenDir(),cases=LARGE_CASES}={}) {
+ const out={...record,settled:true},started=Date.now(),root=record.repo;
+ if(record.stage==='executed'){
+  try{
+   out.stage='finish';
+   let state=read(controlPath(root,'state.json'));
+   if(state.phase==='EXECUTING')state=run(root,'finish',{token:state.writer.token,quiescent:true});
+   out.phase=state.phase;out.acceptance_passed=state.phase==='REVIEW';
+   out.worker_status=optional(controlPath(root,'tasks',record.task_id,'result-1.json'))?.status??null;
+   out.stage='done';
+  }catch(e){out.error=String(e.message??e).slice(0,500);}
+ }
  // 채점은 일꾼이 남긴 트리로 한다. 브리지나 finish가 깨졌어도 트리가 있으면 채점한다.
  if(root&&fs.existsSync(path.join(root,'.git'))&&!['prepare','init','begin'].includes(record.stage)){
   try{
-   const s=await scoreTrial(caseId,root,{hidden,cases});
-   record.score={hidden_files:s.hidden.files,hidden_passed:s.hidden.passed,hidden_failed:s.hidden.failed.length,hidden_crashed:s.hidden.crashed.length,
+   const s=await scoreTrial(record.case_id,root,{hidden,cases});
+   out.score={hidden_files:s.hidden.files,hidden_passed:s.hidden.passed,hidden_failed:s.hidden.failed.length,hidden_crashed:s.hidden.crashed.length,
     all_hidden_passed:s.hidden_passed,scope_violations:s.scope.count,scope_files:s.scope.files.slice(0,20),changed_files:s.changed_files};
-  }catch(e){record.score_error=String(e.message??e).slice(0,300);}
+  }catch(e){out.score_error=String(e.message??e).slice(0,300);}
  }
- record.total_ms=Date.now()-started;
- return record;
+ out.total_ms=(record.worker_ms??0)+(Date.now()-started);
+ return out;
 }
 
 const median=list=>{const v=list.filter(n=>Number.isFinite(n)).sort((a,b)=>a-b);return v.length?v[Math.floor((v.length-1)/2)]:null;};
@@ -89,11 +108,14 @@ if(isMain(import.meta.url)){
   if(cmd==='run'&&rest[0]&&rest[1]&&flag('--worker')){
    const minutes=flag('--timeout-min')?Number(flag('--timeout-min')):60;
    const record=await trial({caseId:rest[0],target:rest[1],worker:flag('--worker'),model:flag('--model'),effort:flag('--effort'),label:flag('--label'),
-    source:flag('--source'),hidden:flag('--hidden'),timeoutMs:Math.round(minutes*60000)});
+    source:flag('--source'),hidden:flag('--hidden'),timeoutMs:Math.round(minutes*60000),defer:rest.includes('--defer-settle')});
    if(flag('--out'))fs.appendFileSync(flag('--out'),JSON.stringify(record)+'\n');
    console.log(JSON.stringify(record,null,2));
    process.exitCode=record.error?1:0;
+  }else if(cmd==='settle'&&rest[0]){
+   // 미룬 기록(JSON 파일) 하나를 마무리해 출력한다.
+   console.log(JSON.stringify(await settle(read(rest[0]),{hidden:flag('--hidden')}),null,2));
   }else if(cmd==='summary'&&rest[0])console.log(JSON.stringify(summarize(readRecords(rest[0])),null,2));
-  else throw Error('Usage: worker-trial.mjs run CASE NEW_REPO --worker NAME [--model ID] [--effort LEVEL] [--label NAME] [--source HYPERFUSION_CLONE] [--hidden DIR] [--timeout-min 60] [--out FILE.jsonl] | summary FILE.jsonl');
+  else throw Error('Usage: worker-trial.mjs run CASE NEW_REPO --worker NAME [--model ID] [--effort LEVEL] [--label NAME] [--source HYPERFUSION_CLONE] [--hidden DIR] [--timeout-min 60] [--defer-settle] [--out FILE.jsonl] | settle RECORD.json [--hidden DIR] | summary FILE.jsonl');
  }catch(e){printError(e);}
 }

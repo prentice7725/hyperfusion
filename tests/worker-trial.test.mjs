@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fixture} from './support.mjs';
-import {trial,summarize} from '../tools/worker-trial.mjs';
+import {trial,settle,summarize} from '../tools/worker-trial.mjs';
 
 // 과제 원본: 부모 커밋은 a.txt가 base, 과제 커밋이 a.txt를 fixed로 바꾸고 그 시험을 더한다.
 function source(f) {
@@ -52,4 +52,15 @@ test('a review-only worker and an existing target are refused before anything ru
  await assert.rejects(trial({caseId:'HF-T01',target:path.join(f.temp,'x'),worker:'sol',source:s.repo,hidden:s.hidden,cases:s.cases}),/not an implementing worker/);
  const r=await trial({caseId:'HF-T01',target:f.temp,worker:'grok',source:s.repo,hidden:s.hidden,cases:s.cases});
  assert.equal(r.stage,'prepare');assert.match(r.error,/must not exist/);assert.equal(r.score,null);
+});
+
+test('a deferred round is settled later, and settling twice does not finish twice',async t=>{
+ const f=fixture(t,{initialize:false});f.mode('edit');
+ const s=source(f);
+ const r=await trial({caseId:'HF-T01',target:path.join(f.temp,'trial-3'),worker:'grok',source:s.repo,hidden:s.hidden,cases:s.cases,timeoutMs:60000,defer:true});
+ assert.deepEqual([r.stage,r.error,r.score,r.settled,r.acceptance_passed],['executed',null,null,false,null],JSON.stringify(r));
+ const done=await settle(r,{hidden:s.hidden,cases:s.cases});
+ assert.deepEqual([done.stage,done.error,done.phase,done.acceptance_passed,done.settled,done.score.hidden_passed],['done',null,'REVIEW',true,true,2],JSON.stringify(done));
+ const again=await settle(r,{hidden:s.hidden,cases:s.cases});
+ assert.deepEqual([again.stage,again.error,again.phase,again.score.all_hidden_passed],['done',null,'REVIEW',true]);
 });

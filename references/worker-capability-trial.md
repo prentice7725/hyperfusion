@@ -1,6 +1,6 @@
 # 일꾼 역량 시험 (실험 계획)
 
-상태: 계획. 아직 돌리지 않았다. 실행 도구 `tools/worker-trial.mjs`는 가짜 CLI로만 시험했고 실제 모델로는 돌려 보지 않았다.
+상태: 회차 1·2(50회)를 2026-11-14에 돌렸다. 판정 기준은 같은 날 돌리기 전에 확정했다. 결과와 판정은 문서 끝에 있다.
 
 ## 무엇을 정하려는가
 
@@ -55,7 +55,7 @@ A급 셋은 모델과 강도를 지정하지 않는다. 평소 배치에서 쓰�
 
 ## 판정 기준
 
-**돌리기 전에 아래 숫자를 확정하고, 결과를 본 뒤에는 바꾸지 않는다.** 적어 둔 값은 제안이다.
+**돌리기 전에 아래 숫자를 확정하고, 결과를 본 뒤에는 바꾸지 않는다.** 아래 값은 2026-11-14에 제안값 그대로 확정했다.
 
 **Q1. Hydrogen 승격.** 셋을 모두 만족하면 A급으로 올린다.
 
@@ -100,56 +100,28 @@ node scripts/benchmark.mjs check-hidden HF-L01     # L02~L05도 같은 식으로
 node tools/worker-trial.mjs run HF-L01 ../hf-trials/l01-hydrogen-1 --worker antigravity --model gemini-4-hydrogen --effort high --label hydrogen --out ../hf-trials/trials.jsonl
 ```
 
-50회를 한 번에 도는 묶음이다. 회차 1을 전부 마친 뒤 회차 2로 넘어가고, 과제마다 대상 순서를 한 칸씩 돌려 같은 대상이 늘 먼저 돌지 않게 한다.
-
-PowerShell:
-
-```powershell
-$out = "..\hf-trials"; New-Item -ItemType Directory -Force $out | Out-Null
-$arms = @(
-  @{label="terra";    args=@("--worker","terra")},
-  @{label="grok";     args=@("--worker","grok")},
-  @{label="sonnet";   args=@("--worker","sonnet")},
-  @{label="flash38";  args=@("--worker","antigravity","--model","gemini-3.8-flash","--effort","high")},
-  @{label="hydrogen"; args=@("--worker","antigravity","--model","gemini-4-hydrogen","--effort","high")}
-)
-$cases = "HF-L01","HF-L02","HF-L03","HF-L04","HF-L05"
-foreach ($rep in 1,2) {
-  for ($c = 0; $c -lt $cases.Count; $c++) {
-    for ($i = 0; $i -lt $arms.Count; $i++) {
-      $arm = $arms[($i + $c + $rep) % $arms.Count]
-      $repo = "$out\$($cases[$c].ToLower())-$($arm.label)-$rep"
-      if (Test-Path $repo) { continue }   # 이미 돈 시험은 건너뛴다(중단 뒤 이어 돌리기)
-      node tools/worker-trial.mjs run $cases[$c] $repo @($arm.args) --label $arm.label --timeout-min 60 --out "$out\trials.jsonl" | Out-Null
-    }
-  }
-}
-node tools/worker-trial.mjs summary "$out\trials.jsonl"
-```
-
-bash:
+50회는 묶음 실행기로 돈다. 회차 1을 전부 마친 뒤 회차 2로 넘어가고, 과제마다 대상 순서를 한 칸씩 돌려 같은 대상이 늘 먼저 돌지 않게 한다.
 
 ```sh
-out=../hf-trials; mkdir -p "$out"
-labels=(terra grok sonnet flash38 hydrogen)
-args=("--worker terra" "--worker grok" "--worker sonnet" \
-      "--worker antigravity --model gemini-3.8-flash --effort high" \
-      "--worker antigravity --model gemini-4-hydrogen --effort high")
-cases=(HF-L01 HF-L02 HF-L03 HF-L04 HF-L05)
-for rep in 1 2; do for c in 0 1 2 3 4; do for i in 0 1 2 3 4; do
-  a=$(( (i + c + rep) % 5 )); case_id=${cases[$c]}
-  repo="$out/$(echo "$case_id" | tr A-Z a-z)-${labels[$a]}-$rep"
-  [ -e "$repo" ] && continue
-  node tools/worker-trial.mjs run "$case_id" "$repo" ${args[$a]} --label "${labels[$a]}" --timeout-min 60 --out "$out/trials.jsonl" >/dev/null
-done; done; done
-node tools/worker-trial.mjs summary "$out/trials.jsonl"
+node tools/worker-trial-batch.mjs run ../hf-trials --parallel   # 처음 시작과 이어 돌리기가 같은 명령이다
+node tools/worker-trial-batch.mjs status ../hf-trials           # 끝난 수, 마무리를 기다리는 수, 아직 안 돈 시험, 대상별 요약
 ```
+
+묶음은 두 단계로 돈다.
+
+1. **실행.** 일꾼 라운드만 돌리고 기록을 `executed.jsonl`에 남긴다. `--parallel`이면 회사별 줄(openai: terra, xai: grok, anthropic: sonnet, google: flash38·hydrogen)을 동시에 돌리고, 한 줄 안에서는 하나씩 돈다. 같은 회사 모델은 한도를 같이 쓰므로 겹치지 않는다. `--parallel`이 없으면 모두 하나씩 돈다.
+2. **마무리.** 실행이 모두 끝난 뒤 finish(수용 테스트)와 숨김 시험 채점을 **하나씩** 돌려 `trials.jsonl`에 남긴다. 동시에 돌리면 테스트끼리 CPU를 빼앗아 시간 제한에 걸릴 수 있어서다. 작업 상태의 writer lease에는 만료가 없어 finish를 나중에 불러도 된다.
+
+- **이어 돌리기.** `trials.jsonl`에 있는 시험은 끝난 것이고, `executed.jsonl`에만 있는 시험은 마무리만 다시 한다. 묶음이 중간에 죽어(재부팅, 세션 종료) 폴더만 남고 기록이 없는 시험은 일꾼 탓이 아니므로 새 이름(`…-1b`)으로 다시 돌리고 `batch-events.jsonl`에 `interrupted`로 남긴다. 작업 상태 폴더가 저장소 경로로 정해지므로 같은 폴더를 다시 쓰지 않는다. 마무리 도중 끊긴 시험은 finish를 두 번 부르지 않고 상태만 읽어 채점한다.
+- **응답 없음.** 실행이 시간 제한(기본 60분)과 여유(기본 20분)를 합친 시간을, 마무리가 `--settle-min`(기본 30분)을 넘기면 프로세스 트리를 끊고 `WATCHDOG_TIMEOUT`을 남긴 뒤 다음으로 넘어간다. 실패로 센다. 실행에서 끊긴 시험도 남은 트리로 채점은 한다(일꾼 실행의 60분 제한에 걸린 시험과 같다).
+- **겹쳐 돌리기 방지.** 같은 폴더에 묶음 두 개가 돌지 않게 `batch.lock`을 잡는다. 잡은 프로세스가 죽었으면 넘겨받는다.
+- 진행 기록은 `batch-events.jsonl`(`start`, `executed`, `settled`, `interrupted`)에 남는다. 기록마다 `concurrent_lanes`(동시에 돈 줄 수)가 붙는다.
 
 돌리는 동안 지킬 것:
 
-- **한 번에 하나씩 돌린다.** 여러 개를 동시에 돌리면 걸린 시간이 서로 섞이고, 같은 회사 모델끼리는 한도에 걸린다. 시간이 급하면 회사가 다른 대상끼리만 터미널을 나눠 돌리고, 그렇게 했다고 결과에 적는다.
+- **동시 실행은 회사가 다른 대상끼리만 한다.** 같은 회사 모델끼리는 한도에 걸린다. 동시에 돌리면 일꾼 시간(`usage.wall_ms`)이 서로 섞이므로 시간은 참고로만 보고, 동시 실행했다는 사실을 결과에 적는다.
 - **시험 폴더를 지우고 다시 돌리지 않는다.** 결과가 마음에 안 들어 다시 돌린 것과 구분되지 않는다. 한도 초과나 로그인 만료처럼 일꾼 실력과 무관한 이유로 깨진 시험만, 이유를 적고 새 폴더 이름(`…-1b`)으로 다시 돌린다.
-- 한 시험은 60분에서 끊는다. 끊긴 시험은 실패로 센다.
+- 한 시험은 60분에서 끊는다. 끊긴 시험과 응답 없음으로 끊긴 시험은 실패로 센다.
 - 시험 저장소의 작업 상태는 평소처럼 `~/.hyperfusion/state/`에 쌓인다. 끝난 뒤 시험 폴더와 함께 지워도 된다.
 
 ## 결과 읽기
@@ -192,4 +164,43 @@ node tools/worker-trial.mjs summary "$out/trials.jsonl"
 
 ## 결과
 
-(돌린 뒤 적는다.)
+### 2026-11-14, 회차 1·2 (50회)
+
+환경: Windows 11, Node 24.21.0. CLI는 Codex 0.164.0, Grok 1.0.70, Claude Code 2.1.311, agy 1.5.9. 실제로 쓰인 모델은 terra `gpt-6.1-terra`, sonnet `claude-sonnet-5-5`, flash38 `gemini-3.8-flash-high`, hydrogen `gemini-4-hydrogen-high`다. grok은 CLI가 모델명을 보고하지 않았다.
+
+진행: 앞의 20회는 하나씩 돌리고 바로 채점했다. 나머지 30회는 회사별 4줄로 동시에 실행하고(`concurrent_lanes: 4`), 수용 테스트와 채점은 실행이 다 끝난 뒤 하나씩 했다. 그래서 일꾼 시간은 참고로만 본다. 묶음을 바꾸면서 두 번 끊었고, 그때 돌던 `hf-l02-hydrogen-1`과 `hf-l05-terra-1`은 `…-1b`로 다시 돌렸다.
+
+| 대상 | 숨김 시험 전부 통과 | 수용 테스트 통과 | 오류 | 범위 밖 수정 | 숨김 시험 개별 | 일꾼 시간 중앙값 |
+|---|---|---|---|---|---|---|
+| terra | 10/10 | 9 | 0 | 0 | 56/56 | 3.1분 |
+| sonnet | 10/10 | 9 | 1 | 0 | 56/56 | 5.2분 |
+| grok | 9/10 | 8 | 2 | 0 | 55/56 | 25.5분 |
+| hydrogen | 8/10 | 8 | 0 | 0 | 53/56 | 7.2분 |
+| flash38 | 5/10 | 8 | 1 | 0 | 42/48 | 13.2분 |
+
+과제별(회차 1, 2):
+
+| 대상 | L01 | L02 | L03 | L04 | L05 |
+|---|---|---|---|---|---|
+| terra | 9/9, 9/9 | 5/5, 5/5 | 5/5, 5/5 | 5/5, 5/5 | 4/4, 4/4 |
+| sonnet | 9/9, 9/9 | 5/5, 5/5 | 5/5, 5/5 | 5/5, 5/5 | 4/4, 4/4 |
+| grok | 9/9, 9/9 | 5/5, 5/5 | 5/5, 4/5 | 5/5, 5/5 | 4/4, 4/4 |
+| hydrogen | 9/9, 9/9 | 3/5, 4/5 | 5/5, 5/5 | 5/5, 5/5 | 4/4, 4/4 |
+| flash38 | 9/9, 0/1 | 5/5, 5/5 | 3/5, 4/5 | 5/5, 5/5 | 3/4, 3/4 |
+
+오류로 끝난 시험(모두 실패 쪽으로 센다는 계획을 따랐다. 단 `all_hidden_passed`는 남은 트리로 채점한 값이다):
+
+- `hf-l02-sonnet-1`: CLI가 종료 코드 1로 끝났다(6.6분). 남은 트리는 숨김 시험 5/5.
+- `hf-l03-grok-1`: CLI가 종료 코드 1로 끝났다(26분). 남은 트리는 5/5.
+- `hf-l03-grok-2`: 결과 보고가 `complete`인데 내용이 모순돼 거절됐다. 남은 트리는 4/5.
+- `hf-l01-flash38-2`: 2.4분 만에 최종 응답 없이 끝났고 아무것도 바꾸지 않았다. 숨김 시험 파일 전체가 실패해 `0/1`로 셌다. stderr가 기록에 남지 않아 한도 같은 외부 원인인지 확인하지 못했다.
+
+수용 테스트는 실패했는데 숨김 시험은 통과한 시험도 있다. `hf-l04-terra-2`는 바꾸지 않은 `CHANGELOG.md`를 바꿨다고 보고해 결과 계약에서 걸렸고, `hf-l03-hydrogen-1`은 수용 테스트가 실패했다. 판정은 숨김 시험만 쓰므로 영향이 없다.
+
+### 판정
+
+- **Q1. Hydrogen 승격: 보류.** 2번(범위 밖 수정 0회)과 3번(오류 0회 ≤ A급 최다 2회)은 만족한다. 1번은 8회로 A급 최저인 grok의 9회에 한 회 모자란다. 기준대로 세 번째 회차를 돌린 뒤 정한다.
+- **Q2. A급 순서: 지금 순서 유지.** terra 10, sonnet 10, grok 9로 차이가 3회 미만이다.
+- **Q3. antigravity 기본 모델: Hydrogen으로 바꾼다.** Hydrogen 8회가 3.8 Flash 5회 이상이고, 범위 밖 수정도 둘 다 0회다. `hf-l01-flash38-2`를 외부 원인으로 빼도 결론은 같다.
+
+아직 배치표와 설정에는 반영하지 않았다.
