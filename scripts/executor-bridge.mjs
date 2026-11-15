@@ -25,6 +25,7 @@ import {recordCompletion,controllerDigest} from './reconciliation.mjs';
 import {openMonitor} from './worker-monitor.mjs';
 import {defaultTimeout} from './round-timeout.mjs';
 import {attachObserverPane,herdrEnabled} from './herdr-observer.mjs';
+import {acquirePacing,intervalMs,cliOf,assertNotSuspended,suspensionHit,recordSuspension,suspensionMessage} from './worker-pacing.mjs';
 
 const STATE_CLI=fileURLToPath(new URL('./fusion-state.mjs',import.meta.url));
 // 한도에 걸린 실행을 남긴다. 컨트롤러는 이 기록이 있는 CLI의 일꾼·리뷰어를 이 작업 동안 고르지 않는다.
@@ -39,11 +40,16 @@ const timeoutFor=(root,state,executor,override,role='implement')=>{
  const budget=assertBudget(root,state);
  return budget.remaining_wall_ms===null?t:Math.min(t,budget.remaining_wall_ms);
 };
+// 호출 간격(팀 파일 min_interval_s)과 작업 경과 시간 상한. 기다림은 일꾼 실행 제한 시간에는 넣지 않고 경과 시간 상한에는 넣는다.
+const pacingFor=(root,state,executor)=>{
+ const budget=assertBudget(root,state);
+ return {interval:intervalMs(state.configuration,executor),deadline:budget.remaining_wall_ms===null?null:Date.now()+budget.remaining_wall_ms};
+};
 
 // 일꾼 프로세스 하나를 감독하며 실행한다. tag는 산출물 이름(launch-<tag>.json 등)에 붙는다.
 // marker: 이 프로세스가 컨트롤러가 띄운 일꾼임을 리드 가드가 알아보게 하는 값(lease 토큰의 해시나 상담 ID).
 // 호스트 훅을 끌 수 없는 환경(Codex 관리형 훅, agy)에서 일꾼이 리드용 가드에 막히지 않게 한다.
-async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescence=false,signal,monitorQuietMs=120000,monitorIntervalMs=1000,marker={}}) {
+async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescence=false,signal,monitorQuietMs=120000,monitorIntervalMs=1000,marker={},pacing={interval:0,deadline:null}}) {
  if(!Number.isSafeInteger(monitorQuietMs)||monitorQuietMs<1||!Number.isSafeInteger(monitorIntervalMs)||monitorIntervalMs<1)throw Error('Invalid monitor interval');
  const started=Date.now();
  if(signal?.aborted)throw Object.assign(Error('Bridge interrupted before launch'),{code:'AUTOPILOT_INTERRUPTED'});
@@ -60,12 +66,22 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
  // 감시 기록 실패가 라운드의 성공·실패나 lease 처리를 바꾸면 안 된다.
  const guard=fn=>{try{if(activity)fn();}catch{/* observation only */}};
  // 일꾼이 끝난 뒤 남은 자손 중 감독 중에 관측한 바로 그 프로세스는 컨트롤러가 정리한다(그룹 밖으로 빠져나간 agy 도구 자식 등).
+ // 계정 정지 기록이 있는 CLI는 띄우지 않는다. 호출 간격이 걸린 CLI는 이 컴퓨터에서 한 번에 하나만, 앞 실행이 끝나고 간격이 지난 뒤 띄운다.
+ // 기다리는 동안 중단되면 실행 표식(launch-*.json)을 쓰지 않으므로 띄우지 않은 실행은 흔적이 없다.
+ const cli=cliOf(request.executor);
+ assertNotSuspended(cli);
+ const pace=await acquirePacing(cli,{interval:pacing.interval,deadline:pacing.deadline,signal,
+  meta:{task:String(request.task_id??''),tag:String(tag),repo:path.basename(root)},
+  onWait:({ms,reason})=>guard(()=>activity.noteUntrusted('bridge',`pacing: waiting ${Math.ceil(ms/1000)}s for ${cli} (${reason})`))});
+ if(pacing.deadline!==null)timeoutMs=Math.max(1,Math.min(timeoutMs,pacing.deadline-Date.now()));
  const monitor=proveQuiescence?watchProcessTree({reap:true}):null;
- // create-once 실행 표식이 크래시나 재실행에서도 중복 프로세스를 막는다.
- immutable(path.join(dir,`launch-${tag}.json`),{executor:request.executor,bridge_pid:process.pid,session_id:request.cli.session_id,at:new Date().toISOString()});
- if(request.cli.prompt_file)fs.writeFileSync(request.cli.prompt_file,request.prompt,{flag:'wx',mode:0o600});
- // 스키마처럼 CLI가 파일 경로로 받는 입력. 컨트롤러가 정한 경로에 한 번만 쓴다.
- for(const f of request.cli.extra_files??[])fs.writeFileSync(f.path,f.content,{flag:'wx',mode:0o600});
+ try{
+  // create-once 실행 표식이 크래시나 재실행에서도 중복 프로세스를 막는다.
+  immutable(path.join(dir,`launch-${tag}.json`),{executor:request.executor,bridge_pid:process.pid,session_id:request.cli.session_id,at:new Date().toISOString(),paced_ms:pace.paced_ms});
+  if(request.cli.prompt_file)fs.writeFileSync(request.cli.prompt_file,request.prompt,{flag:'wx',mode:0o600});
+  // 스키마처럼 CLI가 파일 경로로 받는 입력. 컨트롤러가 정한 경로에 한 번만 쓴다.
+  for(const f of request.cli.extra_files??[])fs.writeFileSync(f.path,f.content,{flag:'wx',mode:0o600});
+ }catch(e){pace.release();throw e;}
  let stdout='',stderr='',reason=null,child,killTimer,timer,activityTimer,forceResolve,alive=false,exited=false,observer=null;
  const stop=(why,kind='timeout')=>{
   if(reason)return;
@@ -109,6 +125,8 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
   // 잔존 자식을 정리한다. POSIX는 그룹 전체, Windows는 일꾼이 살아 있을 때만 트리 종료.
   // 그룹 밖으로 빠져나간 자손(Windows에서는 일꾼이 먼저 끝난 뒤 남은 자손)은 정지 증명 단계에서 감독 중 관측한 것만 정리하고, 그래도 남으면 리드가 확인한다.
   killTree(child,{force:true,alive});
+  // 끝난 시각을 적고 간격 잠금을 놓는다. 다음 실행은 이 시각부터 간격을 잰다.
+  pace.release();
  }
  await observer;
  const proof=monitor?await monitor.finish({exited,aborted:exit.signal==='SUPERVISOR_ABORT'}):null;
@@ -116,13 +134,21 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
  let observation=null;
  guard(()=>{observation=activity.exit({code:exit?.code??null,signal:exit?.signal??''});});
  const seen=observation??{run_id:null,state:'UNKNOWN',telemetry_limited:true};
- immutable(path.join(dir,`envelope-${tag}.json`),{executor:request.executor,exit,reason,stdout,stderr,started_at:new Date(started).toISOString(),ended_at:new Date().toISOString(),wall_ms:Date.now()-started,observation:{run_id:seen.run_id??null,state:seen.state??'UNKNOWN',telemetry_limited:seen.telemetry_limited===true,declares_success:false}});
+ immutable(path.join(dir,`envelope-${tag}.json`),{executor:request.executor,exit,reason,stdout,stderr,started_at:new Date(started).toISOString(),ended_at:new Date().toISOString(),wall_ms:Date.now()-started,paced_ms:pace.paced_ms,observation:{run_id:seen.run_id??null,state:seen.state??'UNKNOWN',telemetry_limited:seen.telemetry_limited===true,declares_success:false}});
  // 어댑터가 출력에서 원인을 알아보면(로그인 필요 등) 오류 문구에 조치를 덧붙인다. 실패 분류와 리드의 안내가 같은 문장을 본다.
  const fail=e=>{
   try{const hint=adapter(request.executor).diagnose?.(stdout,stderr);if(hint&&!e.message.includes(hint.slice(0,24)))e.message+=' — '+hint;}catch{}
   // 사용량·요금 한도는 stderr와 CLI 오류 메시지(어댑터가 오류 문구에 싣는다)에서만 찾는다. 일꾼의 작업 출력은 보지 않는다.
   const limit=limitHit(String(stderr??'').slice(-4000)+'\n'+e.message);
   if(limit&&!e.message.startsWith('PROVIDER_LIMIT'))e.message=`PROVIDER_LIMIT: ${request.executor} hit a usage or rate limit ("${limit}"); workers on the same CLI are skipped for the rest of this task — `+e.message;
+  // 계정 정지 문구는 같은 범위(stderr와 오류 메시지)에서 찾는다. 종료 코드가 0이어도 실패로 끝난 실행이면 본다.
+  // 이 컴퓨터의 모든 저장소에서 그 CLI를 막고, 이번 라운드는 한도에 걸렸을 때와 같은 길로 넘긴다.
+  const banned=suspensionHit(cli,String(stderr??'').slice(-4000)+'\n'+e.message);
+  if(banned){
+   const r=recordSuspension(cli,banned,{executor:request.executor,task:String(request.task_id??''),repo:path.basename(root)});
+   e.message=suspensionMessage(cli,r)+' — '+e.message;
+   notify(`HyperFusion ${request.task_id??''}`,`${cli} account suspension reported; ${cli} is blocked on this machine`,{priority:'high'}).catch(()=>{});
+  }
   e.quiescence=proof;throw e;
  };
  if(reason||exit.code!==0)fail(Error(reason||request.executor+' exited with code '+exit.code));
@@ -152,13 +178,13 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
  try{
   // 파일이 아니라 컨트롤러가 다시 만든 요청으로 실행한다. 달라졌으면 여기서 멈춘다.
   const verified=verifyExecute(root,state,dir,request,lease);
-  parsed=await supervise(root,dir,n,{...request,...verified,role:'implement',round:n,task_id:state.task_id,executor:state.owner},{timeoutMs:timeoutFor(root,state,state.owner,timeoutMs),maxBytes,proveQuiescence,signal,monitorQuietMs,monitorIntervalMs,marker:{HF_WORKER_LEASE:hash(lease.token)}});
+  parsed=await supervise(root,dir,n,{...request,...verified,role:'implement',round:n,task_id:state.task_id,executor:state.owner},{timeoutMs:timeoutFor(root,state,state.owner,timeoutMs),maxBytes,proveQuiescence,signal,monitorQuietMs,monitorIntervalMs,marker:{HF_WORKER_LEASE:hash(lease.token)},pacing:pacingFor(root,state,state.owner)});
   result=validateResult(parsed.result,request.task_id,request.round);
  }catch(e){
   if(/CODEX_WINDOWS_SANDBOX/.test(e?.message??'')){
    try{immutable(path.join(dir,sandboxFailureFile(n)),{executor:request.executor,cli:MEMBERS[request.executor]?.binary??null,round:n,source:'bridge',message:String(e.message).slice(0,600),at:new Date().toISOString()});}catch{/* 이미 기록됨 */}
   }
-  if(/^PROVIDER_LIMIT/.test(e?.message??''))recordLimit(dir,String(n),request.executor,n,e.message);
+  if(/^(?:PROVIDER_LIMIT|ADAPTER_UNAVAILABLE: ACCOUNT_SUSPENDED)/.test(e?.message??''))recordLimit(dir,String(n),request.executor,n,e.message);
   await notify(`HyperFusion ${state.task_id}`,`${request.executor} round ${n} failed`,{priority:'high'});
   throw e;
  }
@@ -195,7 +221,7 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuies
   if(snapshot(root).digest!==open.digest)throw Error('READ_ONLY_TREE_CHANGED');
   const sent=read(path.join(dir,`consult-${id}-${m.member}.json`));
   const request={...sent,...verifyConsult(root,state,dir,sent,{id,member:m.member,executor:m.executor})};
-  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs,'consult'),maxBytes,proveQuiescence:proofRequired,signal,marker:{HF_WORKER_CONSULT:String(id)}});
+  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs,'consult'),maxBytes,proveQuiescence:proofRequired,signal,marker:{HF_WORKER_CONSULT:String(id)},pacing:pacingFor(root,state,m.executor)});
   let result;try{result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);}catch(error){error.quiescence=parsed.quiescence;throw error;}
   const file=path.join(dir,`consult-result-${id}-${m.member}.json`);
   immutable(file,result);
@@ -207,7 +233,7 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuies
   return {member:m.member,executor:m.executor,ok:true,recommended_verdict:result.recommended_verdict,findings:result.findings.length,result_file:file,quiescence:parsed.quiescence};
  },{stopOn:error=>error.quiescence?.quiescent!==true});
  const members=runs.map((r,i)=>r.status==='fulfilled'?r.value:{member:open.members[i].member,executor:open.members[i].executor,ok:false,error:r.reason.message,quiescence:r.reason.quiescence??null});
- for(const m of members)if(!m.ok&&/^PROVIDER_LIMIT/.test(m.error??''))recordLimit(dir,`consult-${id}-${m.member}`,m.executor,state.iteration,m.error);
+ for(const m of members)if(!m.ok&&/^(?:PROVIDER_LIMIT|ADAPTER_UNAVAILABLE: ACCOUNT_SUSPENDED)/.test(m.error??''))recordLimit(dir,`consult-${id}-${m.member}`,m.executor,state.iteration,m.error);
  await notify(`HyperFusion ${state.task_id}`,`${open.mode} ${id} done: `+members.map(m=>`${m.executor} ${m.ok?m.recommended_verdict:'failed'}`).join(', '));
  const stopped=members.every(m=>m.quiescence?.quiescent===true);
  return {status:'CONSULT_READY',consult_id:id,mode:open.mode,members,

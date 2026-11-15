@@ -7,10 +7,13 @@ import os from 'node:os';
 import path from 'node:path';
 import {read,atomic} from './artifact.mjs';
 import {MEMBERS} from './member-registry.mjs';
+import {SEATS,MAX_INTERVAL_S} from './worker-pacing.mjs';
 
 export const TEAM_FILE_ENV='HF_TEAM_FILE';
 export const TEAM_FILE_VERSION=1;
-const MEMBER_KEYS=['enabled','model','reasoning_effort','note'];
+const MEMBER_KEYS=['enabled','model','reasoning_effort','note','seats','min_interval_s'];
+// 약관 정지 보고가 있는 CLI(references/worker-pacing-draft.md). 새로 쓰는 팀 파일에만 넣고 이미 있는 파일은 바꾸지 않는다.
+export const PACED_DEFAULTS={antigravity:{seats:['implement'],min_interval_s:300,note:'약관 정지 보고가 있다: references/worker-pacing-draft.md'}};
 const TOP_KEYS=['version','generated_at','note','members','reviewers'];
 const MODEL=/^[\w.:/-]{1,80}$/;
 
@@ -40,11 +43,21 @@ export function validateTeam(v,file='team.json') {
   if(m.reasoning_effort!==undefined&&!(MEMBERS[name].efforts??[]).includes(m.reasoning_effort))
    throw bad(file,`members.${name}.reasoning_effort must be one of ${(MEMBERS[name].efforts??[]).join(', ')}`);
   if(m.note!==undefined&&typeof m.note!=='string')throw bad(file,`members.${name}.note must be a string`);
+  // 자리 제한: 구현·리뷰·상담 중 맡을 자리. 꺼진 일꾼에 적으면 뜻이 없으므로 거절한다.
+  if(m.seats!==undefined){
+   if(!Array.isArray(m.seats)||!m.seats.length||new Set(m.seats).size!==m.seats.length||!m.seats.every(x=>SEATS.includes(x)))
+    throw bad(file,`members.${name}.seats must be a non-empty list of ${SEATS.join(', ')} without repeats`);
+   if(!m.enabled)throw bad(file,`members.${name}.seats has no effect on a disabled member`);
+  }
+  if(m.min_interval_s!==undefined&&!(Number.isSafeInteger(m.min_interval_s)&&m.min_interval_s>=0&&m.min_interval_s<=MAX_INTERVAL_S))
+   throw bad(file,`members.${name}.min_interval_s must be a whole number of seconds from 0 to ${MAX_INTERVAL_S}`);
  }
  if(v.reviewers!==undefined){
   if(!Array.isArray(v.reviewers)||!v.reviewers.length||new Set(v.reviewers).size!==v.reviewers.length)throw bad(file,'reviewers must be a non-empty list without repeats');
   const off=v.reviewers.filter(n=>v.members[n]?.enabled!==true);
   if(off.length)throw bad(file,'reviewers must be enabled members: '+off.join(', '));
+  const seatless=v.reviewers.filter(n=>v.members[n].seats&&!v.members[n].seats.includes('review'));
+  if(seatless.length)throw bad(file,'reviewers must have the review seat: '+seatless.join(', '));
  }
  return v;
 }
@@ -68,9 +81,12 @@ export function applyTeam(v,team,{file,explicit={}}={}) {
  const models=explicit.models??new Set(),efforts=explicit.efforts??new Set();
  const on=new Set(enabledMembers(team));
  const before=[...v.external.available];
- v.external.available=before.filter(n=>on.has(n));
+ // 구현 자리가 없는 일꾼은 구현 명단에서, 리뷰 자리가 없는 일꾼은 리뷰어 명단에서 뺀다. 상담 자리는 상담을 고를 때 본다.
+ const seats=Object.fromEntries([...on].filter(n=>team.members[n].seats).map(n=>[n,[...team.members[n].seats]]));
+ const lacks=(n,seat)=>!!seats[n]&&!seats[n].includes(seat);
+ v.external.available=before.filter(n=>on.has(n)&&!lacks(n,'implement'));
  if(!v.external.available.length)throw Object.assign(Error(`TEAM_FILE_EMPTY: ${file} enables none of the implementing workers (${before.join(', ')})`),{code:'TEAM_FILE_EMPTY'});
- if(v.external.default!=='auto'&&!on.has(v.external.default))
+ if(v.external.default!=='auto'&&(!on.has(v.external.default)||lacks(v.external.default,'implement')))
   throw Object.assign(Error(`TEAM_FILE_CONFLICT: hyperfusion.config.json picks ${v.external.default} as the default worker but ${file} disables it`),{code:'TEAM_FILE_CONFLICT'});
  const filled=[];
  for(const n of on){
@@ -80,10 +96,13 @@ export function applyTeam(v,team,{file,explicit={}}={}) {
   if(m.model!==undefined&&!models.has(n)){v.executors[n].model=m.model;filled.push(n+'.model');}
   if(m.reasoning_effort!==undefined&&!efforts.has(n)){v.executors[n].reasoning_effort=m.reasoning_effort;filled.push(n+'.reasoning_effort');}
  }
- const reviewers=explicit.reviewers||!team.reviewers?v.review.reviewers.filter(n=>on.has(n)):[...team.reviewers];
+ const reviewers=(explicit.reviewers||!team.reviewers?v.review.reviewers.filter(n=>on.has(n)):[...team.reviewers]).filter(n=>!lacks(n,'review'));
  if(!reviewers.length)throw Object.assign(Error(`TEAM_FILE_EMPTY: ${file} enables none of the reviewers (${v.review.reviewers.join(', ')})`),{code:'TEAM_FILE_EMPTY'});
  v.review.reviewers=reviewers;
- return {file,enabled:[...on],removed:before.filter(n=>!on.has(n)),filled,reviewers_from:explicit.reviewers||!team.reviewers?'config':'team-file'};
+ // 자리와 간격은 init 때 작업 설정에 고정된다(configuration.team). 브리지와 상담 선택이 이 값을 읽는다.
+ const min_interval_s=Object.fromEntries([...on].filter(n=>team.members[n].min_interval_s>0).map(n=>[n,team.members[n].min_interval_s]));
+ return {file,enabled:[...on],removed:before.filter(n=>!on.has(n)),filled,reviewers_from:explicit.reviewers||!team.reviewers?'config':'team-file',
+  ...(Object.keys(seats).length?{seats}:{}),...(Object.keys(min_interval_s).length?{min_interval_s}:{})};
 }
 
 // 설치 점검 결과(installationRoster)로 초안을 만든다. 설치된 일꾼은 켜고, 없는 일꾼은 끄고 이유를 적는다.
@@ -93,12 +112,12 @@ export function draftTeam(roster,configuration,{at=new Date()}={}) {
   const o=configuration?.executors?.[r.member]??{};
   members[r.member]={enabled:r.installed,
    ...(o.model!=null?{model:o.model}:MEMBERS[r.member].model?{model:MEMBERS[r.member].model}:{}),
-   ...(r.installed?{}:{note:r.reason??'not installed'})};
+   ...(r.installed?structuredClone(PACED_DEFAULTS[r.member]??{}):{note:r.reason??'not installed'})};
  }
  const on=Object.keys(members).filter(n=>members[n].enabled);
  const reviewers=(configuration?.review?.reviewers??[]).filter(n=>on.includes(n));
  return {version:TEAM_FILE_VERSION,generated_at:at.toISOString(),
-  note:'Edit enabled, model and reasoning_effort, then rerun setup-doctor. Workers not listed here are not used.',
+  note:'Edit enabled, model, reasoning_effort, seats and min_interval_s, then rerun setup-doctor. Workers not listed here are not used.',
   members,...(reviewers.length?{reviewers}:{})};
 }
 

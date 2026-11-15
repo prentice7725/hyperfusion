@@ -8,6 +8,7 @@ import {assertVendor} from '../vendor-policy.mjs';
 import {instructionInventory} from '../instruction-inventory.mjs';
 import {codingPolicy} from '../coding-policy.mjs';
 import {displayModel} from '../model-registry.mjs';
+import {assertNotSuspended,cliOf} from '../worker-pacing.mjs';
 
 // 외부 일꾼(Grok, Antigravity)이 공통으로 따르는 결과 계약과 지시문.
 export function resultSchema(task_id,round) {
@@ -125,6 +126,8 @@ export function bashRules(brief) {
 // help는 도움말을 여는 인자. 하위 명령의 플래그를 봐야 하는 CLI(codex exec)는 따로 준다.
 export function probe(name,binary,requiredFlags,optionalFlags=[],{help:helpArgs=['--help'],executor='probe'}={}) {
  if(executor!=='probe')assertVendor(null,executor);
+ // 계정 정지 기록이 있는 CLI는 설치되지 않은 것처럼 다룬다(설치 명단, 배치 후보, begin, 상담 선택이 모두 이 길을 지난다).
+ if(executor!=='probe')assertNotSuspended(cliOf(executor));
  const {executable,prefix_args}=resolveExecutable(name,binary);
  const shown=prefix_args.at(-1)??executable;
  // 도움말을 stderr로 내거나 0이 아닌 코드로 끝내는 CLI도 있어 두 스트림을 합쳐 본다.

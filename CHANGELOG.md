@@ -4,6 +4,14 @@
 
 ## Unreleased
 
+- 일꾼 호출 조절을 구현했다(설계 `references/worker-pacing-draft.md`, 설명 `references/configuration.md`의 "자리 제한과 호출 간격"). 2026년 11월 스크립트로 `agy`를 부른 뒤 구글 계정이 정지됐다는 보고가 이어져 둔 장치다.
+  - 팀 파일에 `seats`(구현·리뷰·상담 중 맡을 자리)와 `min_interval_s`(같은 CLI를 이 컴퓨터에서 한 번에 하나만, 끝난 뒤 쉬는 초)를 적는다. 브리지가 띄우기 직전에 기다리고 실행 봉투에 `paced_ms`를 남긴다. 자리가 없는 일꾼은 자동 선택에서 빠지고, 이름으로 고르면 `SEAT_POLICY`로 거절한다.
+  - `setup-doctor --write-team`이 새로 쓰는 팀 파일은 설치된 antigravity를 구현 자리에만 두고 300초 간격을 넣는다. 이미 있는 팀 파일은 바꾸지 않고 doctor가 경고한다.
+  - 계정 정지 차단기: 실행 출력이나 `agy models` 조회에서 정지 문구를 보면 그 CLI를 이 컴퓨터의 모든 저장소에서 막고(`ADAPTER_UNAVAILABLE: ACCOUNT_SUSPENDED`), 라운드는 사용량 한도와 같은 길로 넘긴다. `setup-doctor --clear-suspension CLI`로만 푼다.
+  - `agy models` 조회를 컴퓨터 단위로 6시간 재사용하고, 아무것도 띄우지 않는 확인(설치 명단, 배치 후보, 재검증)에서는 새로 조회하지 않는다. 0.33.0부터 probe마다 이 조회가 돌았다.
+  - 시험 묶음(`tools/worker-trial-batch.mjs`)은 antigravity 대상을 실행하려면 `--allow-agy`가 필요하다.
+  - 기록은 `~/.hyperfusion/pacing/`(`HF_PACING_DIR`)에 둔다. `npm test`는 임시 폴더를 쓴다.
+
 - agy가 허용 목록 밖의 명령을 치다 헤드리스 모드에서 거부되어 결과 없이 끝나면, 오류에 "no final text"만 남지 않고 `AGY_COMMAND_BLOCKED`와 거부된 도구 이름이 붙는다(stderr의 거부 안내나 봉투의 `denied_actions`로 알아본다). 재시도 분류는 그대로다. 일꾼 역량 시험의 flash38 실패 두 건이 이 경우였다.
 
 ## 0.33.0 — 2026-11-14

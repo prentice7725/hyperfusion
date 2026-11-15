@@ -128,6 +128,8 @@ Pick Opus 5.5 in Claude Code and run:
 
 **These are collaboration rules, not an OS sandbox.** A worker with a shell can reach files outside the repository. For company code, set your own file-access and data-transfer policy. → [Security details](references/details.en.md#security)
 
+**Worker accounts can be suspended.** In November 2026 several users reported that Google suspended their accounts after scripted `agy` (Antigravity) use; an appeal is allowed once per account. HyperFusion runs the official `agy` binary, but this is still the pattern that was reported. A new team file puts Antigravity on implementation only with 300 seconds between runs, and a suspension notice blocks that CLI on this machine until you clear it. This lowers the risk; it does not remove it. → [pacing](references/configuration.md#자리-제한과-호출-간격) (Korean)
+
 ## More to read
 
 - [Details](references/details.en.md): all features, adaptive review, vendor settings, measurement, security, tests
