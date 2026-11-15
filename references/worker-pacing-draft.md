@@ -99,17 +99,38 @@ HyperFusion은 토큰을 꺼내 쓰지 않고 공식 `agy` 바이너리를 헤�
 
 ### 모델 목록 조회
 
-antigravity 어댑터는 설정한 모델이 있는지 `agy models`로 확인한다. 이것도 `agy`를 한 번 띄우는 호출이다. 간격이 걸려 있으면 목록을 `~/.hyperfusion/pacing/agy-models.json`에 6시간 동안 넣어 두고 다시 쓴다. 넣어 둔 목록에 없는 모델은 한 번 새로 조회한 뒤 판정한다. `--help`와 `--version`은 서버에 닿지 않는 것으로 보고 조절하지 않는다(구현할 때 확인한다).
+antigravity 어댑터는 설정한 모델이 있는지 `agy models`로 확인한다([checkModel](../scripts/adapters/antigravity.mjs)). 이것도 로그인이 필요한, 서버에 닿는 호출이다. 그리고 **일꾼 실행보다 훨씬 자주 일어난다.** 0.33.0부터 기본 설정에 모델(`gemini-4-hydrogen-high`)이 적혀 있어, antigravity를 probe할 때마다 `agy models`가 한 번 돈다. probe는 agy가 일하지 않는 작업에서도 여러 번 불린다.
+
+| 부르는 곳 | 때 |
+|---|---|
+| [installation.mjs](../scripts/installation.mjs) `installationRoster` | init에서 설치 명단을 만들 때. 모든 작업 |
+| [router.mjs](../scripts/router.mjs) | 배치 후보를 고를 때. 후보 전부를 probe한다 |
+| [fusion-state.mjs](../scripts/fusion-state.mjs) begin, 교체 후보 점검(`cliBlocked` 주변), 상담 자리 선택 | 라운드마다 |
+| [dispatch-verify.mjs](../scripts/dispatch-verify.mjs) | 브리지가 요청을 다시 만들어 비교할 때. agy 라운드마다 |
+| `project.mjs`, `setup-doctor.mjs` | 팀 초안, 점검 |
+
+그래서 이 조회는 간격 설정과 상관없이 **항상** 줄인다.
+
+- 목록을 `~/.hyperfusion/pacing/agy-models.json`에 6시간 동안 넣어 두고, 이 컴퓨터의 모든 저장소와 작업이 같이 쓴다. 팀 파일에 아무것도 적지 않아도 그렇다.
+- 넣어 둔 목록에 없는 모델만 한 번 새로 조회한 뒤 판정한다. 그래도 없으면 지금처럼 `MODEL_UNLISTED`다.
+- 실행하지 않는 확인(설치 명단, 배치 후보, 교체 후보 점검, 재검증)은 넣어 둔 목록이 없을 때 조회하지 않고 `model_check: unverified`로 둔다. 새로 조회하는 것은 agy 라운드를 실제로 띄우기 직전(begin, 상담 선택)과 `setup-doctor`뿐이다.
+- 새로 조회하는 것도 간격이 걸려 있으면 한 번에 하나 규칙과 간격을 따른다. 조회가 끝난 시각도 마지막 실행 시각으로 센다.
+- `--help`와 `--version`은 서버에 닿지 않는 것으로 보고 조절하지 않는다(구현할 때 확인한다).
+
+구현하면 한 작업에서 `agy models`가 몇 번 도는지 가짜 CLI로 세는 테스트를 둔다. agy가 일하지 않는 작업에서는 0번, agy 라운드 하나에서는 넣어 둔 목록이 없을 때 1번이어야 한다.
 
 ### 오토파일럿과 시험 묶음
 
 - 오토파일럿은 고칠 것이 없다. 같은 단계를 밟되 브리지가 기다리는 만큼 느려진다.
-- 시험 묶음(`worker-trial-batch`)도 브리지를 거치므로 그대로 적용된다. `--parallel`은 회사별로 한 줄씩이라 한 번에 하나 규칙과 부딪히지 않는다.
+- 시험 묶음(`worker-trial-batch`)도 브리지를 거치므로 그대로 적용된다. `--parallel`은 회사별로 한 줄씩이라 한 번에 하나 규칙과 부딪히지 않는다. 다만 시험 묶음은 같은 CLI를 몇 시간 동안 쉬지 않고 부르는, 보고된 정지 사례와 가장 닮은 모양이다. 그래서 antigravity 대상(`flash38`, `hydrogen`, `argon`)이 든 묶음은 `--allow-agy`가 없으면 시작하지 않는다. 2026-11-14~15에 돌린 시험에서 agy 라운드는 35회 띄웠다(역량 시험 30회와 중단 뒤 재실행 1회, Argon 4회 중 1회는 도중에 끊음). 그 밖에 probe마다 `agy models`가 돌았다.
 - 읽기 전용 작업의 동시 자리 둘이 같은 CLI면 둘째가 첫째를 기다린다.
 
 ## 정지 차단기
 
-실패한 실행의 stderr와 CLI가 돌려준 오류 메시지에서 계정 정지 문구를 찾는다. 사용량 한도를 알아보는 것([provider-limit.mjs](../scripts/provider-limit.mjs))과 같은 범위만 본다. 일꾼이 작업하며 쓴 출력은 보지 않는다.
+실행의 stderr와 CLI가 돌려준 오류 메시지에서 계정 정지 문구를 찾는다. 사용량 한도를 알아보는 것([provider-limit.mjs](../scripts/provider-limit.mjs))과 같은 범위만 본다. 일꾼이 작업하며 쓴 출력은 보지 않는다.
+
+- **종료 코드가 0이어도 본다.** agy는 실패를 종료 코드 0과 stderr 한 줄로 알리기도 한다(명령이 거부된 실행이 그랬다. `AGY_COMMAND_BLOCKED` 참고).
+- **`agy models` 조회의 출력도 본다.** 정지된 계정은 일꾼 실행보다 이 조회에서 먼저 드러날 가능성이 높다. 조회는 init과 begin에서 일어나기 때문이다. `setup-doctor --smoke`의 실행도 같다.
 
 ```text
 disabled in this account for violation of Terms of Service
@@ -155,7 +176,9 @@ TOS_VIOLATION
 | `scripts/executor-bridge.mjs` | 띄우기 직전 기다림, 끝난 뒤 기록, 정지 문구 확인 |
 | `scripts/fusion-state.mjs` | `canWork`·`cliBlocked`·상담 선택에 자리 제한과 정지 기록 반영 |
 | `scripts/router.mjs`, `review-plan.mjs`, `read-only-plan.mjs` | 자리 제한 |
-| `scripts/adapters/antigravity.mjs` | 모델 목록 재사용 |
+| `scripts/adapters/antigravity.mjs` | 모델 목록을 컴퓨터 단위로 넣어 두고 재사용, 실행하지 않는 확인에서는 새로 조회하지 않음 |
+| `scripts/installation.mjs`, `router.mjs`, `dispatch-verify.mjs` | probe가 모델 목록을 새로 조회하지 않게 함 |
+| `tools/worker-trial-batch.mjs` | antigravity 대상에 `--allow-agy` 요구 |
 | `scripts/setup-doctor.mjs` | 경고, 상태 표시, `--clear-suspension` |
 | `references/configuration.md`, `routing.md`, README 세 개의 "안전에 대해" | 설명 |
 | `tests/worker-pacing.test.mjs` | 새 테스트 |
@@ -173,6 +196,9 @@ TOS_VIOLATION
 - 기다림이 `max_wall_ms`를 넘기면 띄우지 않는다.
 - 정지 문구가 stderr에 있으면 정지 기록이 생기고, 다른 저장소의 새 작업에서도 그 CLI는 후보에서 빠진다. 일꾼이 쓴 파일이나 정상 출력에 같은 문구가 있어도 기록이 생기지 않는다.
 - `--clear-suspension` 뒤에는 다시 후보가 된다.
+- 정지 문구가 종료 코드 0인 실행의 stderr나 `agy models` 조회 출력에 있어도 정지 기록이 생긴다.
+- `agy models` 횟수: agy가 일하지 않는 작업에서는 0번, agy 라운드 하나에서는 넣어 둔 목록이 없을 때 1번.
+- 시험 묶음: antigravity 대상이 있는데 `--allow-agy`가 없으면 시작하지 않는다.
 - 팀 파일에 두 키가 없으면 기존 테스트가 그대로 통과한다.
 
 ## 정할 것
@@ -181,3 +207,4 @@ TOS_VIOLATION
 2. 간격을 끝난 시각부터 잴지, 시작한 시각부터 잴지. 초안은 끝난 시각이다(긴 실행 뒤에도 쉰다).
 3. 정지 차단기를 antigravity에만 둘지, 모든 CLI에 둘지. 초안은 문구가 구글 것이라 사실상 `agy`에만 걸린다.
 4. 자리 제한을 팀 파일에만 둘지, 저장소 설정에서도 더 좁힐 수 있게 할지.
+5. 기본값. 초안은 팀 파일에 적지 않으면 지금과 같게 둔다. `setup-doctor --write-team`이 antigravity에 `seats:["implement"]`와 간격 값을 처음부터 넣게 할지 정한다. 모델 목록 재사용과 정지 차단기는 이 질문과 상관없이 항상 켠다.
