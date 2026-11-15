@@ -6,12 +6,22 @@
 
 2026년 11월 들어 Antigravity(`agy`) 계정이 약관 위반으로 정지됐다는 보고가 구글 개발자 포럼에 여럿 올라왔다. 정지되면 `agy`와 Gemini CLI가 403으로 막히고, 이의 신청은 계정당 한 번이며 복구 뒤 다시 걸리면 영구 정지다.
 
-HyperFusion은 토큰을 꺼내 쓰지 않고 공식 `agy` 바이너리를 헤드리스로 띄운다. 구글 직원은 이 방식을 의도된 사용이라고 답했지만, 조건으로 "개인이 자기 컴퓨터에서 쓸 것"과 "빠른 반복 호출을 피할 것"을 달았다. 같은 방식으로 쓰다 정지됐다는 사례도 있다. 정지의 실제 원인은 확인할 수 없다.
+HyperFusion은 토큰을 꺼내 쓰지 않고 공식 `agy` 바이너리를 헤드리스로 띄운다. 10월 초 구글 직원은 이 방식을 허용된 사용이라고 답했다. **그 답은 뒤집혔다(2026-11-15 확인).** 지금 공식 FAQ와 그 뒤의 직원 답변은 이렇게 말한다.
+
+- `agy -p`는 사용자가 직접 돌리는 스크립트와 CI를 위한 것이다.
+- 개인 구독 로그인(Free·Plus·Pro·Ultra)으로 다른 코딩 에이전트나 자율 루프, 백그라운드 작업 큐가 프롬프트를 만들어 `agy -p`나 `agy acp`를 부리는 것은 허용하지 않는다. 토큰을 꺼내지 않고 하위 프로세스로 띄우기만 해도 같다. 개인용·단일 계정이라는 예외는 없다.
+- 10월의 허용 답변은 "FAQ 항목이 나오기 전의 지나치게 넓은 해석"이었다고 직원이 정정했다.
+- 다른 에이전트나 무인 자동화에는 API 키 방식을 쓰라고 한다(`GEMINI_API_KEY`와 `"modelProvider": "gemini"`). 이 방식은 구독 약관이 아니라 종량제 API 약관을 따르며, CLI가 계정 세션을 만들지 않는다.
+
+**그러므로 Claude Code나 Codex가 리드인 HyperFusion이 개인 구독 로그인의 `agy`를 일꾼으로 부르는 것은, 지금 구글의 설명으로는 허용되지 않는 사용이다.** 아래의 자리 제한과 호출 간격은 호출을 줄일 뿐 이 사용을 허용된 것으로 바꾸지 못한다. 구독 로그인으로는 antigravity 일꾼을 끄고(`enabled:false`), 쓰려면 API 키 방식으로 쓴다. 아래 장치들은 API 키 방식이나 다른 CLI에서도 뜻이 있어 남겨 둔다.
 
 - [Antigravity 추가 약관 6조](https://antigravity.google/terms)
-- [로컬 오케스트레이터가 agy를 띄워도 되는가에 대한 답변 (2026-10-05)](https://discuss.ai.google.dev/t/is-automatically-launching-the-official-agy-cli-from-a-local-ai-orchestrator-allowed-under-additional-terms-6/186954)
-- [헤드리스 1회 실행 뒤 정지 사례 (2026-11-03)](https://discuss.ai.google.dev/t/appeal-request-antigravity-cli-suspended-no-third-party-oauth-client/197943)
-- [스크립트로 agy를 여러 개 동시에 돌린 뒤 정지 사례 (2026-11-12)](https://discuss.ai.google.dev/t/appeal-submitted-antigravity-cli-403-after-headless-reviews-run-by-my-ai-assistant-all-automated-agy-use-removed/199919)
+- [공식 FAQ: 헤드리스 모드를 다른 코딩 에이전트 안에서 쓸 수 있는가](https://antigravity.google/docs/faq)
+- [다른 회사 도구가 띄운 스크립트에서 agy를 돌려도 되는가: 안 된다는 답변 (2026-11-09)](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021)
+- [앞선 허용 답변이 지나치게 넓었다는 정정과 API 키 방식 안내](https://discuss.ai.google.dev/t/paying-google-ai-pro-subscriber-allow-subscription-use-with-third-party-agents-like-openclaw/191689)
+- [경계는 "세션을 누가 모는가"라는 설명 (antigravity-cli 이슈 1493)](https://github.com/google-antigravity/antigravity-cli/issues/1493)
+- [뒤집히기 전의 허용 답변 (2026-10-05)](https://discuss.ai.google.dev/t/is-automatically-launching-the-official-agy-cli-from-a-local-ai-orchestrator-allowed-under-additional-terms-6/186954)
+- [Claude Code가 스크립트로 agy를 돌린 뒤 정지된 사례 (2026-11-12)](https://discuss.ai.google.dev/t/appeal-antigravity-cli-agy-403-disabled-for-violation-of-terms-of-service-ai-pro-subscriber-official-cli-only/199882)
 
 지금 HyperFusion에는 호출 모양을 다스리는 장치가 없다. 오토파일럿은 재지시와 리뷰로 같은 CLI를 쉬지 않고 연달아 부르고, 읽기 전용 작업([read-only-work](read-only-work.md))과 시험 묶음은 같은 CLI를 동시에 띄울 수 있다.
 
@@ -24,6 +34,17 @@ HyperFusion은 토큰을 꺼내 쓰지 않고 공식 `agy` 바이너리를 헤�
 | 정지 차단기 | 계정 정지 응답을 보면 그 CLI를 이 컴퓨터에서 더 부르지 않는다 | 항상 켜짐 |
 
 **이것은 정지를 막아 준다는 보장이 아니다.** 구글이 무엇을 보고 정지하는지 모른다. 보고된 사례에서 공통으로 나온 모양(짧은 호출의 반복, 동시 실행)을 줄일 뿐이다.
+
+## 먼저 할 것: 인증 방식 확인
+
+자리와 간격보다 먼저, antigravity 일꾼이 어떤 인증으로 도는지를 `setup-doctor`가 보여 주고 경고한다.
+
+- `agy`가 API 키 방식인지(`~/.gemini/antigravity-cli/settings.json`의 `modelProvider`가 `gemini`이고 `GEMINI_API_KEY`가 있음) 확인한다. 설정 파일의 그 한 항목만 읽고, 인증 파일이나 토큰은 읽지 않는다.
+- API 키 방식이 아니고 antigravity가 켜져 있으면 경고한다: "개인 구독 로그인으로 다른 에이전트가 agy를 부리는 것은 구글이 허용하지 않는다. 일꾼을 끄거나 API 키 방식으로 바꿔라."
+- 막지는 않는다. 계정은 운영자의 것이고, 설정 파일 위치와 형식은 `agy` 버전에 따라 달라질 수 있어 판정을 확신할 수 없다. 확인하지 못하면 "모름"으로 보여 준다.
+- `--write-team`은 API 키 방식을 확인하지 못하면 antigravity를 `"enabled": false`로 쓴다.
+
+agy를 호스트(리드)로 쓰는 경우([hosts/antigravity.md](hosts/antigravity.md))는 사람이 agy 세션을 직접 모는 쪽이라 위 금지와 방향이 다르다. 다만 그 경우의 약관 해석은 이 초안에서 확인하지 않았다.
 
 ## 어디에 적는가
 
@@ -177,6 +198,7 @@ TOS_VIOLATION
 
 ## 정할 것
 
+0. 구독 로그인에서 antigravity 일꾼을 아예 막을지(지금 초안은 경고만 한다).
 1. `min_interval_s`의 권장값. 300초를 예로 적었지만 근거가 없는 숫자다. 구글은 기준을 밝히지 않았다.
 2. 간격을 끝난 시각부터 잴지, 시작한 시각부터 잴지. 초안은 끝난 시각이다(긴 실행 뒤에도 쉰다).
 3. 정지 차단기를 antigravity에만 둘지, 모든 CLI에 둘지. 초안은 문구가 구글 것이라 사실상 `agy`에만 걸린다.
