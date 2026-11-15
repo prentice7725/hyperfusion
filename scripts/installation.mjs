@@ -2,7 +2,7 @@ import {REVIEWERS} from './executor-config.mjs';
 import {adapter} from './adapters/index.mjs';
 import {vendorAllowed} from './vendor-policy.mjs';
 
-export function installationRoster(configuration,probe=name=>adapter(name).probe(configuration.executors?.[name]??{})) {
+export function installationRoster(configuration,probe=name=>adapter(name).probe(configuration.executors?.[name]??{},{fresh:false})) {
  return REVIEWERS.map(member=>{
   if(!vendorAllowed(configuration,member))return {member,installed:false,reason:'벤더 정책 제외',code:'VENDOR_POLICY'};
   try{probe(member);return {member,installed:true,reason:null};}

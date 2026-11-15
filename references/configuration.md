@@ -58,7 +58,7 @@ node scripts/setup-doctor.mjs <저장소> --write-team --force  # 있는 파일�
   "members": {
     "terra": {"enabled": true, "model": "gpt-6.1-terra", "reasoning_effort": "medium"},
     "grok": {"enabled": false, "note": "미설치 또는 CLI 계약 불일치"},
-    "antigravity": {"enabled": true, "model": "gemini-4-argon-high"},
+    "antigravity": {"enabled": true, "model": "gemini-4-argon-high", "seats": ["implement"], "min_interval_s": 300},
     "sol": {"enabled": true}
   },
   "reviewers": ["sol", "sonnet"]
@@ -76,6 +76,19 @@ node scripts/setup-doctor.mjs <저장소> --write-team --force  # 있는 파일�
 - 다른 경로는 `HF_TEAM_FILE=<경로>`, 끄려면 `HF_TEAM_FILE=off`. `npm test`는 실제 팀 파일을 읽지 않도록 끈다.
 - 설정은 init 때 상태에 고정된다. 적용 결과는 상태의 `configuration.team`(켠 일꾼, 뺀 일꾼, 채운 값)에 남는다.
 - `setup-doctor`는 팀 파일을 실제 설치와 비교한다. 켰지만 설치되지 않은 일꾼이 있으면 경고하고, 출력의 `team.drift`에 둘 다 적는다.
+
+### 자리 제한과 호출 간격
+
+구글이 스크립트로 `agy`를 부른 계정을 약관 위반으로 정지한 사례가 있어 둔 장치다. 정지를 막는다는 보장은 없다. 보고된 모양(짧은 호출의 반복, 동시 실행)을 줄일 뿐이다. 설계와 근거는 [worker-pacing-draft.md](worker-pacing-draft.md).
+
+- `seats`: 일꾼이 맡을 자리(`implement`, `review`, `consult` 중 하나 이상). 없으면 셋 다다. 구현 자리가 없으면 구현 명단에서, 리뷰 자리가 없으면 리뷰어 명단에서 빠진다. 상담·리뷰 자동 선택은 건너뛰고, 리드가 이름으로 고르거나 필수 리뷰어이면 `SEAT_POLICY`로 거절한다(리뷰어 수를 줄이지 않는다). 꺼진 일꾼에 적거나, `reviewers`에 든 일꾼에 `review`가 없으면 거절한다. 팀 파일에만 둔다.
+- `min_interval_s`: 0~3600초. 1 이상이면 그 CLI를 이 컴퓨터에서 한 번에 하나만 띄우고, 앞 실행이 끝난 시각부터 이 시간만큼 쉰 뒤 띄운다. 단위는 CLI다(Sonnet·Haiku는 `claude`, Terra·Luna·Sol은 `codex`). 같은 CLI의 값 중 가장 큰 값을 쓴다. 기다림은 일꾼 실행 제한 시간에는 넣지 않고 작업 경과 시간 상한(`max_wall_ms`)에는 넣는다. 상한을 넘기면 띄우지 않는다(`PACING_DEADLINE`). 기다린 시간은 실행 봉투의 `paced_ms`에 남는다.
+- `setup-doctor --write-team`이 새로 쓰는 팀 파일에는 설치된 antigravity에 `"seats": ["implement"]`, `"min_interval_s": 300`이 들어간다. 이미 있는 팀 파일은 바꾸지 않고, antigravity에 간격이 없으면 doctor가 경고한다.
+- 기록은 `~/.hyperfusion/pacing/`에 둔다(`HF_PACING_DIR`로 바꾼다). CLI별 마지막 실행(`<cli>.json`), 잠금(`<cli>.lock`), 계정 정지 기록, agy 모델 목록이다.
+
+**계정 정지 차단기**는 팀 파일과 상관없이 항상 켜져 있다. 실행의 stderr나 CLI 오류 메시지, `agy models` 조회 출력에 계정 정지 문구가 있으면 그 CLI를 이 컴퓨터의 모든 저장소에서 설치되지 않은 것처럼 다룬다(`ADAPTER_UNAVAILABLE: ACCOUNT_SUSPENDED`). 진행 중인 라운드는 사용량 한도와 같은 길로 다른 일꾼에게 넘어가고, 리드에게 알림이 간다. 자동으로 풀지 않는다. 계정이 복구된 것을 확인한 뒤 `node scripts/setup-doctor.mjs REPO --clear-suspension agy`로 푼다. 지금 문구 목록에는 구글 문구만 있다.
+
+**agy 모델 목록**(`agy models`)도 서버에 닿는 호출이라 항상 줄인다. 목록을 이 컴퓨터 단위로 6시간 넣어 두고 같이 쓰며, 설치 명단·배치 후보·재검증처럼 아무것도 띄우지 않는 확인은 새로 조회하지 않는다.
 
 ## 모델과 작업 상한
 

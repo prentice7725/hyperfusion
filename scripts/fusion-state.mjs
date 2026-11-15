@@ -49,6 +49,7 @@ import {gradeOf,MEMBERS} from './member-registry.mjs';
 import {SANDBOX_REPORT,sandboxFailureFile,WORKER_TEMP_DIR} from './codex-sandbox.mjs';
 import {LIMIT_FAILURE_FILE,limitFailureFile} from './provider-limit.mjs';
 import {independent,memberEligible} from './model-registry.mjs';
+import {suspension,suspensionMessage,seatAllowed,seatRefusal} from './worker-pacing.mjs';
 
 const BRIDGE=fileURLToPath(new URL('./executor-bridge.mjs',import.meta.url));
 // 상담 위원에게 직접 넣어 주는 diff의 최대 길이. 12,000자로는 리뷰어가 변경 대부분을 보지 못했다.
@@ -104,7 +105,11 @@ function openControl(root) {
   // 이 작업에서 이미 샌드박스에 막혔거나 사용량·요금 한도에 걸린 CLI. 같은 CLI의 일꾼·리뷰어는 이 작업 동안 쓰지 않는다.
   c.cliBlocked=name=>{
     const cli=MEMBERS[name]?.binary;
-    if(!cli||!c.s?.task_id)return null;
+    if(!cli)return null;
+    // 계정 정지 기록은 작업이 아니라 이 컴퓨터 단위다. 운영자가 풀 때까지 모든 작업에서 그 CLI를 쓰지 않는다.
+    const banned=suspension(cli);
+    if(banned)return suspensionMessage(cli,banned);
+    if(!c.s?.task_id)return null;
     let files=[];try{files=fs.readdirSync(c.taskdir()).filter(f=>/^sandbox-failure-\d+\.json$/.test(f)||LIMIT_FAILURE_FILE.test(f)).sort();}catch{return null;}
     for(const f of files){
       let r;try{r=read(path.join(c.taskdir(),f));}catch{continue;}
@@ -551,9 +556,12 @@ function consult(c,input) {
     if(!vendorAllowed(s.configuration,e)){if(explicit||adaptive)assertVendor(s.configuration,e);continue;}
     // 이 작업에서 한도에 걸린 CLI의 리뷰어는 건너뛴다(기본 순서의 다음 리뷰어로). 리드가 직접 고른 경우는 거절한다.
     const limited=c.cliBlocked(e);
-    if(limited&&/PROVIDER_LIMIT/.test(limited)){if(explicit||adaptive)throw Error(limited);continue;}
+    if(limited&&/PROVIDER_LIMIT|ACCOUNT_SUSPENDED/.test(limited)){if(explicit||adaptive)throw Error(limited);continue;}
+    // 팀 파일의 자리 제한. 자동 선택은 건너뛰고, 리드가 고르거나 필수 리뷰어면 거절한다(리뷰어 수를 줄이지 않는다).
+    const seat=mode==='review'?'review':'consult';
+    if(!seatAllowed(s.configuration,e,seat)){if(explicit||adaptive)throw Error(seatRefusal(e,seat));continue;}
     let cli;
-    try{cli=adapter(e).probe(s.configuration.executors[e]??{});adapter(e).preflight?.({root:c.root});}
+    try{cli=adapter(e).probe(s.configuration.executors[e]??{},{fresh:true});adapter(e).preflight?.({root:c.root});}
     catch(err){if(explicit||adaptive)throw err;continue;}
     members.push({member:'m'+(members.length+1),executor:e,cli});
   }
@@ -1121,7 +1129,7 @@ function begin(c,input) {
 
   // 프로브와 인자 검증은 lease 획득·시도 소모 전에 끝낸다.
   // 실패해도 phase와 시도 예산을 유지해 같은 일꾼으로 다시 시작할 수 있다.
-  const cli=a?a.probe(planned.options):null;
+  const cli=a?a.probe(planned.options,{fresh:true}):null;
   if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options:planned.options,apexGrant:planned.apexGrant,granted:planned.granted});
 
   if(acceptanceBaseline(c,input)===false)return s;
@@ -2019,7 +2027,8 @@ function autoSubstituteInput(c) {
     if(picks.length===seats)break;
     if(used.has(e)||e==='lead'||sameFamilyIn(plan,e,s.owner))continue;
     if((plan.review_policy===PAIRED_REVIEW_POLICY||plan.review_policy===FAMILY_RULES_POLICY)&&[...kept,...picks].some(other=>sameFamilyIn(plan,e,other)))continue;
-    try{adapter(e).probe(s.configuration.executors[e]??{});}catch{continue;}
+    if(!seatAllowed(s.configuration,e,'review')||/PROVIDER_LIMIT|ACCOUNT_SUSPENDED/.test(c.cliBlocked(e)??''))continue;
+    try{adapter(e).probe(s.configuration.executors[e]??{},{fresh:false});}catch{continue;}
     picks.push(e);
   }
   if(picks.length<seats)throw refuse(`no installed reviewer from another company is left for ${seats} seat(s)`);

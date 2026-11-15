@@ -12,6 +12,7 @@ import {implementDispatch} from '../scripts/review-plan.mjs';
 import {measure,refreshHostUsage} from '../scripts/metrics.mjs';
 import {summarizeUsage} from '../scripts/usage-accounting.mjs';
 import {modelEffort,selectAgyModel} from '../scripts/adapters/agy-model.mjs';
+import {adapter} from '../scripts/adapters/index.mjs';
 const write=(f,options,extra={})=>fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify({executors:{antigravity:options},...extra}));
 function modelCLI() {
  const bin=process.env.HF_AGY_BIN;
@@ -48,7 +49,11 @@ test('routing checks the chosen difficulty profile, not an unrelated fallback mo
  const f=fixture(t,{initialize:false});modelCLI();write(f,{model:'missing-model',models_by_difficulty:{high:'gemini-4-argon',low:'missing-low'}},{routing:{policy:'external-first'}});
  const c=config(f.root),high=route(f.root,c,{task_kind:'ui',difficulty:'high'});
  assert.equal(high.executor,'antigravity');assert.equal(high.unavailable.antigravity,undefined);
- assert.match(route(f.root,c,{task_kind:'ui',difficulty:'low'}).unavailable.antigravity,/MODEL_UNLISTED/);
+ // 배치는 agy models를 새로 부르지 않는다. 목록이 없으면 띄우기 직전(begin)에 확인하고, 넣어 둔 목록이 있으면 그것으로 거른다.
+ assert.equal(route(f.root,c,{task_kind:'ui',difficulty:'low'}).unavailable.antigravity,undefined);
+ adapter('antigravity').probe({model:'gemini-4-argon-high'});
+ assert.match(route(f.root,c,{task_kind:'ui',difficulty:'low'}).unavailable.antigravity,/MODEL_UNLISTED: .*cached list/);
+ assert.equal(route(f.root,c,{task_kind:'ui',difficulty:'high'}).unavailable.antigravity,undefined);
 });
 test('resolved Argon model is checked before lease and retained through bridge/redo/metrics',async t=>{
  const f=fixture(t,{initialize:false});modelCLI();write(f,{model:'gemini-4-argon',reasoning_effort:'high'});

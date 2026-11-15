@@ -5,6 +5,7 @@ import {workerEnv} from '../worker-env.mjs';
 import {memberBinary} from '../member-registry.mjs';
 import {selectAgyModel} from './agy-model.mjs';
 import {defaultTimeout} from '../round-timeout.mjs';
+import {cachedModels,cacheModels,assertNotSuspended,suspensionHit,recordSuspension,suspensionMessage} from '../worker-pacing.mjs';
 
 // Google Antigravity CLI(agy) 헤드리스 모드. 모든 플래그는 -p 앞에 와야 한다.
 // 대화 ID는 CLI가 발급하므로 첫 라운드 envelope의 conversation_id를 저장해 재개에 쓴다.
@@ -16,10 +17,11 @@ export const binary=()=>memberBinary('antigravity');
 // 그래도 셸로 쓰는 길은 줄여 주므로, 끌 수 있는 것은 운영자가 허용한 구현 라운드뿐이고 상담과 리뷰는 항상 --sandbox를 넘긴다
 // (CLI가 그 플래그를 모르면 상담이 실패한다. 읽기 전용이어야 할 일꾼을 풀어 두는 것보다 낫다).
 const unsandboxed=(options,brief)=>options.sandbox===false&&!brief?.consult;
-export const probe=(options={})=>{
+// fresh=false: 아무것도 띄우지 않는 확인(설치 명단, 배치 후보, 재검증, 교체 후보)은 넣어 둔 모델 목록만 본다. 기본은 새로 조회한다.
+export const probe=(options={},{fresh=true}={})=>{
  const choice=selectAgyModel(options);
  const cli=probeCli('Antigravity',binary(),[...requiredFlags,...(options.sandbox===false?[]:['--sandbox']),...(choice.model||options.models_by_difficulty?['--model']:[]),...(choice.effort_flag?['--effort']:[])],['--print-timeout','--model','--effort','--new-project'],{executor:'antigravity'});
- return choice.model?{...cli,model_check:checkModel(cli,choice.model)}:cli;
+ return choice.model?{...cli,model_check:checkModel(cli,choice.model,{fresh})}:cli;
 };
 
 // agy는 모르는 --model을 받으면 오류 없이 기본 모델로 돈다(외부 실측). 어느 모델이 구현·리뷰했는지가 판정 근거이므로,
@@ -34,16 +36,31 @@ export function listedModels(text) {
   .flatMap(l=>[l,...l.split('\t'),...l.split(/\s+/)].map(x=>x.trim()).filter(x=>modelKey(x)));
 }
 const shownModels=text=>String(text??'').split(/\r?\n/).map(l=>l.split('\t')[0].trim()).filter(Boolean);
-export function checkModel(cli,model) {
+// agy models는 서버에 닿는 호출이고, probe는 agy가 일하지 않는 작업에서도 여러 번 불린다(설치 명단, 배치 후보, 재검증).
+// 그래서 목록을 이 컴퓨터 단위로 6시간 넣어 두고(worker-pacing.mjs) 같이 쓴다. 넣어 둔 목록에 없거나 목록이 없으면
+// fresh일 때만 새로 조회하고, 아니면 unverified로 둔다(실제로 띄우기 전 begin·상담 선택에서 다시 확인된다).
+export function checkModel(cli,model,{fresh=true}={}) {
  if(process.env[ALLOW_UNLISTED_ENV]==='1')return {model,status:'skipped',reason:ALLOW_UNLISTED_ENV+'=1'};
+ const listed=text=>listedModels(text).some(n=>modelKey(n)===modelKey(model));
+ const cached=cachedModels('agy');
+ if(cached&&listed(cached.stdout))return {model,status:'listed',source:'cache'};
+ // 아무것도 띄우지 않는 확인: 넣어 둔 목록(6시간 이내)에 없으면 거른다. 목록이 없으면 띄우기 직전에 확인한다.
+ if(!fresh&&cached)throw unlisted(model,cached.stdout,' (cached list)');
+ if(!fresh)return {model,status:'unverified',reason:'no cached agy models list; checked before launch'};
+ assertNotSuspended('agy');
  const r=spawnSync(cli.executable,[...(cli.prefix_args??[]),'models'],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:workerEnv('antigravity')});
+ // 정지된 계정은 일꾼 실행보다 이 조회에서 먼저 드러날 수 있다.
+ const banned=suspensionHit('agy',`${r.stderr??''}\n${r.stdout??''}`);
+ if(banned){const rec=recordSuspension('agy',banned,{executor:'antigravity',source:'agy models'});throw Object.assign(Error(suspensionMessage('agy',rec)),{code:'ACCOUNT_SUSPENDED'});}
  if(r.error||r.status!==0)return {model,status:'unverified',reason:'agy models '+(r.error?.code==='ETIMEDOUT'?'timed out':r.error?.message??`exited ${r.status}`)};
  const names=listedModels(r.stdout);
  if(!names.length)return {model,status:'unverified',reason:'agy models listed nothing'};
- if(names.some(n=>modelKey(n)===modelKey(model)))return {model,status:'listed'};
- throw Error(`MODEL_UNLISTED: executors.antigravity.model "${model}" is not listed by \`agy models\` (listed: ${shownModels(r.stdout).slice(0,6).join(', ')}${shownModels(r.stdout).length>6?', ...':''}). `
-  +`agy would silently run its default model instead. Fix the model name, or have the operator set ${ALLOW_UNLISTED_ENV}=1 to launch anyway`);
+ cacheModels('agy',r.stdout);
+ if(listed(r.stdout))return {model,status:'listed'};
+ throw unlisted(model,r.stdout,'');
 }
+const unlisted=(model,stdout,where)=>Error(`MODEL_UNLISTED: executors.antigravity.model "${model}" is not listed by \`agy models\`${where} (listed: ${shownModels(stdout).slice(0,6).join(', ')}${shownModels(stdout).length>6?', ...':''}). `
+ +`agy would silently run its default model instead. Fix the model name, or have the operator set ${ALLOW_UNLISTED_ENV}=1 to launch anyway`);
 // agy가 스스로 먼저 끝내도록 브리지 timeout보다 30초 짧게 잡는다. 그래야 강제 종료 대신 정상 envelope가 남는다.
 export const printTimeout=(options,role='implement')=>Math.max(30,Math.floor(((options.timeout_ms??defaultTimeout(role))-30000)/1000))+'s';
 export const newSession=()=>null;

@@ -187,7 +187,7 @@ export function settleTask(root,taskId,status,workspace=root) {
 // 표 칸 안의 '|'는 칸 구분자로 읽히므로 이스케이프한다(예: code:medium|high).
 const cell=v=>String(v??'').replace(/\|/g,'\\|').replace(/\r?\n/g,' ');
 const modelOf=(c,m)=>c.executors?.[m]?.model??CATALOG[m].model??'CLI 기본 모델';
-const installed=(c,m)=>{try{adapter(m).probe(c.executors?.[m]??{});return true;}catch{return false;}};
+const installed=(c,m)=>{try{adapter(m).probe(c.executors?.[m]??{},{fresh:false});return true;}catch{return false;}};
 
 export function roster(root) {
  root=repo(root);const c=config(root);

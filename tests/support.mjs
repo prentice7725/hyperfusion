@@ -87,6 +87,7 @@ if(args.includes('--help')){console.error('Usage of agy.EXE:\\n  --add-dir\\n  -
 // agy 1.2+의 모델 목록: 한 줄에 slug<TAB>표시 이름. agy-no-models는 목록을 못 얻는 경우(로그인 전 등).
 if(args[0]==='models'){if(mode==='agy-no-models'){console.error('not signed in');process.exit(1);}console.log('gemini-3.5-flash\\tGemini 3.5 Flash\\ngemini-3.6-pro-high\\tGemini 3.6 Pro (High)\\ngemini-3.8-flash-medium\\tGemini 3.8 Flash (Medium)\\ngemini-3.8-flash-high\\tGemini 3.8 Flash (High)\\ngemini-4-argon-high\\tGemini 4 Argon (High)\\ngemini-4-argon-medium\\tGemini 4 Argon (Medium)\\ngemini-4-hydrogen-high\\tGemini 4 Hydrogen (High)');process.exit(0);}
 if(mode==='agy-signed-out'){console.error('Error: not signed in. Run agy to sign in.');process.exit(1);}
+if(mode==='agy-suspended'){console.error('Error 403: This service has been disabled in this account for violation of Terms of Service.');process.exit(1);}
 if(mode==='agy-command-denied'){console.error('jetski: no output produced - a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.');console.log(JSON.stringify({conversation_id:'denied-1',status:'success',response:'',num_turns:3,usage:{total_tokens:20},denied_actions:[{action:'command',display_name:'Bash'}]}));process.exit(0);}
 fs.writeFileSync(HERE+'/fake-agy-args.json',JSON.stringify(args));
 // 컨트롤러는 스키마를 파일 경로로 넘긴다(명령줄 길이). 인라인 JSON이 오면 계약 위반으로 실패한다.
@@ -159,13 +160,14 @@ function templateRepo() {
 export function fixture(t,{initialize=true,executor='grok'}={}) {
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'hf-v03-')),root=path.join(temp,'repo');fs.mkdirSync(root);
  const old={grok:process.env.HF_GROK_BIN,agy:process.env.HF_AGY_BIN,claude:process.env.HF_CLAUDE_BIN,codex:process.env.HF_CODEX_BIN};
- const oldState=process.env.HF_STATE_DIR;
+ const oldState=process.env.HF_STATE_DIR,oldPacing=process.env.HF_PACING_DIR;
  // 운영자가 호스트에 둔 Codex 샌드박스 설정(예: mxc)은 가짜 CLI의 사전 점검 호출 수를 바꾼다. 테스트는 설정 없는 호스트처럼 돈다.
  const oldSandbox=process.env.HF_CODEX_WINDOWS_SANDBOX;
  delete process.env.HF_CODEX_WINDOWS_SANDBOX;
  t.after(()=>{
   for(const [k,v] of [['HF_GROK_BIN',old.grok],['HF_AGY_BIN',old.agy],['HF_CLAUDE_BIN',old.claude],['HF_CODEX_BIN',old.codex]]){if(v===undefined)delete process.env[k];else process.env[k]=v;}
   if(oldState===undefined)delete process.env.HF_STATE_DIR;else process.env.HF_STATE_DIR=oldState;
+  if(oldPacing===undefined)delete process.env.HF_PACING_DIR;else process.env.HF_PACING_DIR=oldPacing;
   if(oldSandbox!==undefined)process.env.HF_CODEX_WINDOWS_SANDBOX=oldSandbox;
   fs.rmSync(temp,{recursive:true,force:true});
  });
@@ -174,7 +176,7 @@ export function fixture(t,{initialize=true,executor='grok'}={}) {
  const grok=path.join(temp,'fake grok'+ext),agy=path.join(temp,'fake agy'+ext);
  const claude=path.join(temp,'fake claude'+ext),codex=path.join(temp,'fake codex'+ext);
  fs.writeFileSync(grok,FAKE_GROK,{mode:0o755});fs.writeFileSync(agy,FAKE_AGY,{mode:0o755});fs.writeFileSync(claude,FAKE_CLAUDE,{mode:0o755});fs.writeFileSync(codex,FAKE_CODEX,{mode:0o755});
- process.env.HF_GROK_BIN=grok;process.env.HF_AGY_BIN=agy;process.env.HF_CLAUDE_BIN=claude;process.env.HF_CODEX_BIN=codex;
+ process.env.HF_PACING_DIR=path.join(temp,'pacing');process.env.HF_GROK_BIN=grok;process.env.HF_AGY_BIN=agy;process.env.HF_CLAUDE_BIN=claude;process.env.HF_CODEX_BIN=codex;
  const git=(...a)=>execFileSync('git',['-C',root,...a],{stdio:'pipe'});
  // 저장소를 매번 init·config×2·add·commit(프로세스 5개)로 만들지 않고, 파일 하나당 한 번 만든 템플릿을 복사한다.
  // Windows에서는 프로세스 하나가 25~45ms라 픽스처 수백 개가 분 단위로 쌓인다.

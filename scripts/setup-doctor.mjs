@@ -14,6 +14,8 @@ import {smoke} from './smoke.mjs';
 import {installationRoster,recommendPreset} from './installation.mjs';
 import {hookObservation} from './hook-observation.mjs';
 import {teamFilePath,loadTeam,draftTeam,writeTeam,teamDrift} from './team-file.mjs';
+import {pacingDir,lastRun,suspension,clearSuspension} from './worker-pacing.mjs';
+import {MEMBERS} from './member-registry.mjs';
 
 // 실행 전 점검. 일꾼 CLI는 모두 프로브해서 교체 가능한 인력을 미리 파악한다.
 const checks=[];
@@ -31,8 +33,15 @@ const check=(name,fn)=>{try{checks.push({name,ok:true,detail:fn()});}catch(e){ch
 check('node',()=>{if(Number(process.versions.node.split('.')[0])<24)throw Error('Node 24+ required');return process.version;});
 // 옵션: --executor NAME, --smoke[=NAME,NAME] (설치된 일꾼에게 작은 작업을 실제로 시킨다. 비용이 든다)
 //       --write-team [--force] (설치된 CLI로 이 컴퓨터의 팀 파일 초안을 쓴다. 이미 있으면 --force가 있어야 바꾼다)
-const argv=process.argv.slice(3),flags=[];let smokeWanted=null,writeTeamWanted=false,force=false;
-for(const a of argv){if(a==='--smoke')smokeWanted='installed';else if(a.startsWith('--smoke='))smokeWanted=a.slice(8).split(',').filter(Boolean);else if(a==='--write-team')writeTeamWanted=true;else if(a==='--force')force=true;else flags.push(a);}
+//       --clear-suspension CLI (계정 정지 기록을 지운다. 계정이 복구된 것을 확인한 운영자만 쓴다. 예: agy)
+const argv=process.argv.slice(3),flags=[];let smokeWanted=null,writeTeamWanted=false,force=false,clearWanted=null;
+for(let i=0;i<argv.length;i++){const a=argv[i];if(a==='--smoke')smokeWanted='installed';else if(a.startsWith('--smoke='))smokeWanted=a.slice(8).split(',').filter(Boolean);else if(a==='--write-team')writeTeamWanted=true;else if(a==='--force')force=true;else if(a==='--clear-suspension')clearWanted=argv[++i]??'';else flags.push(a);}
+const CLIS=[...new Set(Object.values(MEMBERS).map(m=>m.binary).filter(Boolean))];
+// 정지 기록을 지우는 것은 다른 점검보다 먼저 한다. 지운 뒤의 probe가 그 CLI를 다시 본다.
+if(clearWanted!==null)check('clear-suspension',()=>{
+ if(!CLIS.includes(clearWanted))throw Error(`--clear-suspension takes a CLI name: ${CLIS.join(', ')}`);
+ return clearSuspension(clearWanted)?`${clearWanted} suspension record cleared; it can be launched again`:`no suspension record for ${clearWanted}`;
+});
 let selected,c,base;
 // 팀 파일을 뺀 설정. 팀 파일이 잘못돼도 초안을 다시 쓸 수 있고, 초안이 모든 일꾼을 보게 한다.
 try{base=config(process.argv[2]??process.cwd(),{teamFile:null});}catch{}
@@ -95,8 +104,13 @@ let team={file:teamFile,exists:!!teamFile&&fs.existsSync(teamFile),applied:c?.te
 if(team.exists){
  try{const t=loadTeam(teamFile);team.drift=teamDrift(t,installation);
   if(team.drift.enabled_not_installed.length)warnings.push(`team file enables workers that are not installed or failed their probe: ${team.drift.enabled_not_installed.join(', ')}; edit ${teamFile} or install them`);
+  // 약관 정지 보고가 있는 agy는 간격을 두기를 권한다(references/worker-pacing-draft.md). 실패로 치지는 않는다.
+  if(t.members.antigravity?.enabled&&t.members.antigravity.min_interval_s===undefined)warnings.push(`antigravity is enabled without min_interval_s in ${teamFile}; Google has suspended accounts after scripted agy use, consider "seats": ["implement"] and "min_interval_s": 300 (references/worker-pacing-draft.md)`);
  }catch(e){team.error=e.message;}
 }
+// 호출 조절 기록: CLI별 마지막 실행과 계정 정지 기록. 정지 기록이 있으면 항상 경고한다.
+const pacing={dir:pacingDir(),clis:Object.fromEntries(CLIS.map(cli=>[cli,{last_run:lastRun(cli),suspended:suspension(cli)}]))};
+for(const [cli,p] of Object.entries(pacing.clis))if(p.suspended)warnings.push(`${cli} is blocked on this machine: an account suspension was reported at ${p.suspended.at} ("${p.suspended.line}"). After the account is restored, run setup-doctor --clear-suspension ${cli}`);
 if(writeTeamWanted)check('team-file',()=>{
  if(!base)throw Error('cannot draft a team file: the repository configuration is invalid');
  const draft=draftTeam(installation,base);
@@ -120,6 +134,6 @@ if(smokeWanted&&c){
   check('smoke',()=>{const broken=smoke_results.filter(r=>!r.ok);if(broken.length)throw Error('Contract broken: '+broken.map(r=>`${r.executor} at ${r.stage}: ${r.error}`).join(' | '));return smoke_results.map(r=>`${r.executor} ok ${Math.round(r.ms/1000)}s`).join(', ');});
  }
 }
-console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,team,hook_observation,smoke:smoke_results,bench,reviewers,memory,project,probe_file,review:c?.review??null,
+console.log(JSON.stringify({ok:checks.every(x=>x.ok),checks,warnings,team,pacing,hook_observation,smoke:smoke_results,bench,reviewers,memory,project,probe_file,review:c?.review??null,
  installation,recommended_preset,roster:{lead:`${c?.lead_model??'Claude Opus'} (host)`,workers:EXECUTORS,caps:CAP,selected,routing_rules:c?.routing.rules??null}},null,2));
 if(checks.some(x=>!x.ok))process.exitCode=1;
