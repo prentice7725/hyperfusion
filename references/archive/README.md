@@ -7,3 +7,5 @@
 | [reaudit-v0.10.0](reaudit-v0.10.0.md) | 0.10.0 (2026-10-08) | 재감사에서 나온 7개 잔여 지적의 조치와 검증, 부분 해결 1건의 한계 |
 | [improvements-v0.11.0](improvements-v0.11.0.md) | 0.11.0 (2026-10-08) | 리드 토큰 절감, 배치 학습, CLI 진단, 병렬 worktree, 비용·시간 상한 등 기능 개선 결과 |
 | [v03-implementation-status](v03-implementation-status.md) | v0.3 프로필 (2026-10-10) | External-First와 범용 감시의 구현 범위, 검증 결과, 실제 환경에서 확인하지 못한 항목 |
+| [worker-capability-trial](worker-capability-trial.md) | 0.33.0 (2026-11-14) | 일꾼 단독 역량 시험 75회의 계획, 결과, 판정(Q1~Q3)과 Argon 3회 점수 |
+| [borrowed-ideas-draft](borrowed-ideas-draft.md) | 2026-11-12 | 외부 저장소 README에서 뽑은 아이디어 초안. HF-I09는 구현했고 HF-I08은 착수하지 않았다 |

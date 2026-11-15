@@ -4,7 +4,7 @@
 
 HF-I09 구현에서 정한 것과 바뀐 것:
 - `packet_revision`은 2로 올렸다.
-- 구현자의 완료 기록(`completion-N`)이 있고 멈춘 이유가 남은 writer 잠금(`PROCESS_SHUTDOWN_UNVERIFIED`)뿐이면 `evidence_present`로 둔다. 표대로면 `shutdown_unverified`인데, [정산](reconciliation.md)의 중단 경계 표는 이 경우를 "finish 한 번"으로 처리한다. 경계별 처분값은 `reconciliation-crash` 테스트가 고정한다.
+- 구현자의 완료 기록(`completion-N`)이 있고 멈춘 이유가 남은 writer 잠금(`PROCESS_SHUTDOWN_UNVERIFIED`)뿐이면 `evidence_present`로 둔다. 표대로면 `shutdown_unverified`인데, [정산](../reconciliation.md)의 중단 경계 표는 이 경우를 "finish 한 번"으로 처리한다. 경계별 처분값은 `reconciliation-crash` 테스트가 고정한다.
 - 리뷰 정산 기록 도중 멈춘 경우는 컨트롤러 잠금이 남아 `shutdown_unverified`다. 표의 "불확실한 의도"보다 거칠지만, 먼저 컨트롤러가 멈췄는지 확인하라는 뜻이라 어긋나지 않는다.
 
 두 저장소의 README를 읽고 뽑은 아이디어다. 코드는 보지 않았고 가져오지도 않는다.
@@ -28,13 +28,13 @@ HF-I09 구현에서 정한 것과 바뀐 것:
 
 ### 풀려는 문제
 
-지금 리드는 작업마다 `recall`로 기억을 찾고, 찾은 조각을 정본·Git과 대조한 뒤에야 `brief.prior_experience`에 넣는다([memory-recall](memory-recall.md)). 같은 저장소에서 "여기서는 어떻게 검증하나" 같은 질문은 작업마다 되풀이되는데, 검색과 대조도 그때마다 다시 한다.
+지금 리드는 작업마다 `recall`로 기억을 찾고, 찾은 조각을 정본·Git과 대조한 뒤에야 `brief.prior_experience`에 넣는다([memory-recall](../memory-recall.md)). 같은 저장소에서 "여기서는 어떻게 검증하나" 같은 질문은 작업마다 되풀이되는데, 검색과 대조도 그때마다 다시 한다.
 
 상시 답변은 그 대조를 한 번만 하게 한다. 리드가 승인한 답을 저장해 두고, 근거 조각이 바뀌지 않는 동안에는 `context`에서 그대로 꺼낸다.
 
 ### 먼저 잴 것 (0단계)
 
-[memory.md](memory.md)에 적힌 대로 회수 효과는 아직 실측하지 않았다. 되풀이되는 회수가 실제로 리드 토큰을 쓰는지 모르는 채로 기능을 더하지 않는다.
+[memory.md](../memory.md)에 적힌 대로 회수 효과는 아직 실측하지 않았다. 되풀이되는 회수가 실제로 리드 토큰을 쓰는지 모르는 채로 기능을 더하지 않는다.
 
 기존 도구만으로 작업 10개 이상에서 아래를 모은다. 새 코드는 필요 없다.
 
@@ -92,7 +92,7 @@ HF-I09 구현에서 정한 것과 바뀐 것:
 
 `expected_digest`가 지금 조각 상태와 다르면 통째로 거절한다(`MEMORY_STANDING_STALE`). 후보 일괄 검토의 `expected_digest`와 같은 방식이다.
 
-문장을 리드가 직접 쓰면 그만큼 리드 토큰이 든다. 싼 일꾼에게 읽기 전용 상담([consult](consult.md))으로 초안을 맡기는 길은 2단계로 미룬다. 1단계에서 상시 답변이 실제로 쓰이는지 본 뒤에 정한다.
+문장을 리드가 직접 쓰면 그만큼 리드 토큰이 든다. 싼 일꾼에게 읽기 전용 상담([consult](../consult.md))으로 초안을 맡기는 길은 2단계로 미룬다. 1단계에서 상시 답변이 실제로 쓰이는지 본 뒤에 정한다.
 
 ### 읽는 길
 
@@ -156,7 +156,7 @@ hindsight의 observation은 새 증거가 오면 믿음을 덮어쓰지 않고 �
 
 ### 받아들이는 조건
 
-0단계와 같은 작업 묶음을 상시 답변을 켜고 다시 돌린다. [증거 회수 실험](evidence-retrieval-experiment.md)의 규칙을 따른다.
+0단계와 같은 작업 묶음을 상시 답변을 켜고 다시 돌린다. [증거 회수 실험](../evidence-retrieval-experiment.md)의 규칙을 따른다.
 
 - 성공한 작업당 리드 입력 환산 토큰이 줄어야 한다.
 - 숨김 시험 통과, `wrong_closes`, `escaped_regressions`, `scope_violations`가 같거나 나아야 한다.
@@ -168,7 +168,7 @@ hindsight의 observation은 새 증거가 오면 믿음을 덮어쓰지 않고 �
 
 ### 풀려는 문제
 
-`fusion-state.mjs resume`이 주는 패킷([resume-packet.mjs](../scripts/resume-packet.mjs))에는 이유 코드가 열네 가지 있고, 여러 개가 함께 나온다. 리드는 그 조합을 읽고 어느 문서의 어느 절차로 갈지 스스로 정해야 한다. 중단된 뒤 다시 깨어난 리드가 가장 먼저 쓰는 토큰이 여기서 나간다.
+`fusion-state.mjs resume`이 주는 패킷([resume-packet.mjs](../../scripts/resume-packet.mjs))에는 이유 코드가 열네 가지 있고, 여러 개가 함께 나온다. 리드는 그 조합을 읽고 어느 문서의 어느 절차로 갈지 스스로 정해야 한다. 중단된 뒤 다시 깨어난 리드가 가장 먼저 쓰는 토큰이 여기서 나간다.
 
 openrig는 복원할 때 노드마다 `resumed`, `fresh-primed`, `awaiting-decision`, `attention_required`, `failed` 중 하나를 보고한다. 같은 생각으로, 이유 코드 조합을 **처분값 하나**로 줄여 준다. 이유 코드는 그대로 둔다.
 
@@ -178,10 +178,10 @@ openrig는 복원할 때 노드마다 `resumed`, `fresh-primed`, `awaiting-decis
 
 | 순서 | `disposition` | 조건 (이유 코드) | 리드가 갈 곳 |
 |---|---|---|---|
-| 1 | `unreadable` | `LEGACY_STATE`, `PHASE_UNKNOWN`, `ROUND_INVALID`, `ARTIFACT_INVALID`, `INITIAL_BRIEF_UNAVAILABLE` | [복구](recovery-protocol.md) 1번. 상태를 믿지 않는다 |
-| 2 | `recovery_required` | `RECOVERY_REQUIRED` | [복구](recovery-protocol.md)의 `recover` |
-| 3 | `outcome_uncertain` | `DISPATCH_OUTCOME_UNCERTAIN`, `VERIFICATION_OUTCOME_UNCERTAIN`, `TERMINAL_SETTLEMENT_INCOMPLETE` | [정산](reconciliation.md)의 "Uncertainty". 다시 돌리지 않는다 |
-| 4 | `shutdown_unverified` | `PROCESS_SHUTDOWN_UNVERIFIED`, `CONTROLLER_LOCK_PRESENT`, `ACCEPTANCE_PENDING` | [복구](recovery-protocol.md) 2~3번. 프로세스 종료 확인 |
+| 1 | `unreadable` | `LEGACY_STATE`, `PHASE_UNKNOWN`, `ROUND_INVALID`, `ARTIFACT_INVALID`, `INITIAL_BRIEF_UNAVAILABLE` | [복구](../recovery-protocol.md) 1번. 상태를 믿지 않는다 |
+| 2 | `recovery_required` | `RECOVERY_REQUIRED` | [복구](../recovery-protocol.md)의 `recover` |
+| 3 | `outcome_uncertain` | `DISPATCH_OUTCOME_UNCERTAIN`, `VERIFICATION_OUTCOME_UNCERTAIN`, `TERMINAL_SETTLEMENT_INCOMPLETE` | [정산](../reconciliation.md)의 "Uncertainty". 다시 돌리지 않는다 |
+| 4 | `shutdown_unverified` | `PROCESS_SHUTDOWN_UNVERIFIED`, `CONTROLLER_LOCK_PRESENT`, `ACCEPTANCE_PENDING` | [복구](../recovery-protocol.md) 2~3번. 프로세스 종료 확인 |
 | 5 | `evidence_present` | `EXISTING_LAUNCH`, `EXISTING_CONSULT`만 남았다 | `reconcile` 미리보기(권한이 있을 때), 없으면 수동 정산 |
 | 6 | `continue` | 이유 코드 없음, 종료 단계 아님 | `next_action` 그대로 |
 | 7 | `settled` | 이유 코드 없음, 종료 단계 | 할 일 없음 |
@@ -257,16 +257,16 @@ openrig는 복원할 때 노드마다 `resumed`, `fresh-primed`, `awaiting-decis
 
 ### 받아들이는 조건
 
-[정산 문서](reconciliation.md)의 중단 경계 표에 있는 경우마다, 처분값이 가리키는 절차가 그 표의 "Restart disposition"과 같아야 한다. 하나라도 다르면 표나 순서를 고친다. 토큰 절감은 주장하지 않는다. 재개가 드물어 잴 표본이 모자라다.
+[정산 문서](../reconciliation.md)의 중단 경계 표에 있는 경우마다, 처분값이 가리키는 절차가 그 표의 "Restart disposition"과 같아야 한다. 하나라도 다르면 표나 순서를 고친다. 토큰 절감은 주장하지 않는다. 재개가 드물어 잴 표본이 모자라다.
 
 ### 나중에 볼 것: 자리(seat)
 
-openrig는 역할 주소를 고정하고, 그 자리를 채우는 세션만 바꾼다. 여기서는 일꾼을 바꿀 때 반려 이력이 일꾼 이름에 묶여 있는지, 역할([team-roles.mjs](../scripts/team-roles.mjs))에 묶여 있는지가 관련된다. 지금 배치가 이 구분 때문에 손해를 보는지 확인하지 않았으므로 이 초안에는 넣지 않는다.
+openrig는 역할 주소를 고정하고, 그 자리를 채우는 세션만 바꾼다. 여기서는 일꾼을 바꿀 때 반려 이력이 일꾼 이름에 묶여 있는지, 역할([team-roles.mjs](../../scripts/team-roles.mjs))에 묶여 있는지가 관련된다. 지금 배치가 이 구분 때문에 손해를 보는지 확인하지 않았으므로 이 초안에는 넣지 않는다.
 
 ---
 
 ## 정할 것
 
 1. HF-I08 0단계의 멈추는 문턱(재회수 비율, 리드 토큰 몫). 재기 전에 정한다.
-2. `WORKER_NOTES`를 처음부터 넣을지. [배치](routing.md)가 이미 반려 기록을 쓰므로 겹칠 수 있다.
+2. `WORKER_NOTES`를 처음부터 넣을지. [배치](../routing.md)가 이미 반려 기록을 쓰므로 겹칠 수 있다.
 3. HF-I09의 `packet_revision`을 올릴지, 필드만 더하고 1로 둘지.

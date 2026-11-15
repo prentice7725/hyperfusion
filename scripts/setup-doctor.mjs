@@ -104,8 +104,8 @@ let team={file:teamFile,exists:!!teamFile&&fs.existsSync(teamFile),applied:c?.te
 if(team.exists){
  try{const t=loadTeam(teamFile);team.drift=teamDrift(t,installation);
   if(team.drift.enabled_not_installed.length)warnings.push(`team file enables workers that are not installed or failed their probe: ${team.drift.enabled_not_installed.join(', ')}; edit ${teamFile} or install them`);
-  // 약관 정지 보고가 있는 agy는 간격을 두기를 권한다(references/worker-pacing-draft.md). 실패로 치지는 않는다.
-  if(t.members.antigravity?.enabled&&t.members.antigravity.min_interval_s===undefined)warnings.push(`antigravity is enabled without min_interval_s in ${teamFile}; Google has suspended accounts after scripted agy use, consider "seats": ["implement"] and "min_interval_s": 300 (references/worker-pacing-draft.md)`);
+  // 약관 정지 보고가 있는 agy는 간격을 두기를 권한다(references/worker-pacing.md). 실패로 치지는 않는다.
+  if(t.members.antigravity?.enabled&&t.members.antigravity.min_interval_s===undefined)warnings.push(`antigravity is enabled without min_interval_s in ${teamFile}; Google has suspended accounts after scripted agy use, consider "seats": ["implement"] and "min_interval_s": 300 (references/worker-pacing.md)`);
  }catch(e){team.error=e.message;}
 }
 // 호출 조절 기록: CLI별 마지막 실행과 계정 정지 기록. 정지 기록이 있으면 항상 경고한다.

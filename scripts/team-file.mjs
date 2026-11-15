@@ -12,8 +12,8 @@ import {SEATS,MAX_INTERVAL_S} from './worker-pacing.mjs';
 export const TEAM_FILE_ENV='HF_TEAM_FILE';
 export const TEAM_FILE_VERSION=1;
 const MEMBER_KEYS=['enabled','model','reasoning_effort','note','seats','min_interval_s'];
-// 약관 정지 보고가 있는 CLI(references/worker-pacing-draft.md). 새로 쓰는 팀 파일에만 넣고 이미 있는 파일은 바꾸지 않는다.
-export const PACED_DEFAULTS={antigravity:{seats:['implement'],min_interval_s:300,note:'약관 정지 보고가 있다: references/worker-pacing-draft.md'}};
+// 약관 정지 보고가 있는 CLI(references/worker-pacing.md). 새로 쓰는 팀 파일에만 넣고 이미 있는 파일은 바꾸지 않는다.
+export const PACED_DEFAULTS={antigravity:{seats:['implement'],min_interval_s:300,note:'약관 정지 보고가 있다: references/worker-pacing.md'}};
 const TOP_KEYS=['version','generated_at','note','members','reviewers'];
 const MODEL=/^[\w.:/-]{1,80}$/;
 

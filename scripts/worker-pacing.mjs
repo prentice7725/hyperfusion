@@ -1,4 +1,4 @@
-// 일꾼 호출 조절(references/worker-pacing-draft.md). 계정은 저장소가 아니라 컴퓨터에 묶여 있으므로 기록은 이 컴퓨터 단위로 둔다.
+// 일꾼 호출 조절(references/worker-pacing.md). 계정은 저장소가 아니라 컴퓨터에 묶여 있으므로 기록은 이 컴퓨터 단위로 둔다.
 //
 // - 호출 간격: 팀 파일의 min_interval_s가 1 이상인 CLI는 이 컴퓨터에서 한 번에 하나만 띄우고, 앞 실행이 끝난 뒤 그 시간만큼 쉰다.
 //   단위는 일꾼 이름이 아니라 CLI 바이너리다(Sonnet·Haiku는 claude, Terra·Luna·Sol은 codex). 같은 CLI의 값 중 가장 큰 값을 쓴다.

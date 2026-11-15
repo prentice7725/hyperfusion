@@ -1,5 +1,5 @@
 // 일꾼 단독 시험: 큰 과제 하나를 일꾼 하나에게 한 라운드만 시키고 숨김 시험으로 채점한다.
-// 리드와 리뷰어는 부르지 않는다. 배치표를 고칠 근거를 모으려고 둔다(references/worker-capability-trial.md).
+// 리드와 리뷰어는 부르지 않는다. 배치표를 고칠 근거를 모으려고 둔다(references/archive/worker-capability-trial.md).
 // 실제 모델을 부르므로 비용이 든다. 흐름은 scripts/smoke.mjs와 같다: init → begin → 브리지 → finish.
 //
 //   node tools/worker-trial.mjs run HF-L01 ../trials/l01-terra-1 --worker terra --label terra --out trials.jsonl

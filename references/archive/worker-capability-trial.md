@@ -1,10 +1,10 @@
-# 일꾼 역량 시험 (실험 계획)
+# 일꾼 역량 시험
 
 상태: 회차 1·2(50회)와 회차 3(25회)을 2026-11-14에 돌렸다. 판정 기준은 같은 날 돌리기 전에 확정했다. 결과와 판정은 문서 끝에 있다.
 
 ## 무엇을 정하려는가
 
-지금 A급·B급은 모델 이름을 보고 손으로 나눴다([배치](routing.md)). 같은 과제를 일꾼마다 따로 시켜 보고 배치표를 고친다.
+지금 A급·B급은 모델 이름을 보고 손으로 나눴다([배치](../routing.md)). 같은 과제를 일꾼마다 따로 시켜 보고 배치표를 고친다.
 
 | 번호 | 질문 | 답에 따라 바뀌는 것 |
 |---|---|---|
@@ -150,7 +150,7 @@ node tools/worker-trial-batch.mjs status ../hf-trials           # 끝난 수, �
 | antigravity 기본 모델 변경 | `references/configuration.md`의 기본값 설명, `scripts/model-registry.mjs`에 `gemini-4-hydrogen` 항목 |
 | A급 순서 변경 | `scripts/router.mjs`의 배치표, `references/routing.md` |
 
-등급을 바꾸면 B급에서 A급으로 넘기는 규칙과 리뷰 짝([review-pairs](review-pairs.md))이 함께 움직이는지 `tests/router.test.mjs`, `tests/worker-tiers.test.mjs`로 확인한다.
+등급을 바꾸면 B급에서 A급으로 넘기는 규칙과 리뷰 짝([review-pairs](../review-pairs.md))이 함께 움직이는지 `tests/router.test.mjs`, `tests/worker-tiers.test.mjs`로 확인한다.
 
 ## 한계
 
