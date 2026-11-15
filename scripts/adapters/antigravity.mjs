@@ -115,11 +115,19 @@ export function commandOrders(text,rules,brief) {
 // agy에는 로그인 상태를 묻는 하위 명령이 없고, 로그아웃 상태에서는 라운드 하나를 빈 응답으로 날린다.
 // 실행 전 점검(매번 최대 35초)은 비싸서, 실패한 실행의 출력에서만 원인을 알아본다.
 const SIGNED_OUT=/not (?:signed|logged)[ -]?in|(?:sign|log)[ -]?in (?:is )?required|please (?:sign|log)[ -]?in|unauthenticated|not authenticated|authentication (?:required|failed)|no (?:active )?(?:google )?(?:session|credentials)|invalid api key/i;
+// 지시와 달리 허용 목록 밖의 명령을 치면 헤드리스 agy가 그 명령을 거부하고 결과 없이 끝난다. 그러면 오류가
+// "no final text"뿐이라 원인이 안 보였다(일꾼 역량 시험의 flash38 두 건). stderr의 거부 안내나 봉투의 denied_actions로 알아본다.
+const COMMAND_DENIED=/auto-denied|required the "command" permission/i;
+const deniedActions=stdout=>{try{const e=JSON.parse(stdout);return Array.isArray(e?.denied_actions)?e.denied_actions:[];}catch{return [];}};
 export function diagnose(stdout,stderr) {
  const text=String(stderr??'').slice(-4000)+'\n'+String(stdout??'').slice(-4000);
- return SIGNED_OUT.test(text)
-  ?'AGY_NOT_SIGNED_IN: agy does not look signed in. Run `agy` once interactively and sign in (or have the operator set GEMINI_API_KEY / ANTIGRAVITY_API_KEY), then retry. Retrying without signing in fails the same way'
-  :null;
+ if(SIGNED_OUT.test(text))return 'AGY_NOT_SIGNED_IN: agy does not look signed in. Run `agy` once interactively and sign in (or have the operator set GEMINI_API_KEY / ANTIGRAVITY_API_KEY), then retry. Retrying without signing in fails the same way';
+ const denied=deniedActions(stdout);
+ if(denied.length||COMMAND_DENIED.test(String(stderr??'').slice(-4000))){
+  const what=[...new Set(denied.map(d=>d?.display_name??d?.action).filter(x=>typeof x==='string'))].join(', ');
+  return `AGY_COMMAND_BLOCKED: agy tried a tool outside the allow-list${what?` (${what})`:''}; headless mode refused it and ended the run with no result. The worker broke the shell rule in its instructions; a retry may succeed, or the operator can add an allow rule in agy settings.json`;
+ }
+ return null;
 }
 
 export function parse(stdout,request) {

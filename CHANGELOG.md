@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- agy가 허용 목록 밖의 명령을 치다 헤드리스 모드에서 거부되어 결과 없이 끝나면, 오류에 "no final text"만 남지 않고 `AGY_COMMAND_BLOCKED`와 거부된 도구 이름이 붙는다(stderr의 거부 안내나 봉투의 `denied_actions`로 알아본다). 재시도 분류는 그대로다. 일꾼 역량 시험의 flash38 실패 두 건이 이 경우였다.
+
 ## 0.33.0 — 2026-11-14
 
 - Antigravity(B급) 기본 모델을 `gemini-3.8-flash-high`에서 `gemini-4-hydrogen-high`로 바꿨다. 일꾼 역량 시험(`references/worker-capability-trial.md`, 75회)에서 숨김 시험 전부 통과가 Hydrogen 12/15, 3.8 Flash 7/15였고 범위 밖 수정은 둘 다 0회였다. Hydrogen은 A급 최저(grok 13/15)에 한 회 모자라 B급에 남는다. 모델 레지스트리에 `gemini-4-hydrogen`(google fast)을 더했다. 설정에 모델을 직접 적은 저장소와 팀 파일은 그대로다.
