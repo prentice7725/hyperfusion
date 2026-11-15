@@ -64,7 +64,7 @@
 - **AGY 모델 계열과 effort.** `executors.antigravity.model:"gemini-4-argon"`과 `reasoning_effort:"high"`를 따로 설정하면 `gemini-4-argon-high`를 고른다. 접미사로 고정한 모델은 그 강도를 유지하고, 충돌하는 effort는 실행 전에 거절한다. 최종 슬러그는 `agy models`로 검사하고 없는 변형으로 대체하지 않는다. → [설정](configuration.md#agy-모델-계열과-effort-분리-argon)
 - **Codex.** JSONL thread·turn 사용량을 기록하고, 호환 `exec resume` 플래그를 확인한 경우에만 작업 단위 구현 세션을 정확한 ID로 재개한다. 리뷰는 매번 새 읽기 전용 세션이다. 운영자 전용 빌드 캐시·네트워크 옵션과 Claude/Grok 턴 상한은 [Codex 운영 안내](codex-runtime.md)를 따른다.
 - **벤더 제한.** `allowed_vendors:["anthropic","openai"]`가 구현·리뷰·상담을 함께 제한하고, 운영자 `HF_ALLOWED_VENDORS`는 저장소가 넓힐 수 없는 상한이다. 브리지가 실행 직전에 다시 검사한다. 방화벽·DLP나 벤더 인증은 아니다. 새 CLI는 검증된 어댑터가 필요하다(`scripts/member-registry.mjs`).
-- **기본 추론 강도.** 구현은 Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 3.8 Flash high다. 리뷰 자리는 Sol xhigh, Sonnet max, Grok xhigh로 구현 강도와 따로 간다. `reasoning_effort:null`은 일반 플래그 생략이며 필수 리뷰 역할의 강도를 해제하지 않는다.
+- **기본 추론 강도.** 구현은 Terra medium, Grok high, Sonnet medium, Luna xhigh, Haiku max, Antigravity Gemini 4 Hydrogen high다. 리뷰 자리는 Sol xhigh, Sonnet max, Grok xhigh로 구현 강도와 따로 간다. `reasoning_effort:null`은 일반 플래그 생략이며 필수 리뷰 역할의 강도를 해제하지 않는다.
 
 ## 측정
 

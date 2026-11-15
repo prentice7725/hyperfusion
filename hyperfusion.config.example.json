@@ -16,7 +16,7 @@
   "executors": {
     "antigravity": {
       "sandbox": true,
-      "model": "gemini-3.8-flash-high"
+      "model": "gemini-4-hydrogen-high"
     },
     "sol": {
       "model": "gpt-6.1-sol",

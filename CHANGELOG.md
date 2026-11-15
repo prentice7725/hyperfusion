@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 0.33.0 — 2026-11-14
+
+- Antigravity(B급) 기본 모델을 `gemini-3.8-flash-high`에서 `gemini-4-hydrogen-high`로 바꿨다. 일꾼 역량 시험(`references/worker-capability-trial.md`, 75회)에서 숨김 시험 전부 통과가 Hydrogen 12/15, 3.8 Flash 7/15였고 범위 밖 수정은 둘 다 0회였다. Hydrogen은 A급 최저(grok 13/15)에 한 회 모자라 B급에 남는다. 모델 레지스트리에 `gemini-4-hydrogen`(google fast)을 더했다. 설정에 모델을 직접 적은 저장소와 팀 파일은 그대로다.
+- 일꾼 역량 시험 도구를 추가했다. `tools/worker-trial.mjs`는 큰 과제 하나를 일꾼 하나에게 한 라운드만 맡기고 숨김 시험으로 채점한다(리드·리뷰어 없음). `tools/worker-trial-batch.mjs`는 계획 문서의 순서로 여러 회차를 돌린다. `--parallel`이면 회사별 줄을 동시에 돌리고, 수용 테스트와 채점은 실행이 다 끝난 뒤 하나씩 한다. 끊겨도 같은 명령으로 이어 돌리고, 응답이 없는 시험은 프로세스 트리를 끊고 `WATCHDOG_TIMEOUT`으로 남긴다. 계획·기준·결과는 `references/worker-capability-trial.md`에 있다.
 - Antigravity 1.5.6 리드 실측(2026-11-12, 헤드리스)을 반영했다. agy는 훅이 빈 출력에 exit 0으로 끝나면 도구를 실행하므로, 가드는 입력을 못 읽거나 판정이 예외를 내도 PreToolUse에는 `deny`, Stop에는 `stop`을 출력하고 `process.exit`로 출력을 끊지 않는다(`agyHookReply`). 1.5.6에는 `run_command`의 `BypassSandbox`가 없고 편집은 `write_file`·`edit_file`, 디렉터리 목록은 `read_file`이다. 등급은 C 그대로다. 결과는 `references/hosts/antigravity.md`와 `references/hosts/antigravity-field-2026-11-12.md`에 있다.
 - 읽기 전용 재개 패킷(`fusion-state.mjs resume`)에 처분값 하나(`disposition`)와 그 근거 코드(`disposition_basis`), 참여자별 흔적(`participants`)을 더했다. `packet_revision`은 2다. 처분값은 `unreadable`, `recovery_required`, `outcome_uncertain`, `shutdown_unverified`, `evidence_present`, `continue`, `settled`이고 이유 코드 14개에서만 계산한다. 모르는 코드는 `unreadable`이다. 컨트롤러는 이 값을 읽지 않는다. 정산 문서의 중단 경계마다 처분값을 crash 테스트로 고정했다. 설계는 `references/borrowed-ideas-draft.md`의 HF-I09(openrig의 복원 결과 보고에서 착안).
 - Fable 리드를 추가했다. Claude Code가 Fable(`claude-fable-5-2`)을 리드로 보고하면 Opus가 리뷰·상담 전용 일꾼이 된다(`claude --model claude-opus-5-5`, 리뷰 max). Fable을 쓸 수 있는 요금제(Max 등)에서만 생기는 경우이고, Opus 리드에서는 아무것도 바뀌지 않는다.

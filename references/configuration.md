@@ -153,7 +153,7 @@ Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model 
 | Grok | `--reasoning-effort` | `high`, `xhigh` (Grok 4.7) |
 | Terra, Luna, Sol (Codex) | `-c model_reasoning_effort=…` | `minimal`, `low`, `medium`, `high`, `xhigh` |
 
-구현 기본값은 A급 Terra `medium`, Grok `high`, Sonnet `medium`, B급 Luna `xhigh`, Haiku `max`, Antigravity `gemini-3.8-flash-high`이다. 리뷰 자리는 Sol `xhigh`, Sonnet `max`, Grok `xhigh`로 구현 강도와 따로 간다(클래식 위임 리뷰도 같다). Grok 구현과 상담은 모든 난이도에서 `high`이며, 리뷰 자리 강도는 전역 기본값이나 이후 구현 라운드를 바꾸지 않는다. 운영자가 강도를 직접 적은 일꾼은 클래식 리뷰에서도 그 값을 쓴다. 설정에 값을 적으면 일반 기본값을 덮어쓰고, `null`을 적으면 일반 플래그를 넘기지 않고 CLI 기본값을 쓴다(필수 리뷰 역할의 강도는 해제하지 않음). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
+구현 기본값은 A급 Terra `medium`, Grok `high`, Sonnet `medium`, B급 Luna `xhigh`, Haiku `max`, Antigravity `gemini-4-hydrogen-high`이다. 리뷰 자리는 Sol `xhigh`, Sonnet `max`, Grok `xhigh`로 구현 강도와 따로 간다(클래식 위임 리뷰도 같다). Grok 구현과 상담은 모든 난이도에서 `high`이며, 리뷰 자리 강도는 전역 기본값이나 이후 구현 라운드를 바꾸지 않는다. 운영자가 강도를 직접 적은 일꾼은 클래식 리뷰에서도 그 값을 쓴다. 설정에 값을 적으면 일반 기본값을 덮어쓰고, `null`을 적으면 일반 플래그를 넘기지 않고 CLI 기본값을 쓴다(필수 리뷰 역할의 강도는 해제하지 않음). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
 
 기존 설정에 `executors.grok.reasoning_effort:"medium"`처럼 Grok 4.7이 받지 않는 값을 적었다면 설정 단계에서 `EFFORT_UNSUPPORTED`로 거절된다. 해당 키를 지우거나 `"high"`로 바꾸고 새 작업을 init한다. 진행 중 작업의 고정된 설정은 변경하지 않는다. CLI 기본값으로 위임하는 `null`은 `high` 지정과 다르다.
 

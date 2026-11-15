@@ -7,7 +7,7 @@ const codex=['minimal','low','medium','high','xhigh'];
 const grokEfforts=['high','xhigh'];
 export const MEMBERS={
  grok:{vendor:'xai',binary:'grok',env:'HF_GROK_BIN',auth:['XAI_','GROK_'],model:null,implement:true,grade:'A',caps:[...general,'image-gen'],effort:'high',efforts:grokEfforts,rounds:3,role:'A급 구현(high), 이미지 애셋 생성',owns:['image-asset']},
- antigravity:{vendor:'google',binary:'agy',env:'HF_AGY_BIN',auth:['GOOGLE_','GEMINI_','AGY_','ANTIGRAVITY_'],model:null,implement:true,grade:'B',caps:general,effort:'high',efforts:['low','medium','high'],rounds:3,role:'B급 구현(Gemini 3.8 Flash high): UI·프론트엔드, 문서',owns:['ui','docs']},
+ antigravity:{vendor:'google',binary:'agy',env:'HF_AGY_BIN',auth:['GOOGLE_','GEMINI_','AGY_','ANTIGRAVITY_'],model:null,implement:true,grade:'B',caps:general,effort:'high',efforts:['low','medium','high'],rounds:3,role:'B급 구현(Gemini 4 Hydrogen high): UI·프론트엔드, 문서',owns:['ui','docs']},
  sonnet:{vendor:'anthropic',binary:'claude',env:'HF_CLAUDE_BIN',auth:['ANTHROPIC_','CLAUDE_'],model:'claude-sonnet-5-5',implement:true,grade:'A',caps:general,effort:'medium',efforts:high,rounds:3,role:'A급 구현(medium), 리뷰(max)',owns:[]},
  haiku:{vendor:'anthropic',binary:'claude',env:'HF_CLAUDE_BIN',auth:['ANTHROPIC_','CLAUDE_'],model:'claude-haiku-5-5',implement:true,grade:'B',caps:general,effort:'max',efforts:high,rounds:3,role:'B급 구현: 쉬운 코드, 문서, 테스트 보강',owns:[]},
  luna:{vendor:'openai',binary:'codex',env:'HF_CODEX_BIN',auth:['OPENAI_','CODEX_'],model:'gpt-6-luna',implement:true,grade:'B',caps:[...general,'image-gen'],effort:'xhigh',efforts:codex,rounds:3,role:'B급 구현: 쉬운 구현·소규모 수정, 기계적 대량 편집, 이미지 애셋 보조',owns:['code:low']},
