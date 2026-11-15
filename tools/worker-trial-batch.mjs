@@ -12,7 +12,7 @@
 // - 응답 없음: 실행은 (시간 제한 + 여유), 마무리는 --settle-min을 넘기면 프로세스 트리를 끊고 WATCHDOG_TIMEOUT을 남긴다.
 // - 기록 파일은 이 프로세스만 쓴다. 같은 폴더에 묶음 두 개가 돌지 않게 batch.lock을 잡는다.
 //
-//   node tools/worker-trial-batch.mjs run ../hf-trials [--parallel] [--reps 2] [--timeout-min 60] [--grace-min 20] [--settle-min 30]
+//   node tools/worker-trial-batch.mjs run ../hf-trials [--parallel] [--allow-agy] [--reps 2] [--timeout-min 60] [--grace-min 20] [--settle-min 30]
 //   node tools/worker-trial-batch.mjs status ../hf-trials
 import fs from 'node:fs';
 import path from 'node:path';
@@ -84,7 +84,7 @@ export const defaultCommands={
  settle:recordFile=>[process.execPath,[TRIAL_SCRIPT,'settle',recordFile]],
 };
 
-export async function runBatch({out,reps=2,cases=CASES,arms=ARMS,parallel=false,timeoutMin=60,graceMin=20,settleMin=30,commands=defaultCommands,log=()=>{}}) {
+export async function runBatch({out,reps=2,cases=CASES,arms=ARMS,parallel=false,allowAgy=false,timeoutMin=60,graceMin=20,settleMin=30,commands=defaultCommands,log=()=>{}}) {
  fs.mkdirSync(out,{recursive:true});
  const f=files(out),unlock=lock(out);
  const event=e=>{fs.appendFileSync(f.events,JSON.stringify({at:now(),...e})+'\n');log(e);};
@@ -93,6 +93,10 @@ export async function runBatch({out,reps=2,cases=CASES,arms=ARMS,parallel=false,
   const plan=schedule({reps,cases,arms});
   const final=new Set(load(f.final).map(trialIdOf)),executed=new Set(load(f.executed).map(trialIdOf));
   const todo=plan.filter(t=>!final.has(t.trial_id)&&!executed.has(t.trial_id));
+  // 시험 묶음은 같은 CLI를 몇 시간 쉬지 않고 부르는, 보고된 agy 계정 정지 사례와 가장 닮은 모양이다(references/worker-pacing-draft.md).
+  // 그래서 antigravity 대상을 실행하려면 운영자가 --allow-agy로 직접 허용해야 한다. 마무리(채점)는 agy를 부르지 않으므로 막지 않는다.
+  const agy=[...new Set(todo.filter(t=>t.arm.args.includes('antigravity')).map(t=>t.arm.label))];
+  if(agy.length&&!allowAgy)throw Error(`worker-trial-batch: ${agy.join(', ')} run on agy; Google has suspended accounts after scripted agy use. Rerun with --allow-agy to accept that risk`);
   // 1. 실행. 줄마다 하나씩, 줄끼리는 동시에.
   const lanes=new Map();
   for(const t of todo){const key=parallel?t.arm.vendor??t.arm.label:'all';lanes.set(key,[...(lanes.get(key)??[]),t]);}
@@ -151,9 +155,9 @@ if(isMain(import.meta.url)){
   const opts={reps:flag('--reps',2),timeoutMin:flag('--timeout-min',60),graceMin:flag('--grace-min',20),settleMin:flag('--settle-min',30)};
   if(!Object.values(opts).every(n=>Number.isFinite(n)&&n>0))throw Error('worker-trial-batch: --reps, --timeout-min, --grace-min and --settle-min must be positive numbers');
   if(cmd==='run'&&out){
-   await runBatch({out,...opts,parallel:rest.includes('--parallel'),log:e=>console.log(JSON.stringify(e))});
+   await runBatch({out,...opts,parallel:rest.includes('--parallel'),allowAgy:rest.includes('--allow-agy'),log:e=>console.log(JSON.stringify(e))});
    console.log(JSON.stringify(status(out,opts),null,2));
   }else if(cmd==='status'&&out)console.log(JSON.stringify(status(out,opts),null,2));
-  else throw Error('Usage: worker-trial-batch.mjs run OUT_DIR [--parallel] [--reps 2] [--timeout-min 60] [--grace-min 20] [--settle-min 30] | status OUT_DIR [--reps 2]');
+  else throw Error('Usage: worker-trial-batch.mjs run OUT_DIR [--parallel] [--allow-agy] [--reps 2] [--timeout-min 60] [--grace-min 20] [--settle-min 30] | status OUT_DIR [--reps 2]');
  }catch(e){printError(e);}
 }

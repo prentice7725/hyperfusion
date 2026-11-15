@@ -1,4 +1,6 @@
 import {spawnSync} from 'node:child_process';
+import os from 'node:os';
+import path from 'node:path';
 
 // Windows CIM snapshots cover the whole host. Concurrent test files can leave
 // short-lived processes without a visible parent and contaminate another
@@ -14,8 +16,8 @@ for(const args of [
  ['--test',`--test-concurrency=${concurrency}`,'--test-reporter=tap',...(shard?[`--test-shard=${shard}`]:[])],
  ...(!m||m[1]===m[2]?[['--test','--test-reporter=tap','tests/acceptance-security.integration.mjs']]:[])
 ]){
- // Herdr 안에서 npm test를 돌려도 시험 프로세스가 실제 관측 pane을 열지 않게 한다. 이 컴퓨터의 팀 파일도 읽지 않는다.
- const result=spawnSync(process.execPath,args,{stdio:'inherit',windowsHide:true,env:{...process.env,HYPERFUSION_HERDR:'0',HF_TEAM_FILE:'off'}});
+ // Herdr 안에서 npm test를 돌려도 시험 프로세스가 실제 관측 pane을 열지 않게 한다. 이 컴퓨터의 팀 파일과 호출 조절 기록(~/.hyperfusion/pacing)도 쓰지 않는다.
+ const result=spawnSync(process.execPath,args,{stdio:'inherit',windowsHide:true,env:{...process.env,HYPERFUSION_HERDR:'0',HF_TEAM_FILE:'off',HF_PACING_DIR:process.env.HF_PACING_DIR??path.join(os.tmpdir(),'hf-test-pacing-'+process.pid)}});
  if(result.error){console.error(result.error.message);process.exit(1);}
  if(result.status!==0)process.exit(result.status??1);
 }

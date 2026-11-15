@@ -8,6 +8,7 @@ import {config,EXECUTORS,KIND_NEEDS,canDo,externalFirst,routingPolicy,automaticI
 import {controlPath} from './control-dir.mjs';
 import {quotaReport,exhaustedExecutors} from './quota-policy.mjs';
 import {vendorAllowed} from './vendor-policy.mjs';
+import {suspension,suspensionMessage,cliOf} from './worker-pacing.mjs';
 
 // 작업 종류·난이도로 배치표 규칙을 고르고, 과거 실적과 설치 상태로 순서를 조정한다.
 // 결과는 투입 순서(candidates)와 근거(reason)다. 리드는 이를 기록하고 필요하면 명시 지정으로 덮어쓴다.
@@ -70,7 +71,9 @@ export function route(root,c,brief,{probe=true,preflight=e=>adapter(e).preflight
  const demoted=order.filter(e=>{const s=stats[e];return s&&s.weighted_tasks>=c.routing.min_samples&&s.weighted_score/s.weighted_tasks<c.routing.demote_below;});
  if(demoted.length){order=[...order.filter(e=>!demoted.includes(e)),...demoted];notes.push('demoted by track record: '+demoted.map(e=>`${e} ${stats[e].passed}/${stats[e].tasks}`).join(', '));}
  const unavailable={};
- if(probe)for(const e of order){try{adapter(e).probe(taskExecutorOptions(c,e,brief.difficulty));}catch(err){unavailable[e]=err.message;}}
+ if(probe)for(const e of order){try{adapter(e).probe(taskExecutorOptions(c,e,brief.difficulty),{fresh:false});}catch(err){unavailable[e]=err.message;}}
+ // 계정 정지 기록이 있는 CLI는 probe 여부와 상관없이 뺀다(이 컴퓨터 단위, 운영자가 풀 때까지).
+ for(const e of order){const banned=suspension(cliOf(e));if(banned)unavailable[e]=suspensionMessage(cliOf(e),banned);}
  // 이 PC의 샌드박스가 하위 프로세스를 막아 테스트를 못 돌리는 일꾼(Codex on Windows)은 맨 뒤로 보낸다. 빼지는 않는다: 편집은 되고,
  // 다른 일꾼이 모두 안 될 때는 여전히 쓸 수 있다. 점검이 실패하면(설치 오류 등) 여기서는 순서를 바꾸지 않고 설치 확인에 맡긴다.
  const spawnBlocked=probe?order.filter(e=>{
