@@ -83,7 +83,7 @@ Opus가 코드를 쓰고, 테스트를 돌리고, 긴 로그를 읽으면 비싼
 | Sonnet | claude-sonnet-5-5 | 구현, 리뷰 |
 | Luna | gpt-6-luna (Codex) | 작은 수정, 반복적인 대량 편집 |
 | Haiku | claude-haiku-5-5 | 쉬운 코드, 문서, 테스트 보강 |
-| Antigravity | agy (Gemini 4 Hydrogen high) | UI, 프론트엔드, 문서 |
+| Antigravity | agy (Gemini 4 Hydrogen high) | UI, 프론트엔드, 문서. 개인 구글 요금제로는 쓰지 않는다(안전에 대해 참고) |
 | Sol | gpt-6.1-sol (Codex) | 주로 리뷰와 상담 |
 
 Fable을 쓸 수 있는 요금제(Max 등)에서 Fable이 리드면, Opus는 리뷰·상담 일꾼이 되고 A급이 실패한 일을 넘겨받는다. → [Fable 리드](references/configuration.md#fable-리드와-opus-일꾼)
@@ -128,12 +128,12 @@ Claude Code에서 Opus 5.5를 고르고 이렇게 쓴다.
 
 **이것은 협업 규칙이지 OS 샌드박스가 아니다.** 셸을 쓸 수 있는 일꾼은 저장소 밖 파일에도 닿을 수 있다. 회사 코드에 쓴다면 파일 접근과 외부 전송 정책을 따로 정해야 한다. → [보안 상세](references/details.md#보안)
 
-**일꾼 계정이 정지될 수 있다.** 2026년 11월 스크립트로 `agy`(Antigravity)를 부른 뒤 구글 계정이 정지됐다는 보고가 여럿 나왔고, 이의 신청은 계정당 한 번이다. HyperFusion은 공식 `agy` 바이너리를 띄우지만, 보고된 사례와 같은 모양이다. 새로 쓰는 팀 파일은 Antigravity를 구현 자리에만 두고 실행 사이에 300초를 쉰다. 정지 문구를 보면 그 CLI를 이 컴퓨터에서 운영자가 풀 때까지 쓰지 않는다. 위험을 줄일 뿐 없애지는 못한다. → [자리 제한과 호출 간격](references/configuration.md#자리-제한과-호출-간격)
+**개인 구글 요금제로 Antigravity를 일꾼으로 쓰지 마라.** 2026-11-09 구글 직원은 Claude Code 같은 서드파티 에이전트가 개인 요금제(Free, Pro, Ultra)에서 `agy -p`를 부르는 것은 Antigravity 약관 6조 위반이고 자동 계정 정지로 이어질 수 있다고 [답했다](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021). HyperFusion이 Antigravity에 라운드를 맡기는 것이 바로 그 모양이고, 호출 간격을 둬도 달라지지 않는다. 팀 파일에서 이 일꾼을 끄거나(`"antigravity": {"enabled": false}`) 구글 API 키, Vertex AI, Gemini Enterprise를 쓴다. `agy`가 API 키로 도는지는 HyperFusion이 확인하지 않았다. 그래도 정지 문구가 나오면 그 CLI를 이 컴퓨터에서 운영자가 풀 때까지 띄우지 않는다. → [팀 파일](references/configuration.md#자리-제한과-호출-간격)
 
 ## 더 읽을거리
 
 - [상세 설명](references/details.md): 전체 기능, 적응형 리뷰, 벤더 설정, 측정, 보안, 테스트
-- [CHANGELOG](CHANGELOG.md): 버전별 변경. 지금 패키지 버전은 `0.33.0`이다.
+- [CHANGELOG](CHANGELOG.md): 버전별 변경. 지금 패키지 버전은 `0.34.0`이다.
 - 처음이면 [runtime](references/runtime.md)(명령)과 [configuration](references/configuration.md)(설정)부터 본다. 리드용 영어 요약은 [executor-quickstart](references/executor-quickstart.md)에 있다.
 
 | 주제 | 문서 |

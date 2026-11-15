@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+## 0.34.0 — 2026-11-15
+
+- README(영어·한국어·일본어)의 Antigravity 안내를 바로잡았다. 2026-11-09 구글 직원 답변에 따르면 개인 요금제에서 Claude Code 같은 서드파티 에이전트가 `agy -p`를 부르는 것은 약관 6조 위반이고, HyperFusion의 antigravity 일꾼이 그 모양이다. 팀 파일에서 끄거나 API 키 계열을 쓰라고 적었다. 코드는 바꾸지 않았다. `references/worker-pacing-draft.md`의 배경 설명도 같은 내용으로 정정했다.
 - 일꾼 호출 조절을 구현했다(설계 `references/worker-pacing-draft.md`, 설명 `references/configuration.md`의 "자리 제한과 호출 간격"). 2026년 11월 스크립트로 `agy`를 부른 뒤 구글 계정이 정지됐다는 보고가 이어져 둔 장치다.
   - 팀 파일에 `seats`(구현·리뷰·상담 중 맡을 자리)와 `min_interval_s`(같은 CLI를 이 컴퓨터에서 한 번에 하나만, 끝난 뒤 쉬는 초)를 적는다. 브리지가 띄우기 직전에 기다리고 실행 봉투에 `paced_ms`를 남긴다. 자리가 없는 일꾼은 자동 선택에서 빠지고, 이름으로 고르면 `SEAT_POLICY`로 거절한다.
   - `setup-doctor --write-team`이 새로 쓰는 팀 파일은 설치된 antigravity를 구현 자리에만 두고 300초 간격을 넣는다. 이미 있는 팀 파일은 바꾸지 않고 doctor가 경고한다.
