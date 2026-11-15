@@ -1,4 +1,4 @@
-# 일꾼 호출 조절 (설계 초안)
+# 일꾼 호출 조절
 
 상태: 구현했다(2026-11-15). 정할 것 다섯 가지는 같은 날 정했다(문서 끝). 번호 HF-I10은 가칭이다.
 
@@ -185,7 +185,7 @@ TOS_VIOLATION
 
 ## setup-doctor
 
-- `--write-team`이 antigravity가 설치돼 있으면 그 항목에 `"seats": ["implement"]`, `"min_interval_s": 300`, `"note": "약관 정지 보고가 있다: references/worker-pacing-draft.md"`를 넣는다. 운영자는 고치거나 지울 수 있다. 이미 있는 팀 파일은 `--force` 없이는 바꾸지 않으므로 그대로다.
+- `--write-team`이 antigravity가 설치돼 있으면 그 항목에 `"seats": ["implement"]`, `"min_interval_s": 300`, `"note": "약관 정지 보고가 있다: references/worker-pacing.md"`를 넣는다. 운영자는 고치거나 지울 수 있다. 이미 있는 팀 파일은 `--force` 없이는 바꾸지 않으므로 그대로다.
 - antigravity가 켜져 있고 `min_interval_s`가 없으면 점검 결과에 경고 한 줄을 낸다. 실패로 치지 않는다.
 - 조절 기록 폴더의 위치, CLI별 마지막 실행 시각, 정지 기록 유무를 보여 준다.
 

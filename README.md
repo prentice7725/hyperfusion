@@ -71,7 +71,7 @@ We ran five large tasks (L01–L05) under the same conditions and compared the l
 - Measured on 2026-11-10 and 11-11 on one Windows 11 machine.
 - See the [benchmark document](references/benchmark-pilot.md) for the method.
 
-**Workers alone.** We also gave each worker the same five tasks with no lead and no reviewer, one round each, 15 times per worker (2026-11-14). Runs that passed every hidden test: Terra 15, Sonnet 15, Grok 13, Gemini 4 Hydrogen 12, Gemini 3.8 Flash 7. No run edited files outside its scope. Antigravity now uses Hydrogen by default; Hydrogen stays B-tier. → [worker capability trial](references/worker-capability-trial.md) (Korean)
+**Workers alone.** We also gave each worker the same five tasks with no lead and no reviewer, one round each, 15 times per worker (2026-11-14). Runs that passed every hidden test: Terra 15, Sonnet 15, Grok 13, Gemini 4 Hydrogen 12, Gemini 3.8 Flash 7. No run edited files outside its scope. Antigravity now uses Hydrogen by default; Hydrogen stays B-tier. → [worker capability trial](references/archive/worker-capability-trial.md) (Korean)
 
 ## Team
 

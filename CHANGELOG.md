@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 저장소 정리. 끝난 기록(`worker-capability-trial.md`, `borrowed-ideas-draft.md`)을 `references/archive`로 옮겼다. 구현이 끝난 `worker-pacing-draft.md`는 `worker-pacing.md`로 이름을 바꿨다. 쓰지 않는 `assets/icon.svg`, 링크가 없던 `references/controller-overhead.md`, 그 문서의 도구 `tools/profile-controller.mjs`·`preflight-brief.mjs`·`count-spawns.mjs`와 각 시험, `npm run spawns`를 지웠다. 동작은 바뀌지 않는다.
+
 ## 0.34.0 — 2026-11-15
 
 - README(영어·한국어·일본어)의 Antigravity 안내를 바로잡았다. 2026-11-09 구글 직원 답변에 따르면 개인 요금제에서 Claude Code 같은 서드파티 에이전트가 `agy -p`를 부르는 것은 약관 6조 위반이고, HyperFusion의 antigravity 일꾼이 그 모양이다. 팀 파일에서 끄거나 API 키 계열을 쓰라고 적었다. 코드는 바꾸지 않았다. `references/worker-pacing-draft.md`의 배경 설명도 같은 내용으로 정정했다.

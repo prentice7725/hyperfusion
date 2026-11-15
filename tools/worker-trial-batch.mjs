@@ -1,4 +1,4 @@
-// 일꾼 역량 시험 묶음(references/worker-capability-trial.md). 두 단계로 돈다.
+// 일꾼 역량 시험 묶음(references/archive/worker-capability-trial.md). 두 단계로 돈다.
 //
 // 1. 실행: 일꾼 라운드만 돌리고(worker-trial --defer-settle) 기록을 executed.jsonl에 남긴다. --parallel이면 회사별 줄
 //    (openai, xai, anthropic, google)을 동시에 돌리고, 한 줄 안에서는 하나씩 돈다. 같은 회사 모델은 한도를 같이 쓰므로
@@ -93,7 +93,7 @@ export async function runBatch({out,reps=2,cases=CASES,arms=ARMS,parallel=false,
   const plan=schedule({reps,cases,arms});
   const final=new Set(load(f.final).map(trialIdOf)),executed=new Set(load(f.executed).map(trialIdOf));
   const todo=plan.filter(t=>!final.has(t.trial_id)&&!executed.has(t.trial_id));
-  // 시험 묶음은 같은 CLI를 몇 시간 쉬지 않고 부르는, 보고된 agy 계정 정지 사례와 가장 닮은 모양이다(references/worker-pacing-draft.md).
+  // 시험 묶음은 같은 CLI를 몇 시간 쉬지 않고 부르는, 보고된 agy 계정 정지 사례와 가장 닮은 모양이다(references/worker-pacing.md).
   // 그래서 antigravity 대상을 실행하려면 운영자가 --allow-agy로 직접 허용해야 한다. 마무리(채점)는 agy를 부르지 않으므로 막지 않는다.
   const agy=[...new Set(todo.filter(t=>t.arm.args.includes('antigravity')).map(t=>t.arm.label))];
   if(agy.length&&!allowAgy)throw Error(`worker-trial-batch: ${agy.join(', ')} run on agy; Google has suspended accounts after scripted agy use. Rerun with --allow-agy to accept that risk`);

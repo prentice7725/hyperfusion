@@ -71,7 +71,7 @@ Opusがコードを書き、テストを回し、長いログを読むと、高�
 - 2026-11-10〜11、Windows 11の1台で測定しました。
 - 方法は[ベンチマーク文書](references/benchmark-pilot.md)にあります。
 
-**ワーカー単独。** リードとレビュアーなしで、同じ5つの課題を各ワーカーに1ラウンドずつ、ワーカーごとに15回任せました（2026-11-14）。隠しテストをすべて通過した回数はTerra 15、Sonnet 15、Grok 13、Gemini 4 Hydrogen 12、Gemini 3.8 Flash 7です。範囲外のファイルを変更した回はありませんでした。そのためAntigravityの既定モデルをHydrogenに変え、HydrogenはB級に置きます。→ [ワーカー能力試験](references/worker-capability-trial.md)（韓国語）
+**ワーカー単独。** リードとレビュアーなしで、同じ5つの課題を各ワーカーに1ラウンドずつ、ワーカーごとに15回任せました（2026-11-14）。隠しテストをすべて通過した回数はTerra 15、Sonnet 15、Grok 13、Gemini 4 Hydrogen 12、Gemini 3.8 Flash 7です。範囲外のファイルを変更した回はありませんでした。そのためAntigravityの既定モデルをHydrogenに変え、HydrogenはB級に置きます。→ [ワーカー能力試験](references/archive/worker-capability-trial.md)（韓国語）
 
 ## チーム
 

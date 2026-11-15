@@ -79,7 +79,7 @@ node scripts/setup-doctor.mjs <저장소> --write-team --force  # 있는 파일�
 
 ### 자리 제한과 호출 간격
 
-구글이 스크립트로 `agy`를 부른 계정을 약관 위반으로 정지한 사례가 있어 둔 장치다. 정지를 막는다는 보장은 없다. 보고된 모양(짧은 호출의 반복, 동시 실행)을 줄일 뿐이다. 설계와 근거는 [worker-pacing-draft.md](worker-pacing-draft.md).
+구글이 스크립트로 `agy`를 부른 계정을 약관 위반으로 정지한 사례가 있어 둔 장치다. 정지를 막는다는 보장은 없다. 보고된 모양(짧은 호출의 반복, 동시 실행)을 줄일 뿐이다. 설계와 근거는 [worker-pacing.md](worker-pacing.md).
 
 - `seats`: 일꾼이 맡을 자리(`implement`, `review`, `consult` 중 하나 이상). 없으면 셋 다다. 구현 자리가 없으면 구현 명단에서, 리뷰 자리가 없으면 리뷰어 명단에서 빠진다. 상담·리뷰 자동 선택은 건너뛰고, 리드가 이름으로 고르거나 필수 리뷰어이면 `SEAT_POLICY`로 거절한다(리뷰어 수를 줄이지 않는다). 꺼진 일꾼에 적거나, `reviewers`에 든 일꾼에 `review`가 없으면 거절한다. 팀 파일에만 둔다.
 - `min_interval_s`: 0~3600초. 1 이상이면 그 CLI를 이 컴퓨터에서 한 번에 하나만 띄우고, 앞 실행이 끝난 시각부터 이 시간만큼 쉰 뒤 띄운다. 단위는 CLI다(Sonnet·Haiku는 `claude`, Terra·Luna·Sol은 `codex`). 같은 CLI의 값 중 가장 큰 값을 쓴다. 기다림은 일꾼 실행 제한 시간에는 넣지 않고 작업 경과 시간 상한(`max_wall_ms`)에는 넣는다. 상한을 넘기면 띄우지 않는다(`PACING_DEADLINE`). 기다린 시간은 실행 봉투의 `paced_ms`에 남는다.

@@ -71,7 +71,7 @@ Opus가 코드를 쓰고, 테스트를 돌리고, 긴 로그를 읽으면 비싼
 - 2026-11-10~11, Windows 11 한 대에서 측정했다.
 - 방법은 [벤치마크 문서](references/benchmark-pilot.md)에 있다.
 
-**일꾼만 따로.** 리드와 리뷰어 없이 일꾼 하나에게 같은 다섯 과제를 한 라운드씩, 일꾼마다 15회 맡겨 봤다(2026-11-14). 숨김 시험을 전부 통과한 횟수는 Terra 15, Sonnet 15, Grok 13, Gemini 4 Hydrogen 12, Gemini 3.8 Flash 7이다. 범위 밖 파일을 고친 시험은 없었다. 그래서 Antigravity 기본 모델을 Hydrogen으로 바꿨고, Hydrogen은 B급에 둔다. → [일꾼 역량 시험](references/worker-capability-trial.md)
+**일꾼만 따로.** 리드와 리뷰어 없이 일꾼 하나에게 같은 다섯 과제를 한 라운드씩, 일꾼마다 15회 맡겨 봤다(2026-11-14). 숨김 시험을 전부 통과한 횟수는 Terra 15, Sonnet 15, Grok 13, Gemini 4 Hydrogen 12, Gemini 3.8 Flash 7이다. 범위 밖 파일을 고친 시험은 없었다. 그래서 Antigravity 기본 모델을 Hydrogen으로 바꿨고, Hydrogen은 B급에 둔다. → [일꾼 역량 시험](references/archive/worker-capability-trial.md)
 
 ## 팀
 
