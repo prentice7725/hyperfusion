@@ -110,6 +110,14 @@ test('a signed-out agy run fails with the action to take, and is not retried aut
  assert.ok(NON_RETRYABLE.test('AGY_NOT_SIGNED_IN: agy does not look signed in'));
 });
 
+test('an agy run that ends after a denied command says so instead of only "no final text"',async t=>{
+ const f=fixture(t,{initialize:false});run(f.root,'init',{...f.brief,executor:'antigravity'});f.begin();
+ fs.writeFileSync(path.join(path.dirname(process.env.HF_AGY_BIN),'fake-mode'),'agy-command-denied');
+ await assert.rejects(()=>f.bridge(),/no final text — AGY_COMMAND_BLOCKED: agy tried a tool outside the allow-list \(Bash\)/);
+ // 다음 시도에서는 지시를 지킬 수 있으므로 재시도를 막지 않는다.
+ assert.ok(!NON_RETRYABLE.test('AGY_COMMAND_BLOCKED: agy tried a tool outside the allow-list'));
+});
+
 test('the Antigravity model listing tolerates other output shapes without blocking a listed model',()=>{
  const agy=adapter('antigravity');
  for(const shape of ['gemini-3.5-flash\tGemini 3.5 Flash','* gemini-3.5-flash (default)','Gemini 3.5 Flash','Available models:\n  - gemini-3.5-flash'])
