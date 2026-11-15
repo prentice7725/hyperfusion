@@ -1,6 +1,6 @@
 # 일꾼 호출 조절 (설계 초안)
 
-상태: 초안. 구현하지 않았다. 번호 HF-I10은 가칭이다.
+상태: 초안. 구현하지 않았다. 번호 HF-I10은 가칭이다. 정할 것 다섯 가지는 2026-11-15에 정했다(문서 끝).
 
 ## 왜 필요한가
 
@@ -140,9 +140,10 @@ TOS_VIOLATION
 찾으면:
 
 1. `~/.hyperfusion/pacing/<cli>-suspended.json`에 시각, 그 줄(200자까지, 비밀·이메일 가림), 저장소와 작업을 적는다.
-2. 그 CLI의 일꾼은 **이 컴퓨터의 모든 저장소에서** 설치되지 않은 것처럼 다룬다. 오류 문구는 `ADAPTER_UNAVAILABLE: ACCOUNT_SUSPENDED: agy reported a Terms of Service suspension at <시각>; it will not be launched again on this machine until an operator clears it`이다.
-3. 진행 중인 라운드는 사용량 한도에 걸렸을 때와 같은 길로 다른 일꾼에게 넘긴다.
-4. 리드에게 알림을 한 번 보낸다(`notify`).
+2. 문구 목록은 CLI마다 두고 모든 CLI에 같은 코드로 적용한다. 지금 목록에는 구글 문구만 있어 사실상 `agy`에만 걸린다. 다른 회사의 정지 문구를 확인하면 목록에 더한다.
+3. 그 CLI의 일꾼은 **이 컴퓨터의 모든 저장소에서** 설치되지 않은 것처럼 다룬다. 오류 문구는 `ADAPTER_UNAVAILABLE: ACCOUNT_SUSPENDED: agy reported a Terms of Service suspension at <시각>; it will not be launched again on this machine until an operator clears it`이다.
+4. 진행 중인 라운드는 사용량 한도에 걸렸을 때와 같은 길로 다른 일꾼에게 넘긴다.
+5. 리드에게 알림을 한 번 보낸다(`notify`).
 
 지키는 것:
 
@@ -159,11 +160,11 @@ TOS_VIOLATION
 - 계정 여러 개를 돌려 쓰는 기능
 - 하루 호출 횟수 상한(간격과 한 번에 하나 규칙을 써 본 뒤 필요하면 따로 다룬다)
 - OAuth 토큰이나 `agy`의 인증 파일을 읽는 일
-- 기본값 변경. 팀 파일에 적지 않으면 자리와 간격은 지금과 같다
+- 이미 있는 팀 파일을 고치는 일. 팀 파일에 적지 않으면 자리와 간격은 지금과 같다. 새로 쓰는 팀 파일에만 기본값이 들어간다(setup-doctor 참고)
 
 ## setup-doctor
 
-- `--write-team`이 antigravity 항목에 `"note": "약관 정지 보고가 있다: references/worker-pacing-draft.md"`를 넣는다. `seats`와 `min_interval_s`는 넣지 않는다(운영자가 정한다).
+- `--write-team`이 antigravity가 설치돼 있으면 그 항목에 `"seats": ["implement"]`, `"min_interval_s": 300`, `"note": "약관 정지 보고가 있다: references/worker-pacing-draft.md"`를 넣는다. 운영자는 고치거나 지울 수 있다. 이미 있는 팀 파일은 `--force` 없이는 바꾸지 않으므로 그대로다.
 - antigravity가 켜져 있고 `min_interval_s`가 없으면 점검 결과에 경고 한 줄을 낸다. 실패로 치지 않는다.
 - 조절 기록 폴더의 위치, CLI별 마지막 실행 시각, 정지 기록 유무를 보여 준다.
 
@@ -201,10 +202,10 @@ TOS_VIOLATION
 - 시험 묶음: antigravity 대상이 있는데 `--allow-agy`가 없으면 시작하지 않는다.
 - 팀 파일에 두 키가 없으면 기존 테스트가 그대로 통과한다.
 
-## 정할 것
+## 정한 것 (2026-11-15)
 
-1. `min_interval_s`의 권장값. 300초를 예로 적었지만 근거가 없는 숫자다. 구글은 기준을 밝히지 않았다.
-2. 간격을 끝난 시각부터 잴지, 시작한 시각부터 잴지. 초안은 끝난 시각이다(긴 실행 뒤에도 쉰다).
-3. 정지 차단기를 antigravity에만 둘지, 모든 CLI에 둘지. 초안은 문구가 구글 것이라 사실상 `agy`에만 걸린다.
-4. 자리 제한을 팀 파일에만 둘지, 저장소 설정에서도 더 좁힐 수 있게 할지.
-5. 기본값. 초안은 팀 파일에 적지 않으면 지금과 같게 둔다. `setup-doctor --write-team`이 antigravity에 `seats:["implement"]`와 간격 값을 처음부터 넣게 할지 정한다. 모델 목록 재사용과 정지 차단기는 이 질문과 상관없이 항상 켠다.
+1. **`min_interval_s` 권장값은 300초다.** 근거 있는 숫자는 아니다. agy 라운드 하나가 보통 7~20분이라, 끝난 뒤 5분을 쉬면 시간당 두세 번으로 묶인다.
+2. **간격은 끝난 시각부터 잰다.** 긴 실행 뒤에도 항상 쉰다.
+3. **정지 차단기는 모든 CLI에 둔다.** 문구 목록만 CLI마다 다르다.
+4. **`--write-team`이 antigravity에 `seats:["implement"]`와 `min_interval_s:300`을 처음부터 넣는다.** 이미 있는 팀 파일은 바꾸지 않고, doctor가 경고한다. 모델 목록 재사용과 정지 차단기는 팀 파일과 상관없이 항상 켠다.
+5. **자리 제한은 팀 파일에만 둔다.** 저장소 설정으로는 넓히지도 좁히지도 않는다.
