@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 일꾼 시험 묶음(`tools/worker-trial-batch.mjs`)에 `--arms`와 `--cases`를 더했다. 일부 대상·과제만 돌리는 후속 시험에 쓴다. A급 순서 시험 계획은 `references/a-tier-order-trial.md`에 있다.
+
 ## 0.33.0 — 2026-11-14
 
 - Antigravity(B급) 기본 모델을 `gemini-3.8-flash-high`에서 `gemini-4-hydrogen-high`로 바꿨다. 일꾼 역량 시험(`references/worker-capability-trial.md`, 75회)에서 숨김 시험 전부 통과가 Hydrogen 12/15, 3.8 Flash 7/15였고 범위 밖 수정은 둘 다 0회였다. Hydrogen은 A급 최저(grok 13/15)에 한 회 모자라 B급에 남는다. 모델 레지스트리에 `gemini-4-hydrogen`(google fast)을 더했다. 설정에 모델을 직접 적은 저장소와 팀 파일은 그대로다.

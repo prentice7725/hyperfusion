@@ -12,8 +12,8 @@
 // - 응답 없음: 실행은 (시간 제한 + 여유), 마무리는 --settle-min을 넘기면 프로세스 트리를 끊고 WATCHDOG_TIMEOUT을 남긴다.
 // - 기록 파일은 이 프로세스만 쓴다. 같은 폴더에 묶음 두 개가 돌지 않게 batch.lock을 잡는다.
 //
-//   node tools/worker-trial-batch.mjs run ../hf-trials [--parallel] [--reps 2] [--timeout-min 60] [--grace-min 20] [--settle-min 30]
-//   node tools/worker-trial-batch.mjs status ../hf-trials
+//   node tools/worker-trial-batch.mjs run ../hf-trials [--parallel] [--reps 2] [--arms terra,sonnet,grok] [--cases HF-L01,HF-L02] [--timeout-min 60] [--grace-min 20] [--settle-min 30]
+//   node tools/worker-trial-batch.mjs status ../hf-trials [--reps 2] [--arms …] [--cases …]
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
@@ -150,10 +150,16 @@ if(isMain(import.meta.url)){
   const flag=(name,fallback)=>{const i=rest.indexOf(name);return i>=0?Number(rest[i+1]):fallback;};
   const opts={reps:flag('--reps',2),timeoutMin:flag('--timeout-min',60),graceMin:flag('--grace-min',20),settleMin:flag('--settle-min',30)};
   if(!Object.values(opts).every(n=>Number.isFinite(n)&&n>0))throw Error('worker-trial-batch: --reps, --timeout-min, --grace-min and --settle-min must be positive numbers');
+  // 일부 대상·과제만 돌리는 후속 시험(예: A급 순서 시험). 이름은 ARMS의 label, CASES의 과제 ID다.
+  const list=(name,all,key)=>{const i=rest.indexOf(name);if(i<0)return all;
+   const want=String(rest[i+1]??'').split(',').map(s=>s.trim()).filter(Boolean),pick=want.map(w=>all.find(x=>key(x)===w));
+   if(!want.length||pick.some(x=>!x))throw Error(`worker-trial-batch: ${name} takes a comma list of ${all.map(key).join(', ')}`);
+   return pick;};
+  opts.arms=list('--arms',ARMS,a=>a.label);opts.cases=list('--cases',CASES,c=>c);
   if(cmd==='run'&&out){
    await runBatch({out,...opts,parallel:rest.includes('--parallel'),log:e=>console.log(JSON.stringify(e))});
    console.log(JSON.stringify(status(out,opts),null,2));
   }else if(cmd==='status'&&out)console.log(JSON.stringify(status(out,opts),null,2));
-  else throw Error('Usage: worker-trial-batch.mjs run OUT_DIR [--parallel] [--reps 2] [--timeout-min 60] [--grace-min 20] [--settle-min 30] | status OUT_DIR [--reps 2]');
+  else throw Error('Usage: worker-trial-batch.mjs run OUT_DIR [--parallel] [--reps 2] [--arms terra,sonnet] [--cases HF-L01,HF-L02] [--timeout-min 60] [--grace-min 20] [--settle-min 30] | status OUT_DIR [--reps 2] [--arms …] [--cases …]');
  }catch(e){printError(e);}
 }
