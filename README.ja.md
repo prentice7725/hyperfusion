@@ -83,7 +83,7 @@ Opusがコードを書き、テストを回し、長いログを読むと、高�
 | Sonnet | claude-sonnet-5-5 | 実装、レビュー |
 | Luna | gpt-6-luna（Codex） | 小さな修正、繰り返しの多い大量編集 |
 | Haiku | claude-haiku-5-5 | 易しいコード、ドキュメント、テストの補強 |
-| Antigravity | agy（Gemini 4 Hydrogen high） | UI、フロントエンド、ドキュメント |
+| Antigravity | agy（Gemini 4 Hydrogen high） | UI、フロントエンド、ドキュメント。個人のGoogleプランでは使わない（安全について参照） |
 | Sol | gpt-6.1-sol（Codex） | 主にレビューと相談 |
 
 Fableを使えるプラン（Maxなど）でFableがリードのときは、Opusがレビューと相談のワーカーになり、A級が失敗した作業を引き継ぎます。→ [Fableリード](references/configuration.md#fable-리드와-opus-일꾼)（韓国語）
@@ -128,12 +128,12 @@ Claude CodeでOpus 5.5を選び、次のように使います。
 
 **これは協業のルールであって、OSのサンドボックスではありません。** シェルを使えるワーカーはリポジトリの外のファイルにも届きます。会社のコードで使うなら、ファイルアクセスと外部送信のポリシーを別に決めてください。→ [セキュリティの詳細](references/details.ja.md#セキュリティ)
 
-**ワーカーのアカウントが停止されることがあります。** 2026年11月、スクリプトから`agy`（Antigravity）を呼んだ後にGoogleアカウントが停止されたという報告が複数ありました。異議申し立てはアカウントごとに1回です。HyperFusionは公式の`agy`バイナリを起動しますが、報告された事例と同じ形です。新しく書くチームファイルはAntigravityを実装の席だけに置き、実行の間に300秒休みます。停止の文言を見ると、そのCLIはオペレーターが解除するまでこのコンピューターで使いません。リスクを下げるだけで、なくすことはできません。→ [席の制限と呼び出し間隔](references/configuration.md#자리-제한과-호출-간격)（韓国語）
+**個人のGoogleプランでAntigravityをワーカーとして使わないでください。** 2026-11-09、Googleのスタッフは、Claude Codeのようなサードパーティのエージェントが個人プラン（Free、Pro、Ultra）で`agy -p`を呼ぶことはAntigravity規約6条の違反で、自動のアカウント停止につながりうると[回答しました](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021)。HyperFusionがAntigravityにラウンドを任せるのはまさにこの形で、呼び出し間隔を置いても変わりません。チームファイルでこのワーカーを切るか（`"antigravity": {"enabled": false}`）、Google APIキー、Vertex AI、Gemini Enterpriseを使ってください。`agy`がAPIキーで動くかはHyperFusionでは確認していません。それでも停止の文言が出た場合、そのCLIはオペレーターが解除するまでこのコンピューターで起動しません。→ [チームファイル](references/configuration.md#자리-제한과-호출-간격)（韓国語）
 
 ## さらに読む
 
 - [詳細説明](references/details.ja.md)：機能の全体、適応型レビュー、ベンダー設定、測定、セキュリティ、テスト
-- [CHANGELOG（韓国語）](CHANGELOG.md)：バージョンごとの変更。現在のパッケージバージョンは`0.33.0`です。
+- [CHANGELOG（韓国語）](CHANGELOG.md)：バージョンごとの変更。現在のパッケージバージョンは`0.34.0`です。
 - 初めてなら[runtime](references/runtime.md)（コマンド）と[configuration](references/configuration.md)（設定）から読んでください。リード向けの英語の要約は[executor-quickstart](references/executor-quickstart.md)です。
 
 | テーマ | 文書 |

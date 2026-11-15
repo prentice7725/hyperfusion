@@ -83,7 +83,7 @@ We ran five large tasks (L01–L05) under the same conditions and compared the l
 | Sonnet | claude-sonnet-5-5 | Implementation, reviews |
 | Luna | gpt-6-luna (Codex) | Small fixes, repetitive bulk edits |
 | Haiku | claude-haiku-5-5 | Easy code, documentation, extra tests |
-| Antigravity | agy (Gemini 4 Hydrogen high) | UI, frontend, documentation |
+| Antigravity | agy (Gemini 4 Hydrogen high) | UI, frontend, documentation. Not on a personal Google plan (see Safety) |
 | Sol | gpt-6.1-sol (Codex) | Mostly reviews and advice |
 
 On a plan that offers Fable (such as Max), Fable can lead. Opus then becomes a review and advice worker and takes over rounds that A-tier workers failed. → [Fable lead](references/configuration.md#fable-리드와-opus-일꾼) (Korean)
@@ -128,12 +128,12 @@ Pick Opus 5.5 in Claude Code and run:
 
 **These are collaboration rules, not an OS sandbox.** A worker with a shell can reach files outside the repository. For company code, set your own file-access and data-transfer policy. → [Security details](references/details.en.md#security)
 
-**Worker accounts can be suspended.** In November 2026 several users reported that Google suspended their accounts after scripted `agy` (Antigravity) use; an appeal is allowed once per account. HyperFusion runs the official `agy` binary, but this is still the pattern that was reported. A new team file puts Antigravity on implementation only with 300 seconds between runs, and a suspension notice blocks that CLI on this machine until you clear it. This lowers the risk; it does not remove it. → [pacing](references/configuration.md#자리-제한과-호출-간격) (Korean)
+**Do not run Antigravity as a worker on a personal Google plan.** On 2026-11-09 a Google staff member [answered](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021) that a third-party agent such as Claude Code invoking `agy -p` on a personal plan (Free, Pro, Ultra) violates section 6 of the Antigravity terms and can trigger automatic account suspension. HyperFusion does exactly that when it hands a round to Antigravity, and pacing does not change it. Turn the worker off in your team file (`"antigravity": {"enabled": false}`), or use a Google API key, Vertex AI or Gemini Enterprise instead; HyperFusion has not verified that `agy` runs on an API key. If a suspension notice appears anyway, HyperFusion stops launching that CLI on this machine until you clear it. → [team file](references/configuration.md#자리-제한과-호출-간격) (Korean)
 
 ## More to read
 
 - [Details](references/details.en.md): all features, adaptive review, vendor settings, measurement, security, tests
-- [CHANGELOG](CHANGELOG.md) (Korean): changes by version. The current package version is `0.33.0`.
+- [CHANGELOG](CHANGELOG.md) (Korean): changes by version. The current package version is `0.34.0`.
 - New here? Start with [runtime](references/runtime.md) (commands) and [configuration](references/configuration.md) (settings). The English lead summary is [executor-quickstart](references/executor-quickstart.md).
 
 | Topic | Documents |
