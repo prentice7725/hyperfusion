@@ -1,6 +1,6 @@
 {
   "name": "hyperfusion",
-  "version": "0.34.0",
+  "version": "0.35.0",
   "private": true,
   "license": "MIT",
   "description": "Multi-model orchestration led by the host model, with Grok, Antigravity, Sonnet, Haiku and Codex Luna/Sol workers and cross-family review",
@@ -13,7 +13,7 @@
     "test:recovery": "node --test --test-concurrency=1 tests/reconciliation.test.mjs tests/reconciliation-crash.test.mjs",
     "test:acceptance-security": "node --test tests/acceptance-security.integration.mjs",
     "smoke": "bash tests/smoke.sh",
-    "docs:states": "node scripts/generate-state-docs.mjs",
+    "docs:states": "node scripts/generate-state-docs.mjs",
     "guard:settings": "node scripts/lead-guard.mjs --print-settings",
     "test:live": "node --test tests/live.test.mjs"
   }

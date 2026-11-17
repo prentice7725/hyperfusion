@@ -12,7 +12,7 @@ import {samePath} from './platform.mjs';
 const fail=message=>{throw Error('WORKFLOW: '+message);};
 const sameWorkspace=(a,b)=>typeof a==='string'&&typeof b==='string'&&samePath(a,b);
 const tasks=p=>p.milestones.flatMap((m,index)=>m.tasks.map(t=>({...t,milestone:m.id,milestone_index:index})));
-const fields=['id','kind','difficulty','depends_on','workspace','integrates','scope','success_criteria','acceptance_commands','acceptance_map','acceptance_timeout_ms','acceptance_artifacts','verification','acceptance_baseline_green','limits','read_only'];
+const fields=['id','kind','difficulty','depends_on','workspace','integrates','scope','success_criteria','acceptance_commands','acceptance_map','acceptance_timeout_ms','acceptance_artifacts','verification','acceptance_baseline_green','static_commands','static_timeout_ms','static_protect','limits','read_only'];
 export const workflowEnabled=p=>p.milestones.some(m=>m.tasks.some(t=>t.depends_on!==undefined||t.integrates!==undefined||t.workspace!==undefined||t.read_only!==undefined));
 const spec=t=>Object.fromEntries(fields.filter(k=>t[k]!==undefined).map(k=>[k,t[k]]));
 export const workflowDefinition=p=>p.milestones.map(m=>({id:m.id,tasks:m.tasks.map(spec)}));

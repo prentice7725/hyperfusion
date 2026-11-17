@@ -1,6 +1,8 @@
-# 정적 검사 관문과 규칙 후보 (설계 초안)
+# 정적 검사 관문과 규칙 후보
 
-상태: 초안. 구현도 실측도 하지 않았다. 번호 HF-I11, HF-I12는 가칭이다.
+상태: 구현했다(2026-11-17, 0.35.0). 정할 것 네 가지는 초안값으로 정했다(문서 끝). 실측은 하지 않았다. 번호 HF-I11, HF-I12는 가칭이다.
+
+코드: `scripts/static-gate.mjs`, `scripts/fusion-state.mjs`(관문), `scripts/memory-store.mjs`·`scripts/memory.mjs`(규칙 후보). 시험: `tests/static-gate.test.mjs`, `tests/memory-rules.test.mjs`.
 
 ## 왜 필요한가
 
@@ -269,9 +271,22 @@ init(또는 명령이 처음 정해지는 begin)에서 손대지 않은 트리�
 
 ---
 
-## 정할 것
+## 정한 것 (2026-11-17)
 
-1. 정적 검사가 실패했을 때 수용 테스트도 돌릴지. 초안은 돌린다(재지시 한 번에 둘 다 알려 준다). 수용 테스트가 오래 걸리는 저장소에서는 건너뛰는 편이 나을 수 있다.
-2. `static_protect`를 필수로 둘지. 초안은 필수다. 빼면 일꾼이 설정을 고쳐 통과시키는 길이 열린다.
-3. 규칙 후보의 문턱. 초안은 서로 다른 작업 둘 이상이다.
-4. `static_commands`를 작업마다 리드가 적게 할지, 저장소별로 한 번 승인해 두고 `"@repo"`로 불러 쓰게 할지. 초안은 작업마다 적는다. 불러 쓰기는 리드 토큰을 조금 아끼지만 승인된 명령을 저장소 밖에 둘 자리가 따로 필요하다.
+1. 정적 검사가 실패해도 수용 테스트를 돌린다. 재지시 한 번에 둘 다 싣는다.
+2. `static_protect`는 필수다.
+3. 규칙 후보의 문턱은 서로 다른 작업 둘 이상이다.
+4. `static_commands`는 작업마다 리드가 적는다. `"@repo"` 불러 쓰기는 넣지 않았다.
+
+## 구현에서 정한 것과 초안과 다른 점
+
+- `static_timeout_ms`는 전체가 아니라 **명령마다**의 제한 시간이다(기본 120초, 최대 10분). 실행기의 작업 마감(`deadline_ms`)은 넘기면 작업 예산 초과(BLOCKED)로 처리되므로, 정적 검사의 시간 초과를 그 길에 섞지 않았다. 명령은 1~5개라 전체 상한은 그 곱이다.
+- 뒤 라운드 브리프가 `static_commands`를 빠뜨리면 init의 `static_commands`·`static_timeout_ms`·`static_protect`를 이어받는다. 리드가 깜빡해 관문이 꺼지는 일을 막는다. 바꾸려면 새 값을 적는다(시작 전 트리가 없으므로 `static_baseline.status`가 `unchecked`가 된다).
+- 보호 설정 파일은 범위 밖이므로, 일꾼이 그 파일을 고치면 finish의 범위 검사가 먼저 `RECOVERY_REQUIRED`로 막는다. 리드가 `recover`의 `allow_out_of_scope`로 받아들인 뒤의 라운드에서 `STATIC_CONFIG_CHANGED`가 된다(`static.status:"config_changed"`, 정적 검사를 돌리지 않고 자동 REDO도 없다).
+- VERIFY에서 보호 설정이 바뀌어 있으면 `STATIC_CONFIG_CHANGED`로 거절한다. 리드가 변경을 확인하고 `static_config_change_reason`을 적으면 바뀐 설정으로 정적 검사를 돌리고, 통과해야 CLOSE한다. `verification.json`의 `static`에 바뀐 파일과 사유가 남는다(수용 테스트의 `acceptance_test_change_reason`과 같은 모양).
+- 리드 takeover 라운드가 VERIFY에서 정적 검사에 실패하면 되돌리지 않고 `STATIC_NOT_PASSING`으로 거절한다.
+- 상태에는 `static`(이번 라운드 실행 기록)과 `static_baseline`(`green`, `unchecked`)을 둔다. 실행 기록은 `static-N-<stage>.json`, 기준 실행은 `static-baseline-*.json`이다.
+- 수용 테스트의 무시된 파일 비교 기준은, 정적 검사가 돌았으면 그 실행 뒤의 목록이다(린터 캐시가 수용 테스트를 건너뛰게 하지 않으려고). 정적 검사도 돌기 전에 같은 비교를 통과해야 돈다.
+- 시험으로 고정하지 못한 것: takeover 라운드가 finish에서 자동으로 되돌아가지 않는 것(코드는 수용 테스트와 같은 조건 `s.owner!=='lead'`를 쓴다).
+- 규칙 후보의 `digest`는 상한(10개)으로 자르기 전의 전체 후보 목록으로 계산한다. `enforce`는 현재 후보뿐 아니라 이미 `enforced_by`가 있는 조각에도 쓸 수 있다(규칙 파일이 바뀐 뒤 새 해시로 다시 적는 경우). `not_enforceable`은 현재 후보에만 쓴다.
+- `context`에도 `--validate-artifacts`를 더했다(`recall`과 같은 다시 올리기).

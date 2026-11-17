@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+## 0.35.0 — 2026-11-17
+
+- 정적 검사 관문(HF-I11)을 넣었다. brief의 `static_commands`(린트, 타입 검사)를 컨트롤러가 finish와 VERIFY에서 수용 테스트와 같은 감독 실행기로 돌린다. 시작 전 트리에서 통과해야 받고(`STATIC_BASELINE_FAILING`, `STATIC_DIRTY`, `STATIC_UNVERIFIED`), 실패하면 리뷰 없이 같은 일꾼에게 되돌린다. 수용 실패와 함께면 한 번의 재지시에 둘 다 싣는다. 일꾼이 규칙을 끄지 못하게 `static_protect`(범위 밖 설정 파일)가 필수이고, 바뀌면 돌리지 않고 리드에게 올린다(`STATIC_CONFIG_CHANGED`). 통과하지 않으면 CLOSE(`STATIC_NOT_PASSING`)와 위임 자동 승인이 막힌다. 지표 `static_returns`, `static_ms`, `static_config_changes`. 설계 `references/static-gate.md`.
+- 규칙 후보(HF-I12)를 넣었다. `memory.mjs rule-candidates`가 서로 다른 작업 둘 이상에서 되풀이된 `error` 기억을 읽기 전용으로 보여 주고, `commit`의 `rules`로 `enforce`(규칙 파일 경로와 SHA-256 필수)나 `not_enforceable`을 적는다. 규칙으로 바꾼 조각은 회수에서 빠지고, `--validate-artifacts`에서 규칙 파일이 바뀌거나 사라지면 `enforcement_stale`로 다시 올라온다.
 - 저장소 정리. 끝난 기록(`worker-capability-trial.md`, `borrowed-ideas-draft.md`)을 `references/archive`로 옮겼다. 구현이 끝난 `worker-pacing-draft.md`는 `worker-pacing.md`로 이름을 바꿨다. 쓰지 않는 `assets/icon.svg`, 링크가 없던 `references/controller-overhead.md`, 그 문서의 도구 `tools/profile-controller.mjs`·`preflight-brief.mjs`·`count-spawns.mjs`와 각 시험, `npm run spawns`를 지웠다. 동작은 바뀌지 않는다.
 
 ## 0.34.0 — 2026-11-15

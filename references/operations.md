@@ -81,6 +81,10 @@ brief에 `acceptance_commands`를 넣으면 컨트롤러가 명령을 직접 실
 | finish 직후(결과가 complete일 때) | 실행 후 `acceptance-N-finish.json`에 종료 코드, 소요 시간, 출력 SHA-256과 끝부분 4KB를 남긴다. 실패하면 리뷰 없이 실패 출력을 붙여 같은 일꾼에게 REDO로 돌린다(같은 실패 반복 시 일반 반려처럼 교체). 리드 takeover 라운드는 기록만 하고 리드가 판정한다 |
 | VERIFY | finish 실행이 통과했고 트리와 무시된 파일이 그대로면 그 결과를 재사용한다. 아니면 다시 실행한다. 실패하면 REDO로 돌린다 |
 
+### 정적 검사 관문
+
+brief에 `static_commands`와 `static_protect`를 넣으면 컨트롤러가 수용 테스트 앞에서 정적 검사(린트, 타입 검사)를 같은 감독 실행기로 돌린다. 시작 전 트리에서 통과해야 하고, finish에서 실패하면 수용 실패와 함께 한 번의 재지시로 같은 일꾼에게 되돌린다. 기록은 `static-N-finish.json`, 지표는 `static_returns`, `static_ms`, `static_config_changes`다. 보호 설정 파일이 바뀌면 돌리지 않고 리드에게 올린다. 자세한 규칙은 [static-gate.md](static-gate.md).
+
 ### AC 추적표와 PR 초안
 
 brief에 `acceptance_map`을 넣으면 수용 기준 ID와 그 기준을 증명하는 수용 명령이 이어진다.

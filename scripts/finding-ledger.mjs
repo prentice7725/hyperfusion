@@ -238,7 +238,7 @@ export function revisionPacket(state,dir) {
   else feedback.push(`${comment} [historical location ${issue.file??'unknown'}:${issue.line??'?'}; re-locate before editing]`);
  }
  for(const criterion of (last?.blocking_criteria??[]).slice(0,12))feedback.push(clip(`Unmet: ${criterion}`,500));
- for(const item of (last?.acceptance_feedback??[]).slice(0,8))feedback.push(clip(typeof item==='string'?item:JSON.stringify(item),600));
+ for(const item of [...(last?.static_feedback??[]),...(last?.acceptance_feedback??[])].slice(0,8))feedback.push(clip(typeof item==='string'?item:JSON.stringify(item),600));
  if(!feedback.length)throw Error('REVISION_PACKET_EMPTY: no unresolved findings or rejection to forward');
  feedback.push('This packet is non-authoritative. Preserve the original scope, unresolved rejection history and required cumulative review. Missing/truncated evidence requires lead inspection.');
  return {revision:1,task_id:state.task_id,round:state.iteration,digest:state.post_digest??null,scope:optional(dir,`brief-${state.iteration}.json`)?.scope??null,
