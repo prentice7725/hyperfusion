@@ -1290,7 +1290,8 @@ function finish(c,input) {
   const st=brief.static_commands&&run
     ?(configChanged.length?staticConfigRecord(c,brief,'finish',configChanged):staticRun(c,brief,'finish',c.optional(`ignored-base-${n}.json`),{known:post}))
     :null;
-  if(acceptanceHalt(c,st))return s;
+  // 정적 기록이 없으면 여기서 멈추지 않는다. 예산 소진은 수용 기록(not_run)을 남긴 뒤 아래에서 멈춘다.
+  if(st&&acceptanceHalt(c,st))return s;
   // 정적 검사가 무시된 파일(린터 캐시 등)을 바꿨을 수 있다. 정적 검사는 돌기 전에 같은 비교를 통과했으므로 그 뒤를 기준으로 삼는다.
   const accRef=st?.ignored_after?c.optional(st.ignored_after):c.optional(`ignored-base-${n}.json`);
   const acc=brief.acceptance_commands&&run
