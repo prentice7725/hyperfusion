@@ -124,12 +124,13 @@ export function remember(w,f,{now=Date.now()}={}) {
 }
 
 // 검색: 어휘 점수(BM25) × (0.5 + 감쇠된 중요도) × 신뢰도, 그다음 링크·같은 작업 기억으로 1단계 연상 확산.
-export function recall(w,query,{type,keywords,provenance,limit=8,now=Date.now(),touch=true}={}) {
+// staleEnforcement(f): 규칙 파일을 확인할 수 있을 때만 넘긴다. 규칙이 사라졌거나 바뀐 조각이면 true를 돌려준다.
+export function recall(w,query,{type,keywords,provenance,limit=8,now=Date.now(),touch=true,staleEnforcement=null}={}) {
  const problems=checkProvenance(provenance);if(problems.length)throw Error(problems.join('; '));
  if(!Number.isInteger(limit)||limit<1||limit>100)throw Error('memory limit must be an integer from 1 to 100');
  const s=load(w);
- const live=s.fragments.filter(f=>active(f)&&f.assertion!=='rejected'&&!expired(f,now));
- const pool=live.filter(f=>matchesProvenance(f.provenance,provenance)&&(!type||f.type===type)&&(!keywords?.length||keywords.some(k=>f.keywords.includes(k))));
+ const {live,stale,omitted}=liveFragments(s,now,staleEnforcement,f=>matchesProvenance(f.provenance,provenance)&&(!type||f.type===type)&&(!keywords?.length||keywords.some(k=>f.keywords.includes(k))));
+ const pool=live;
  const q=[...new Set(tokens(query))];
  const docs=pool.map(f=>({f,t:tokens(f.content+' '+f.keywords.join(' '))}));
  const avg=docs.reduce((n,d)=>n+d.t.length,0)/(docs.length||1);
@@ -151,18 +152,98 @@ export function recall(w,query,{type,keywords,provenance,limit=8,now=Date.now(),
  // 검토 대기 중인 충돌 기억은 결과에 표시만 한다. 리드가 정리하기 전엔 일꾼에게 넘기지 않는다.
  const review=s.fragments.filter(f=>f.status==='needs_review'&&q.some(x=>tokens(f.content).includes(x)));
  if(touch&&hits.length)withStore(w,st=>{for(const h of hits){const f=st.fragments.find(x=>x.id===h.f.id);if(f){f.last_recalled_at=new Date(now).toISOString();f.recall_count=(f.recall_count??0)+1;}}});
- return {hits:hits.map(h=>({...view(h.f,now),score:Math.round(h.score*1000)/1000,via:h.via})),needs_review:review.map(f=>view(f,now))};
+ return {hits:hits.map(h=>({...view(h.f,now,stale),score:Math.round(h.score*1000)/1000,via:h.via})),needs_review:review.map(f=>view(f,now)),
+  ...(omitted?{enforced_omitted:omitted}:{})};
 }
 
-const view=(f,now)=>({id:f.id,type:f.type,content:f.content,assertion:f.assertion,provenance:f.provenance,source_context:'unvalidated; compare with current SOT/Git',expires_at:f.expires_at,anchor_key:f.anchor_key,keywords:f.keywords,importance:Math.round(effective(f,now)*100)/100,status:f.status,conflicts_with:f.conflicts_with?.length?f.conflicts_with:undefined,sources:f.sources.length});
+const view=(f,now,stale=null)=>({...(stale?.has(f.id)?{enforcement_stale:true,enforced_by:f.enforced_by}:{}),id:f.id,type:f.type,content:f.content,assertion:f.assertion,provenance:f.provenance,source_context:'unvalidated; compare with current SOT/Git',expires_at:f.expires_at,anchor_key:f.anchor_key,keywords:f.keywords,importance:Math.round(effective(f,now)*100)/100,status:f.status,conflicts_with:f.conflicts_with?.length?f.conflicts_with:undefined,sources:f.sources.length});
 
 // 세션 시작용 핵심 기억: anchor 전부 + 감쇠 점수 상위(verified 우선).
-export function context(w,{limit=10,now=Date.now()}={}) {
+export function context(w,{limit=10,now=Date.now(),staleEnforcement=null}={}) {
  const s=load(w);
- const live=s.fragments.filter(f=>active(f)&&f.assertion!=='rejected'&&!expired(f,now));
- const anchors=live.filter(f=>f.anchor_key).map(f=>view(f,now));
- const core=live.filter(f=>!f.anchor_key).sort((a,b)=>(ASSERTION_WEIGHT[b.assertion]??0.8)*effective(b,now)-(ASSERTION_WEIGHT[a.assertion]??0.8)*effective(a,now)).slice(0,limit).map(f=>view(f,now));
- return {anchors,core,needs_review:s.fragments.filter(f=>f.status==='needs_review').map(f=>view(f,now))};
+ const {live,stale,omitted}=liveFragments(s,now,staleEnforcement);
+ const anchors=live.filter(f=>f.anchor_key).map(f=>view(f,now,stale));
+ const core=live.filter(f=>!f.anchor_key).sort((a,b)=>(ASSERTION_WEIGHT[b.assertion]??0.8)*effective(b,now)-(ASSERTION_WEIGHT[a.assertion]??0.8)*effective(a,now)).slice(0,limit).map(f=>view(f,now,stale));
+ return {anchors,core,needs_review:s.fragments.filter(f=>f.status==='needs_review').map(f=>view(f,now)),...(omitted?{enforced_omitted:omitted}:{})};
+}
+
+// ── 규칙 후보(references/static-gate.md HF-I12) ──────────────────────
+
+// 회수 대상. 규칙으로 바꾼 조각(enforced_by)은 빼고 개수만 센다. staleEnforcement가 참을 돌려주는 조각(규칙 파일이 없거나 바뀜)은 다시 넣는다.
+function liveFragments(s,now,staleEnforcement,filter=()=>true) {
+ const all=s.fragments.filter(f=>active(f)&&f.assertion!=='rejected'&&!expired(f,now)&&filter(f));
+ const stale=new Set(staleEnforcement?all.filter(f=>f.enforced_by&&staleEnforcement(f)).map(f=>f.id):[]);
+ const live=all.filter(f=>!f.enforced_by||stale.has(f.id));
+ return {live,stale,omitted:all.length-live.length};
+}
+
+export const RULE_MIN_TASKS=2,RULE_LIMIT=10;
+const sourceTasks=f=>[...new Set((f.sources??[]).map(x=>x?.task).filter(x=>typeof x==='string'&&x))];
+const lastSeen=f=>f.updated_at;
+const candidateView=f=>({id:f.id,content:f.content,tasks:sourceTasks(f),workers:[...new Set((f.sources??[]).map(x=>x?.executor).filter(Boolean))],last_seen:lastSeen(f)});
+function candidateList(s,now=Date.now()) {
+ return s.fragments.filter(f=>f.type==='error'&&f.status==='active'&&f.assertion!=='rejected'&&!expired(f,now)
+   &&!f.enforced_by&&!f.not_enforceable&&sourceTasks(f).length>=RULE_MIN_TASKS)
+  .map(candidateView)
+  .sort((a,b)=>b.tasks.length-a.tasks.length||String(b.last_seen).localeCompare(String(a.last_seen))||a.id.localeCompare(b.id));
+}
+const digestOf=list=>crypto.createHash('sha256').update(JSON.stringify(list.map(c=>[c.id,c.content,c.tasks]))).digest('hex');
+
+// 서로 다른 작업 둘 이상에서 되풀이된 error 조각. 읽기 전용이다(저장 파일을 바꾸지 않는다).
+// enforced:true면 규칙으로 바꾼 조각 목록을 준다.
+export function ruleCandidates(w,{limit=RULE_LIMIT,enforced=false,now=Date.now()}={}) {
+ if(!Number.isInteger(limit)||limit<1||limit>100)throw Error('rule-candidates limit must be an integer from 1 to 100');
+ const s=load(w);
+ if(enforced){
+  const list=s.fragments.filter(f=>f.enforced_by).map(f=>({...candidateView(f),enforced_by:f.enforced_by}));
+  return {enforced:list.slice(0,limit),remaining:Math.max(0,list.length-limit)};
+ }
+ const list=candidateList(s,now);
+ return {candidates:list.slice(0,limit),remaining:Math.max(0,list.length-limit),digest:digestOf(list),
+  threshold:{type:'error',distinct_tasks:RULE_MIN_TASKS}};
+}
+
+// 리드의 결정을 기록한다. 같은 잠금 아래에서 후보 목록의 digest를 다시 계산해 맞을 때만, 모두 유효할 때만 적는다.
+// enforce는 규칙을 만드는 일이 아니다. 규칙은 보통의 작업으로 먼저 만들고, 그 사실(규칙이 있는 파일과 해시)을 여기 적는다.
+export function recordRules(w,rules,{now=Date.now()}={}) {
+ const bad=why=>Error('MEMORY_RULES_INVALID: '+why);
+ if(!rules||typeof rules!=='object'||Array.isArray(rules))throw bad('rules must be an object {expected_digest, enforce?, not_enforceable?}');
+ const extra=Object.keys(rules).filter(k=>!['expected_digest','enforce','not_enforceable'].includes(k));
+ if(extra.length)throw bad('unknown field '+extra.join(', '));
+ if(typeof rules.expected_digest!=='string'||!/^[a-f0-9]{64}$/.test(rules.expected_digest))throw bad('expected_digest must be the digest rule-candidates returned');
+ const enforce=rules.enforce??[],skip=rules.not_enforceable??[];
+ if(!Array.isArray(enforce)||!Array.isArray(skip)||enforce.length+skip.length===0||enforce.length+skip.length>50)throw bad('give 1-50 decisions in enforce and not_enforceable');
+ return withStore(w,s=>{
+  const list=candidateList(s,now);
+  if(digestOf(list)!==rules.expected_digest)throw Error('MEMORY_RULES_STALE: the candidate list changed since rule-candidates; run it again and decide on the fresh list');
+  const open=new Set(list.map(c=>c.id)),seen=new Set();
+  const get=id=>{
+   if(typeof id!=='string'||seen.has(id))throw bad(`id ${JSON.stringify(id)} is missing or repeated`);
+   seen.add(id);
+   const f=s.fragments.find(x=>x.id===id);
+   if(!f)throw bad('unknown memory '+id);
+   return f;
+  };
+  const plan=[];
+  for(const e of enforce){
+   if(!e||typeof e!=='object'||Array.isArray(e)||Object.keys(e).some(k=>!['id','kind','ref','artifact'].includes(k)))throw bad('each enforce entry is {id, kind, ref, artifact}');
+   const f=get(e.id);
+   // 이미 규칙으로 적은 조각은 해시를 새로 적을 수 있다(규칙 파일이 다른 이유로 바뀐 경우).
+   if(!open.has(f.id)&&!f.enforced_by)throw bad(`${f.id} is not a current rule candidate`);
+   if(!['static','test'].includes(e.kind))throw bad(`${f.id}: kind must be static or test`);
+   if(typeof e.ref!=='string'||!e.ref.trim()||e.ref.length>300)throw bad(`${f.id}: ref must name the rule or test (at most 300 characters)`);
+   if(e.artifact===undefined||checkProvenance({artifact:e.artifact}).length)throw bad(`${f.id}: artifact {path, sha256} of the repository file that holds the rule is required`);
+   plan.push(()=>{f.enforced_by={kind:e.kind,ref:e.ref.trim(),artifact:{path:e.artifact.path,sha256:e.artifact.sha256},at:new Date(now).toISOString()};delete f.not_enforceable;return {id:f.id,status:'enforced'};});
+  }
+  for(const e of skip){
+   if(!e||typeof e!=='object'||Array.isArray(e)||Object.keys(e).some(k=>!['id','reason'].includes(k)))throw bad('each not_enforceable entry is {id, reason}');
+   const f=get(e.id);
+   if(!open.has(f.id))throw bad(`${f.id} is not a current rule candidate`);
+   if(typeof e.reason!=='string'||!e.reason.trim()||e.reason.length>500)throw bad(`${f.id}: reason must be a short sentence (at most 500 characters)`);
+   plan.push(()=>{f.not_enforceable={reason:e.reason.trim(),at:new Date(now).toISOString()};return {id:f.id,status:'not_enforceable'};});
+  }
+  return plan.map(apply=>apply());
+ });
 }
 
 // 충돌 정리. keep을 살리고 drop은 rejected로 남긴다(같은 잘못이 다시 저장되는 걸 막는 기록).

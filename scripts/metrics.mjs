@@ -92,7 +92,7 @@ export function measure(root,observations=null) {
   // router 학습용. 어떤 일꾼이 어떤 판정을 받았는지.
   review_outcomes:(s.reviews??[]).map(r=>({owner:r.owner,verdict:r.verdict,round:r.round,reviewed_by:r.reviewed_by??'lead',...(r.overrode?{overrode:r.overrode}:{})})),
   // 리드가 직접 본 리뷰 대 위임 리뷰. 위임 비율이 오르면 Opus 토큰이 줄어야 한다.
-  delegated_reviews:(s.reviews??[]).filter(r=>r.reviewed_by&&!['lead','controller'].includes(r.reviewed_by)).length,acceptance_returns:(s.reviews??[]).filter(r=>r.reviewed_by==='controller').length,lead_overrides:(s.reviews??[]).filter(r=>r.overrode).length,
+  delegated_reviews:(s.reviews??[]).filter(r=>r.reviewed_by&&!['lead','controller'].includes(r.reviewed_by)).length,acceptance_returns:(s.reviews??[]).filter(r=>r.reviewed_by==='controller').length,static_returns:(s.reviews??[]).filter(r=>r.reviewed_by==='controller'&&r.static_feedback?.length).length,static_ms:s.static_ms??0,static_config_changes:s.static_config_changes??0,lead_overrides:(s.reviews??[]).filter(r=>r.overrode).length,
   review_dispositions:reviewDispositions(root,s),
   consults:(s.consults??[]).map(c=>({id:c.id,mode:c.mode,violated:c.violated,members:c.members.map(m=>({executor:m.executor,ok:m.ok,recommended_verdict:m.recommended_verdict??null}))})),consult_runs:s.consult_runs??0,
   worker_usage:usage,worker_rounds:Object.fromEntries(countedImplementers.map(e=>[e,runs.filter(r=>r.executor===e&&r.role==='implement').length])),

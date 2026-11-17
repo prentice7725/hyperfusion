@@ -102,6 +102,29 @@ $M forget  $HF_REPO f1a2b3c4                               # 잘못 저장된 �
 - 저장 결과는 `stored`, `merged`(기존과 병합), `needs_review`(모순 후보), `refused`(예전에 기각된 내용) 중 하나다.
 - 키워드에는 `hf:<task>`, `src:<worker|protocol|lead>`, `by:<일꾼>`이 붙는다.
 
+### 규칙 후보: 되풀이된 실수를 기계 검사로
+
+서로 다른 작업 둘 이상에서 되풀이된 `error` 조각은 글로 다시 부탁하기보다 린트 규칙이나 테스트로 바꾸는 편이 싸다([static-gate.md](static-gate.md#hf-i12-규칙-후보)).
+
+```sh
+$M rule-candidates $HF_REPO               # 읽기 전용: 후보 최대 10개와 digest
+$M rule-candidates $HF_REPO --enforced    # 규칙으로 바꾼 조각 목록
+```
+
+규칙은 보통의 작업(red-first 수용 테스트)으로 먼저 만든다. 그 작업이 CLOSE된 뒤 `commit`에 `rules`를 넘겨 적는다.
+
+```json
+{"rules": {"expected_digest": "<rule-candidates의 digest>",
+  "enforce": [{"id": "f1a2b3c4", "kind": "static", "ref": "eslint no-restricted-imports (rules -> scenes)",
+               "artifact": {"path": "eslint.config.js", "sha256": "<규칙 파일의 SHA-256>"}}],
+  "not_enforceable": [{"id": "f9e8d7c6", "reason": "판단이 필요한 설계 문제"}]}}
+```
+
+- digest가 다르거나 항목 하나라도 틀리면 아무것도 적지 않는다(`MEMORY_RULES_STALE`, `MEMORY_RULES_INVALID`).
+- `enforced_by`가 붙은 조각은 `recall`·`context`에서 빠지고 `enforced_omitted`로 개수만 나온다. 지우지는 않는다.
+- `--validate-artifacts`를 켜면 규칙 파일이 없거나 해시가 달라진 조각이 `enforcement_stale:true`로 다시 나온다. 켜지 않으면 규칙이 조용히 사라져도 조각이 돌아오지 않는다.
+- 같은 실수를 다른 말로 적은 조각은 병합되지 않아(토큰 유사도 0.8 미만) 후보에 오르지 않는다.
+
 ## 파일럿 범위
 
 HyperFusion 저장소 하나에서 먼저 쓴다. 같은 실수 반복 감소와 리드 토큰 감소가 확인되면 Asset Pipeline으로 넓힌다.

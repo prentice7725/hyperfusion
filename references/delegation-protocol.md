@@ -24,6 +24,8 @@
 
 `verification`(선택, 리팩터링용): `{"kind":"preserve","protect":["spec/**"]}`. 수정 전에도 수용 명령이 통과하는 작업에서 red-first 대신 쓰는 증거 계약이다. `protect`는 테스트·픽스처 같은 보호 경로(앞쪽 디렉터리가 리터럴인 glob, 1~10개)이고, 작업 범위(`scope.paths`)와 겹치면 안 되며 실제 파일에 맞아야 한다. `acceptance_commands`와 `acceptance_baseline_green`(왜 이미 통과하는지)이 함께 필요하고, 명령이 실패하면 보존이 아니라 red-first 작업이므로 거절된다. 컨트롤러는 작업을 시작했을 때와 비교해 보호 경로의 파일이 하나라도 바뀌면(리드가 범위 밖 변경을 받아들였어도) 그 라운드를 막고 verify도 거절한다. init의 brief가 정본이라 이후 brief로는 풀 수 없다.
 
+`static_commands`(선택, 한 줄 명령 1~5개)를 적으면 컨트롤러가 린트·타입 검사 같은 정적 검사를 finish와 VERIFY에서 직접 돌린다. 수용 테스트와 반대로 손대지 않은 트리에서 **통과해야** 받는다(`STATIC_BASELINE_FAILING`, `STATIC_DIRTY`, `STATIC_UNVERIFIED`). 실패하면 리뷰 없이 같은 일꾼에게 되돌리고(`STATIC: <명령>`), 통과하지 않으면 CLOSE와 위임 자동 승인을 막는다. 일꾼이 규칙을 끄지 못하게 범위 밖 설정 파일을 `static_protect`(필수, glob 1~10개)에 적는다. `static_timeout_ms`는 명령당 제한 시간(기본 120000, 최대 600000)이다. 자세한 동작은 [static-gate.md](static-gate.md).
+
 `acceptance_commands`(선택, 한 줄 명령 1~10개)를 적으면 컨트롤러가 finish 직후와 VERIFY에서 직접 실행하고 종료 코드와 출력 해시를 기록한다. 실패하면 리뷰 전에 실패 출력과 함께 같은 일꾼에게 되돌린다. `acceptance_timeout_ms`(명령당, 기본 600000)와 `acceptance_artifacts`(실행되지 않는 테스트 산출물 글롭)를 함께 줄 수 있다. 명령은 brief에서만 받는다. 자세한 동작과 무시된 파일 검사는 [operations.md](operations.md#수용-테스트-자동-실행).
 
 `task_kind`/`difficulty`는 배치 힌트다([routing.md](routing.md)). 종류가 섞인 작업은 쪼갠다.

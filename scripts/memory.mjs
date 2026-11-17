@@ -9,7 +9,7 @@ import {config} from './executor-config.mjs';
 import * as store from './memory-store.mjs';
 import {retrievalPacket} from './memory-packet.mjs';
 import {recordRetrieval,assessMemory} from './memory-observations.mjs';
-import {validateRecallArtifacts} from './memory-provenance.mjs';
+import {validateRecallArtifacts,artifactStatus} from './memory-provenance.mjs';
 import {workspaceOf,readLedger,writeLedger,propose,checkCandidate} from './memory-policy.mjs';
 
 // 리드 전용 기억 도구. 흐름은 context → recall → (작업) → candidates → commit → reflect.
@@ -30,9 +30,21 @@ export function bind(root) {
  return store.bind(w,repoId(root));
 }
 
-export function context(root) {
+// 규칙으로 바꾼 조각(enforced_by)은 회수에서 빠진다. 규칙 파일을 확인할 때만(validate_artifacts) 사라지거나 바뀐 규칙의 조각을 다시 올린다.
+const staleRule=root=>f=>artifactStatus(root,{artifact:f.enforced_by.artifact})!=='artifact_matches';
+
+export function context(root,{validate_artifacts=false}={}) {
+ if(typeof validate_artifacts!=='boolean')throw Error('memory validate_artifacts must be boolean');
  root=repo(root);const w=workspace(root);
- return {workspace:w,...store.context(w),note:'Hints, not authority. Instruction files and the SOT outrank every memory here.'};
+ return {workspace:w,...store.context(w,{staleEnforcement:validate_artifacts?staleRule(root):null}),note:'Hints, not authority. Instruction files and the SOT outrank every memory here.'};
+}
+
+// 기계 검사로 바꿀 후보(references/static-gate.md HF-I12). 읽기 전용이고 모델을 부르지 않는다.
+export function ruleCandidates(root,{limit,enforced=false}={}) {
+ root=repo(root);const w=workspace(root);
+ return {workspace:w,...store.ruleCandidates(w,{limit,enforced}),
+  next_action:enforced?'Recheck each rule file; rerun commit rules.enforce with the new sha256 when a rule file changed for another reason':
+   'Turn a candidate into a lint rule or test with an ordinary task first; after it closes, record it with commit {rules:{expected_digest, enforce:[{id, kind, ref, artifact:{path, sha256}}]}} or mark it not_enforceable'};
 }
 
 export function recall(root,query,{type,limit,byte_budget,provenance,observe=false,validate_artifacts=false}={}) {
@@ -40,7 +52,7 @@ export function recall(root,query,{type,limit,byte_budget,provenance,observe=fal
  if(typeof validate_artifacts!=='boolean')throw Error('memory validate_artifacts must be boolean');
  root=repo(root);const w=workspace(root);
  if(typeof query!=='string'||!query.trim())throw Error('recall needs a query');
- const retrieved=store.recall(w,query,{type,provenance,limit:limit??config(root).memory?.recall_limit??8,touch:byte_budget===undefined&&!validate_artifacts});
+ const retrieved=store.recall(w,query,{type,provenance,limit:limit??config(root).memory?.recall_limit??8,touch:byte_budget===undefined&&!validate_artifacts,staleEnforcement:validate_artifacts?staleRule(root):null});
  const found=validate_artifacts?validateRecallArtifacts(root,retrieved):retrieved;
  const r=byte_budget===undefined?found:retrievalPacket(found,{byte_budget});
  const retrieval_id=observe?recordRetrieval(root,read(controlPath(root,'state.json')).task_id,w,r.hits):undefined;
@@ -65,6 +77,9 @@ export function commit(root,input) {
  // 컨트롤러와 동시에 장부를 건드리지 않도록 같은 잠금을 잡는다.
  const release=acquireLock(lockOf(root));
  try{
+  // 규칙 기록은 장부와 따로다. 하나라도 틀리면 아무것도 적지 않는다.
+  const rules=input.rules===undefined?undefined:store.recordRules(w,input.rules);
+  if(rules&&!input.accept?.length&&!input.reject?.length&&!input.add?.length)return {workspace:w,rules};
   const state=read(controlPath(root,'state.json'));
   const task=input.task??state.task_id;
   const currentLedger=readLedger(root,task);
@@ -94,7 +109,7 @@ export function commit(root,input) {
    results.push({id:c.id,...saved,assertion});
   }
   writeLedger(root,task,ledger);
-  return {workspace:w,task,results,pending:ledger.candidates.filter(c=>c.status==='pending').map(c=>c.id)};
+  return {workspace:w,task,results,pending:ledger.candidates.filter(c=>c.status==='pending').map(c=>c.id),...(rules?{rules}:{})};
  } finally {release();}
 }
 
@@ -113,7 +128,8 @@ if(isMain(import.meta.url)) {
   const flag=n=>{const i=rest.indexOf(n);return i>=0?rest[i+1]:undefined;};
   const out={
    bind:()=>bind(root),
-   context:()=>context(root),
+   context:()=>context(root,{validate_artifacts:rest.includes('--validate-artifacts')}),
+   'rule-candidates':()=>ruleCandidates(root,{limit:flag('--limit')?Number(flag('--limit')):undefined,enforced:rest.includes('--enforced')}),
    recall:()=>recall(root,rest[0],{type:flag('--type'),limit:flag('--limit')?Number(flag('--limit')):undefined,byte_budget:flag('--byte-budget')?Number(flag('--byte-budget')):undefined,provenance:flag('--provenance')?readInput(flag('--provenance')):undefined,observe:rest.includes('--observe'),validate_artifacts:rest.includes('--validate-artifacts')}),
    candidates:()=>candidates(root,rest[0]),
    review:()=>reviewCandidates(root,rest[0],{limit:flag('--limit')?Number(flag('--limit')):undefined}),
@@ -124,7 +140,7 @@ if(isMain(import.meta.url)) {
    forget:()=>forget(root,rest[0]),
    stats:()=>store.stats(workspace(repo(root)))
   }[cmd];
-  if(!out)throw Error('Usage: memory.mjs bind|context|recall "query" [--type T] [--limit N] [--byte-budget N] [--provenance INPUT.json] [--observe] [--validate-artifacts]|candidates [TASK]|review [TASK] [--limit N]|commit INPUT.json|assess INPUT.json|resolve INPUT.json|reflect|forget ID|stats  (each takes REPO first)');
+  if(!out)throw Error('Usage: memory.mjs bind|context [--validate-artifacts]|rule-candidates [--limit N] [--enforced]|recall "query" [--type T] [--limit N] [--byte-budget N] [--provenance INPUT.json] [--observe] [--validate-artifacts]|candidates [TASK]|review [TASK] [--limit N]|commit INPUT.json|assess INPUT.json|resolve INPUT.json|reflect|forget ID|stats  (each takes REPO first)');
   console.log(JSON.stringify(out(),null,2));
  }catch(e){printError(e);}
 }

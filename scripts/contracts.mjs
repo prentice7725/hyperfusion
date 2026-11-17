@@ -1,6 +1,7 @@
 import {checkPrior} from './memory-policy.mjs';
 import {checkBashRules} from './bash-policy.mjs';
 import {checkAcceptanceMap} from './ac-trace.mjs';
+import {scopeOverlap} from './preserve.mjs';
 const requireThat=(v,m)=>{if(!v)throw Error(m);};
 const str=v=>typeof v==='string'&&v.trim().length>0;
 const strs=v=>Array.isArray(v)&&v.every(str);
@@ -54,6 +55,17 @@ export function brief(v) {
  requireThat(v.acceptance_artifacts===undefined||(strs(v.acceptance_artifacts)&&v.acceptance_artifacts.length<=20&&v.acceptance_artifacts.every(g=>reportedPath(g.replace(/\*\*?|\?/g,'x'))&&!/^(?:\*\*\/)*\*{1,2}$/.test(g))),'Invalid acceptance_artifacts (repository-relative globs, not "**")');
  requireThat(v.acceptance_baseline_green===undefined||(str(v.acceptance_baseline_green)&&v.acceptance_baseline_green.length<=300),'acceptance_baseline_green must be a short reason (why the commands already pass before any change)');
  requireThat(v.acceptance_commands!==undefined||(v.acceptance_timeout_ms===undefined&&v.acceptance_artifacts===undefined&&v.acceptance_baseline_green===undefined),'acceptance options need acceptance_commands');
+ // 정적 검사(references/static-gate.md). 린트·타입 검사처럼 어느 작업에나 걸리는 규칙. 시작 전 트리에서 통과해야 받는다.
+ // 일꾼이 설정을 고쳐 규칙을 끄지 못하게 static_protect(범위 밖 설정 파일)를 반드시 같이 적는다.
+ requireThat(v.static_commands===undefined||(Array.isArray(v.static_commands)&&v.static_commands.length>0&&v.static_commands.length<=5
+  &&new Set(v.static_commands).size===v.static_commands.length&&v.static_commands.every(x=>str(x)&&x.length<=500&&!CONTROL.test(x))),'Invalid static_commands (1-5 distinct single-line commands of at most 500 characters)');
+ requireThat(v.static_timeout_ms===undefined||(Number.isSafeInteger(v.static_timeout_ms)&&v.static_timeout_ms>0&&v.static_timeout_ms<=600000),'Invalid static_timeout_ms (at most 600000)');
+ requireThat(v.static_protect===undefined||(strs(v.static_protect)&&v.static_protect.length>=1&&v.static_protect.length<=10
+  &&v.static_protect.every(g=>reportedPath(g.replace(/\*\*?|\?/g,'x'))&&!/^(?:\*\*\/)*\*{1,2}$/.test(g)&&!g.endsWith('/'))),'Invalid static_protect (1-10 repository-relative globs of the lint or type-check config files)');
+ requireThat(v.static_commands!==undefined||(v.static_timeout_ms===undefined&&v.static_protect===undefined),'static options need static_commands');
+ requireThat(v.static_commands===undefined||v.static_protect!==undefined,'static_commands need static_protect: list the config files (for example eslint.config.js, tsconfig.json) the worker must not change, so it cannot pass by turning rules off');
+ const overlap=v.static_protect?scopeOverlap(v.scope.paths,v.static_protect):[];
+ requireThat(!overlap.length,`static_protect overlaps scope.paths (${overlap.slice(0,3).join('; ')}); protected config must stay outside the worker's scope (a task that edits the config does not list it in static_protect)`);
  // 보존(preserve) 검증: 수정 전에도 통과하는 명령(리팩터링)에서, 보호 경로의 파일이 바뀌지 않았음을 컨트롤러가 증거로 삼는다.
  requireThat(v.verification===undefined||(v.verification&&typeof v.verification==='object'&&!Array.isArray(v.verification)
     &&Object.keys(v.verification).every(k=>['kind','protect'].includes(k))&&['preserve','red-first'].includes(v.verification.kind)

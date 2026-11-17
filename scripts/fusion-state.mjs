@@ -24,6 +24,7 @@ import {assertAction,TERMINAL_PHASES,nextAction} from './state-policy.mjs';
 import {report} from './report.mjs';
 import {compactView} from './lead-view.mjs';
 import {isPreserve,checkPreserve,protectedChanges,acceptanceTestsContext} from './preserve.mjs';
+import {staticFeedback,staticCriteria,staticBaselineError,passingStaticRecord,STATIC_TIMEOUT_MS} from './static-gate.mjs';
 import {modifiedAcceptanceTests} from './acceptance-integrity.mjs';
 import {hookObservation} from './hook-observation.mjs';
 import {leadIdentity,leadPowers,assertLeadFamily} from './lead-host.mjs';
@@ -382,6 +383,7 @@ function init(c,input) {
     ...(projectTask?{project:{name:projectTask.project,milestone:projectTask.milestone,task:projectTask.id,...(project.workflow?{workflow_digest:project.workflow.digest,source_root:projectRoot}:{})}}:{})
   };
   if(acceptanceBaseline(c,input,base)===false)return c.s;
+  if(staticBaseline(c,input,base)===false)return c.s;
   // 보존 작업은 수정 전에도 통과하는 명령이어야 한다. 실패하는 명령이면 보존이 아니라 red-first 작업이다.
   if(isPreserve(input)&&c.s.acceptance_baseline?.status!=='green-acknowledged'){
     throw Error('VERIFICATION: a preserve task needs acceptance_commands that already pass on the untouched tree; these fail, so use red-first (drop verification and acceptance_baseline_green)');
@@ -1034,6 +1036,10 @@ function begin(c,input) {
       .filter(key=>initialBrief[key]!==undefined).map(key=>[key,initialBrief[key]]));
     input={...inherited,...input};
   }
+  // 정적 검사는 init의 계약이다. 뒤 브리프가 static_commands를 빠뜨려도 관문이 사라지지 않게 처음 값을 이어받는다.
+  if(input&&!Object.hasOwn(input,'static_commands')&&initialBrief?.static_commands){
+    input={...Object.fromEntries(['static_commands','static_timeout_ms','static_protect'].filter(k=>initialBrief[k]!==undefined).map(k=>[k,initialBrief[k]])),...input};
+  }
   input=contract.brief(input);
   if(JSON.stringify(input.verification??null)!==JSON.stringify(initialVerification??null))throw Error('VERIFICATION_CONTRACT_CHANGED: protection must be declared at init and cannot change between rounds');
   if(input.task_id!==s.task_id)throw Error('Task ID mismatch');
@@ -1098,7 +1104,8 @@ function begin(c,input) {
     const unmet=(last?.blocking_criteria??[])
       .map(criterion=>`Unmet: ${criterion}${last.rationale?' ('+last.rationale.slice(0,200)+')':''}`);
     // 수용 테스트 실패로 컨트롤러가 되돌린 라운드는 실패 출력이 곧 명령서다.
-    const items=last?.acceptance_feedback?.length?[...located,...last.acceptance_feedback]:[...located,...unmet];
+    const machine=[...(last?.static_feedback??[]),...(last?.acceptance_feedback??[])];
+    const items=machine.length?[...located,...machine]:[...located,...unmet];
     if(!items.length)throw Error('Last review has no findings or blocking criteria to forward; write lead_feedback yourself');
     input={...input,lead_feedback:items};
   }
@@ -1133,6 +1140,7 @@ function begin(c,input) {
   if(a)a.dispatch(brief,{token:'pending',owner},{session,resume,probe:cli,promptFile,options:planned.options,apexGrant:planned.apexGrant,granted:planned.granted});
 
   if(acceptanceBaseline(c,input)===false)return s;
+  if(staticBaseline(c,input)===false)return s;
   // Probes and baseline checks run before the lease. Do not absorb writes from
   // that interval into a fresh worker baseline either.
   const base=snapshot(c.root);
@@ -1164,7 +1172,7 @@ function begin(c,input) {
   // 재검수용 라운드 diff의 기준. 보조 기록이라 실패해도 라운드를 막지 않는다(round-diff가 미기록으로 알린다).
   if(round>=2){try{c.art(`round-base-${round}.json`,captureRoundBase(c.root,base));}catch{}}
   // 수용 테스트를 돌릴 라운드는 무시된 파일의 기준선도 남긴다. 일꾼이 거기 코드를 심었는지 실행 전에 비교한다.
-  if(input.acceptance_commands)c.art(`ignored-base-${round}.json`,ignoredManifest(c.root,input.acceptance_artifacts));
+  if(input.acceptance_commands||input.static_commands)c.art(`ignored-base-${round}.json`,ignoredManifest(c.root,input.acceptance_artifacts));
 
   const request=a
     ?{
@@ -1276,8 +1284,18 @@ function finish(c,input) {
   // 일꾼이 미완료(blocked·needs_decision·failed)라고 해도 트리를 바꿨으면 수용 명령을 돌려 증거로 남긴다.
   // 승인 거절은 그대로다(review·lead-decision·위임 리뷰가 미완료 결과의 pass를 막는다).
   const complete=input.result.status==='complete';
-  const acc=brief.acceptance_commands&&(complete||changed.length)
-    ?acceptanceRun(c,brief,'finish',c.optional(`ignored-base-${n}.json`),{known:post}):null;
+  const run=complete||changed.length>0;
+  // 정적 검사가 먼저 돈다. 보호 설정 파일이 바뀌었으면 돌리지 않고 리드에게 올린다(자동으로 되돌리지 않는다).
+  const configChanged=brief.static_commands&&run?staticConfigChanges(c,brief,post):[];
+  const st=brief.static_commands&&run
+    ?(configChanged.length?staticConfigRecord(c,brief,'finish',configChanged):staticRun(c,brief,'finish',c.optional(`ignored-base-${n}.json`),{known:post}))
+    :null;
+  // 정적 기록이 없으면 여기서 멈추지 않는다. 예산 소진은 수용 기록(not_run)을 남긴 뒤 아래에서 멈춘다.
+  if(st&&acceptanceHalt(c,st))return s;
+  // 정적 검사가 무시된 파일(린터 캐시 등)을 바꿨을 수 있다. 정적 검사는 돌기 전에 같은 비교를 통과했으므로 그 뒤를 기준으로 삼는다.
+  const accRef=st?.ignored_after?c.optional(st.ignored_after):c.optional(`ignored-base-${n}.json`);
+  const acc=brief.acceptance_commands&&run
+    ?acceptanceRun(c,brief,'finish',accRef,{known:post}):null;
   if(acceptanceHalt(c,acc))return s;
   s.result_failures=0;
   s.phase='REVIEW';
@@ -1288,12 +1306,9 @@ function finish(c,input) {
   // 수용 테스트가 실패한 일꾼 라운드는 리드가 볼 필요 없이 실패 출력과 함께 같은 일꾼에게 되돌린다.
   // 일반 반려와 같은 규칙(예산, 같은 실패 반복 시 교체)을 거친다. 리드 takeover 라운드는 리드가 직접 판정한다.
   // 미완료 결과의 실패는 일꾼의 질문(needs_decision 등)을 덮지 않도록 자동으로 되돌리지 않고, 증거로만 리드에게 간다.
-  if(acc?.status==='fail'&&s.owner!=='lead'&&complete){
-    const failed=acc.results.filter(r=>r.status!=='pass');
-    return applyReview(c,{verdict:'redo',reviewed_by:'controller',
-      rationale:`Acceptance commands failed after finish (${failed.map(r=>r.command).join(', ')}); returned to the worker without lead review`,
-      blocking_criteria:failureCriteria(brief,failed),commands_run:brief.acceptance_commands,
-      independent_diff_review:true,acceptance_feedback:failureFeedback(acc.results)},acc.tree_digest);
+  // 정적 검사 실패도 같은 길이다. 둘 다 실패하면 한 번의 재지시에 둘 다 싣는다. 보호 설정이 바뀐 라운드는 리드가 판단한다.
+  if((acc?.status==='fail'||st?.status==='fail')&&st?.status!=='config_changed'&&s.owner!=='lead'&&complete){
+    return applyReview(c,controllerRedo(brief,'after finish; returned to the worker without lead review',st,acc),acc?.tree_digest??st.tree_digest);
   }
   // 수용 실패는 컨트롤러 재지시다. 모델 pass는 여기로 오지 않는다. Sol처럼 리뷰어가 리드뿐이면 위임 없이 게이트로 올린다.
   if(s.configuration.review?.strategy==='lead-gated-adaptive'){
@@ -1396,16 +1411,110 @@ function acceptanceRun(c,brief,stage,reference,{trust=false,known=null}={}) {
   return record;
 }
 
+// ── 정적 검사(references/static-gate.md) ─────────────────────────────
+
+// 수용 테스트와 반대로 손대지 않은 트리에서 통과해야 받는다. 처음부터 실패하는 린트는 일꾼이 만든 위반과 원래 있던 위반을 가르지 못한다.
+// 작업이 시작된 뒤 명령이 바뀌면 손대지 않은 트리가 없으므로 unchecked로 적고 리드에게 보인다.
+function staticBaseline(c,brief,known=null) {
+  const s=c.s,cmds=brief.static_commands;
+  if(!cmds)return;
+  const key=crypto.createHash('sha256').update(JSON.stringify(cmds)).digest('hex').slice(0,16);
+  if(s.static_baseline?.key===key)return;
+  if(s.iteration>0){
+    s.static_baseline={key,status:'unchecked',round:s.iteration,reason:'static_commands changed after work started; there is no untouched tree to prove they pass'};
+    return;
+  }
+  const before=known??snapshot(c.root);
+  const results=supervisedAcceptance(c,brief,'baseline',before,{kind:'static'});
+  const after=snapshot(c.root);
+  const dirty=changes(before,after);
+  if(results.some(r=>r.quiescence?.quiescent!==true)||results.some(r=>r.code==='BUDGET_EXCEEDED')||budgetStatus(c.root,s).reason){
+    if(!c.optional('initial-brief.json'))c.art('initial-brief.json',brief);
+    if(!c.optional('baseline.json'))c.art('baseline.json',before);
+    c.art(`static-baseline-${Date.now()}.json`,{stage:'baseline',results,tree_digest:after.digest});
+    acceptanceHalt(c,{results,tree_changed:dirty});
+    return false;
+  }
+  const error=staticBaselineError(results,dirty.length?dirty:after.digest!==before.digest?['(git status or index)']:[]);
+  if(error)throw Object.assign(Error(error),{code:error.split(':')[0]});
+  const file=`static-baseline-${Date.now()}.json`;
+  c.art(file,{stage:'baseline',commands:cmds,results,tree_digest:before.digest,at:new Date().toISOString()});
+  s.static_baseline={key,status:'green',file};
+}
+
+// static_protect에 든 파일 중 작업 시작 뒤 바뀐 것. init의 브리프가 정본이다.
+function staticConfigChanges(c,brief,now=snapshot(c.root)) {
+  const protect=c.optional('initial-brief.json')?.static_protect??brief.static_protect;
+  if(!protect?.length)return [];
+  return protectedChanges(read(path.join(c.taskdir(),'baseline.json')),now,protect);
+}
+
+function staticConfigRecord(c,brief,stage,paths) {
+  const s=c.s,n=s.iteration,name=`static-${n}-${stage}`;
+  const record={kind:'static',stage,round:n,at:new Date().toISOString(),commands:brief.static_commands,status:'config_changed',config_changed:paths,
+    reason:'static_protect config files changed during the task, so the static checks did not run; the lead decides whether the change is legitimate'};
+  c.art(`${name}.json`,record);
+  s.static={round:n,stage,status:'config_changed',quiescent:true,file:`${name}.json`,tree_digest:null,ignored_after:null,config_changed:paths};
+  s.static_config_changes=(s.static_config_changes??0)+1;
+  s.last_errors=[`STATIC_CONFIG_CHANGED: ${paths.join(', ')} changed; static checks did not run and the round was not returned automatically. Inspect the config change before deciding`];
+  return record;
+}
+
+// acceptanceRun과 같은 규칙으로 static_commands를 돌리고 static-N-<stage>.json에 남긴다.
+function staticRun(c,brief,stage,reference,{trust=false,known=null}={}) {
+  const s=c.s,n=s.iteration;
+  const ignoredNow=ignoredManifest(c.root,brief.acceptance_artifacts);
+  const touched=reference?ignoredChanges(reference,ignoredNow):['(no ignored-file baseline for this round)'];
+  const record={kind:'static',stage,round:n,at:new Date().toISOString(),commands:brief.static_commands};
+  const name=`static-${n}-${stage}${stage==='finish'?'':'-'+Date.now()}`;
+  if(touched.length&&!trust){
+    Object.assign(record,{status:'skipped',ignored_changes:touched.slice(0,50),
+      reason:'gitignored files changed since the reference point, so a linter could run code the snapshot does not show; inspect them, then verify with acceptance_trust_ignored:true'});
+  } else {
+    const before=known??snapshot(c.root),started=Date.now();
+    record.results=supervisedAcceptance(c,brief,stage,before,{kind:'static'});
+    record.duration_ms=Date.now()-started;
+    s.static_ms=(s.static_ms??0)+record.duration_ms;
+    record.quiescent=record.results.every(r=>r.quiescence?.quiescent===true);
+    record.status=record.results.every(r=>r.status==='pass')?'pass':'fail';
+    if(touched.length)record.trusted_ignored_changes=touched.slice(0,50);
+    const after=snapshot(c.root);
+    record.tree_changed=changes(before,after);
+    if(!record.tree_changed.length&&after.digest!==before.digest)record.tree_changed=['(git status or index)'];
+    record.tree_digest=after.digest;
+    c.art(`${name}-ignored.json`,ignoredManifest(c.root,brief.acceptance_artifacts));
+    record.ignored_after=`${name}-ignored.json`;
+  }
+  c.art(`${name}.json`,record);
+  s.static={round:n,stage,status:record.status,quiescent:record.quiescent===true,file:`${name}.json`,tree_digest:record.tree_digest??null,ignored_after:record.ignored_after??null};
+  return record;
+}
+
+// 컨트롤러 재지시. 정적 검사와 수용 테스트 실패를 한 번에 싣는다. 같은 명령으로 두 번 되돌아가면 반복 반려 규칙에 걸린다.
+function controllerRedo(brief,when,st,acc) {
+  const sf=st?.status==='fail'?st.results.filter(r=>r.status!=='pass'):[];
+  const af=acc?.status==='fail'?acc.results.filter(r=>r.status!=='pass'):[];
+  const what=[sf.length?`Static checks failed (${sf.map(r=>r.command).join(', ')})`:null,af.length?`${sf.length?'a':'A'}cceptance commands failed (${af.map(r=>r.command).join(', ')})`:null].filter(Boolean).join(' and ');
+  return {verdict:'redo',reviewed_by:'controller',rationale:`${what} ${when}`,
+    blocking_criteria:[...staticCriteria(sf),...failureCriteria(brief,af)],
+    commands_run:[...(sf.length?brief.static_commands:[]),...(af.length?brief.acceptance_commands:[])],
+    independent_diff_review:true,
+    ...(sf.length?{static_feedback:staticFeedback(st.results)}:{}),...(af.length?{acceptance_feedback:failureFeedback(acc.results)}:{})};
+}
+
 // A durable marker prevents a controller crash from converting an unfinished test
 // into reusable evidence. Only proven shutdown or explicit lead recovery clears it.
 const acceptanceMarker=c=>path.join(c.dir,'locks/acceptance.json');
-function supervisedAcceptance(c,brief,stage,before) {
+// 정적 검사도 같은 실행기와 같은 표식을 쓴다(둘이 동시에 돌지 않는다). kind:'static'이면 static_commands를 돌린다.
+function supervisedAcceptance(c,brief,stage,before,{kind='acceptance'}={}) {
   const s=c.s,budget=budgetStatus(c.root,s);
+  const commands=kind==='static'?brief.static_commands:brief.acceptance_commands;
+  const timeout_ms=kind==='static'?brief.static_timeout_ms??STATIC_TIMEOUT_MS:brief.acceptance_timeout_ms;
   const deadline_ms=s.limits?.max_wall_ms===undefined?null:Date.parse(s.started_at)+s.limits.max_wall_ms;
-  if(budget.reason)return brief.acceptance_commands.map(command=>({command,status:'not_run',code:'BUDGET_EXCEEDED',
+  if(budget.reason)return commands.map(command=>({command,status:'not_run',code:'BUDGET_EXCEEDED',
     output_tail:'',quiescence:{quiescent:true,reason:'Budget exhausted; command not started'}}));
-  atomic(acceptanceMarker(c),{state:s,brief,baseline:c.optional('baseline.json')??before,stage,at:new Date().toISOString()});
-  const results=runCommands(c.root,brief.acceptance_commands,{timeout_ms:brief.acceptance_timeout_ms,deadline_ms});
+  atomic(acceptanceMarker(c),{state:s,brief,baseline:c.optional('baseline.json')??before,stage,kind,at:new Date().toISOString()});
+  const results=runCommands(c.root,commands,{timeout_ms,deadline_ms});
   if(results.every(r=>r.quiescence?.quiescent===true))fs.unlinkSync(acceptanceMarker(c));
   return results;
 }
@@ -1590,6 +1699,34 @@ function verify(c,input) {
     throw Error(`Out-of-scope changes since the baseline: ${stray.join(', ')}; revert them (the task will need another round), or pass allow_out_of_scope [{path, reason}] to accept them knowingly`);
   }
   if(acceptanceHalt(c,null)){s.scope_exceptions=before;c.save();return s;}
+  // 정적 검사: 통과하지 않은 작업은 닫지 않는다. 보호 설정 파일이 바뀌었으면 리드가 사유를 적어야 그 설정으로 다시 돌린다.
+  let staticEvidence=null;
+  if(brief.static_commands){
+    const configChanged=staticConfigChanges(c,brief,now);
+    if(configChanged.length&&(typeof input.static_config_change_reason!=='string'||!input.static_config_change_reason.trim())){
+      s.scope_exceptions=before;
+      throw Error(`STATIC_CONFIG_CHANGED: ${configChanged.join(', ')} changed since the task started; inspect the change (a worker may have turned a rule off), then provide static_config_change_reason to run the static checks with it`);
+    }
+    const prev=s.static?.round===s.iteration?s.static:null;
+    const after=prev?.ignored_after?c.optional(prev.ignored_after):null;
+    const proven=prev?.quiescent===true&&passingStaticRecord(prev.file?c.optional(prev.file):null,brief.static_commands,s.iteration,now.digest);
+    const ignoredNow=after&&proven?ignoredManifest(c.root,brief.acceptance_artifacts):null;
+    if(ignoredNow&&!ignoredChanges(after,ignoredNow).length)staticEvidence={status:'pass',reused:prev.file};
+    else {
+      staticEvidence=staticRun(c,brief,'verify',after??c.optional(`ignored-base-${s.iteration}.json`),{trust:input.acceptance_trust_ignored===true,known:now});
+      if(acceptanceHalt(c,staticEvidence)){s.scope_exceptions=before;c.save();return s;}
+      if(staticEvidence.status==='skipped'){
+        s.scope_exceptions=before;c.save();
+        throw Error(`STATIC_NOT_PASSING: static commands not run: ${staticEvidence.reason}. Changed: ${staticEvidence.ignored_changes.join(', ')}`);
+      }
+      if(staticEvidence.status==='fail'){
+        s.scope_exceptions=before;
+        if(s.owner==='lead'){c.save();throw Error('STATIC_NOT_PASSING: '+staticEvidence.results.filter(r=>r.status!=='pass').map(r=>r.command).join(', ')+' failed on the lead round; fix it before CLOSE');}
+        return applyReview(c,controllerRedo(brief,'during verification',staticEvidence,null),staticEvidence.tree_digest);
+      }
+    }
+    if(configChanged.length)staticEvidence={...staticEvidence,config_changed:configChanged,config_change_reason:input.static_config_change_reason.trim().slice(0,500)};
+  }
   let evidence=null;
   if(auto){
     // finish 직후 실행이 통과했고 그 뒤로 트리와 무시된 파일이 그대로면 같은 상태에 대한 같은 증거이므로 다시 돌리지 않는다.
@@ -1610,11 +1747,7 @@ function verify(c,input) {
       // VERIFY에서 실패하면 닫지 않고 finish 때와 같은 규칙으로 되돌린다(리드 라운드는 BLOCKED).
       if(evidence.status==='fail'){
         s.scope_exceptions=before;
-        const failed=evidence.results.filter(r=>r.status!=='pass');
-        return applyReview(c,{verdict:'redo',reviewed_by:'controller',
-          rationale:`Acceptance commands failed during verification (${failed.map(r=>r.command).join(', ')})`,
-          blocking_criteria:failureCriteria(brief,failed),commands_run:brief.acceptance_commands,
-          independent_diff_review:true,acceptance_feedback:failureFeedback(evidence.results)},evidence.tree_digest);
+        return applyReview(c,controllerRedo(brief,'during verification',null,evidence),evidence.tree_digest);
       }
     }
   }
@@ -1624,7 +1757,8 @@ function verify(c,input) {
   const ac=acTable(brief,results,{reviewed:true});
   const unproven=ac.filter(r=>r.status==='FAIL'||r.status==='NOT_RUN');
   if(unproven.length){s.scope_exceptions=before;throw Error('AC_NOT_PROVEN: '+unproven.map(r=>r.id).join(', ')+' has no passing acceptance result');}
-  c.art('verification.json',{...input,acceptance_test_changes:modifiedTests,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{}),ac_table:ac,
+  c.art('verification.json',{...input,acceptance_test_changes:modifiedTests,...(evidence?{acceptance:evidence.reused?evidence:{file:s.acceptance.file,status:evidence.status}}:{}),
+    ...(staticEvidence?{static:staticEvidence.reused?staticEvidence:{file:s.static.file,status:staticEvidence.status,...(staticEvidence.config_changed?{config_changed:staticEvidence.config_changed,config_change_reason:staticEvidence.config_change_reason}:{})}}:{}),ac_table:ac,
     changed_files:cumulative.changed,unattributed_changes:cumulative.unattributed_changes});
   s.phase='CLOSE';
   s.closed_at=new Date().toISOString();
@@ -1934,6 +2068,14 @@ function policyEvaluation(c) {
   const proven=!!evidence&&a.status==='pass'&&a.quiescent===true&&evidence.results?.length>0&&evidence.results.every(r=>r.quiescence?.quiescent===true);
   need(proven,'ACCEPTANCE_SHUTDOWN_UNPROVEN','controller acceptance run passed with process shutdown proof','there is no passing controller acceptance run with shutdown proof for this round');
   need(proven&&a.tree_digest===s.post_digest&&!!ignored&&!ignoredChanges(ignored,ignoredManifest(c.root,brief?.acceptance_artifacts)).length,'ACCEPTANCE_EVIDENCE_STALE','acceptance evidence is current','the tree or ignored inputs changed after the acceptance run');
+  if(brief?.static_commands){
+    const st=s.static?.round===n?s.static:null,stIgnored=st?.ignored_after?c.optional(st.ignored_after):null;
+    const stOk=st?.status==='pass'&&st.quiescent===true&&passingStaticRecord(st.file?c.optional(st.file):null,brief.static_commands,n,s.post_digest)
+      &&!!stIgnored&&!ignoredChanges(stIgnored,ignoredManifest(c.root,brief.acceptance_artifacts)).length;
+    need(s.static_baseline?.status==='green','STATIC_BASELINE_UNCHECKED','static checks proven green on the untouched tree','the static commands were not proven to pass before any change');
+    need(stOk,'STATIC_NOT_PASSING','static checks passed on this round\'s tree','there is no current passing static-check run for this round');
+    need(!staticConfigChanges(c,brief).length,'STATIC_CONFIG_CHANGED','static config unchanged','a static_protect config file changed since the task started');
+  }
   const table=brief&&proven?acTable(brief,evidence.results,{reviewed:false}):[];
   need(table.length>0&&table.every(r=>r.status==='PASS'),'AC_MAPPING_INCOMPLETE','every AC proven by a passing command',`not every AC is proven by a passing command (${table.filter(r=>r.status!=='PASS').map(r=>r.id).join(', ')||'no AC table'})`);
   return result();
