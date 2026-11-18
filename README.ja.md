@@ -67,11 +67,11 @@ Opusがコードを書き、テストを回し、長いログを読むと、高�
 **読み方と限界**
 - トークンは入力換算値です。キャッシュ書き込みは1.25倍、キャッシュ読み込みは0.1倍、出力は5倍として足しています。
 - ワーカーが使ったトークンと費用はこの表に入っていません。ワーカーは別サブスクリプションか、より安いモデルで動く前提です。
-- それぞれ2回ずつしか実行していません。回の間にスキルも変更しました（2回目には#112と#114が入っています）。
+- それぞれ2回ずつしか実行していません。回の間にスキルも変更しました（2回目には、ワーカーに関係するテストだけを実行させる[#112](https://github.com/prentice7725/hyperfusion/pull/112)と、ワーカーとレビュアーに境界チェックリストを渡す[#114](https://github.com/prentice7725/hyperfusion/pull/114)が入っています）。
 - 2026-11-10〜11、Windows 11の1台で測定しました。
 - 方法は[ベンチマーク文書](references/benchmark-pilot.md)にあります。
 
-**ワーカー単独。** リードとレビュアーなしで、同じ5つの課題を各ワーカーに1ラウンドずつ、ワーカーごとに15回任せました（2026-11-14）。隠しテストをすべて通過した回数はTerra 15、Sonnet 15、Grok 13、Gemini 4 Hydrogen 12、Gemini 3.8 Flash 7です。範囲外のファイルを変更した回はありませんでした。そのためAntigravityの既定モデルをHydrogenに変え、HydrogenはB級に置きます。→ [ワーカー能力試験](references/archive/worker-capability-trial.md)（韓国語）
+**ワーカー単独。** リードとレビュアーなしで、同じ5つの課題を各ワーカーに1ラウンドずつ、ワーカーごとに15回任せました（2026-11-14）。隠しテストをすべて通過した回数はTerra 15、Sonnet 15、Grok 13、Gemini 4 Hydrogen 12、Gemini 3.8 Flash 7です。範囲外のファイルを変更した回はありませんでした。そのためAntigravityの既定モデルをHydrogenに変え、HydrogenはA級で最も低いGrok（13）に届かないため、B級に置きます（[等級](#チーム)）。→ [ワーカー能力試験](references/archive/worker-capability-trial.md)（韓国語）
 
 ## チーム
 
@@ -86,6 +86,8 @@ Opusがコードを書き、テストを回し、長いログを読むと、高�
 | Antigravity | agy（Gemini 4 Hydrogen high） | UI、フロントエンド、ドキュメント。個人のGoogleプランでは使わない（安全について参照） |
 | Sol | gpt-6.1-sol（Codex） | 主にレビューと相談 |
 
+**等級。** A級はTerra・Grok・Sonnet、B級はLuna・Haiku・Antigravityです。易しい実装、UI、ドキュメントはB級から任せ、B級のラウンドが差し戻されるとA級に回します。
+
 Fableを使えるプラン（Maxなど）でFableがリードのときは、Opusがレビューと相談のワーカーになり、A級が失敗した作業を引き継ぎます。→ [Fableリード](references/configuration.md#fable-리드와-opus-일꾼)（韓国語）
 
 インストールされたワーカーだけを使い、1つだけでも動きます。この割り当ては出発点で、ワーカーごとの差し戻し記録を見てリードが変えます。→ [配置ルール](references/routing.md)
@@ -95,7 +97,7 @@ Fableを使えるプラン（Maxなど）でFableがリードのときは、Opus
 必要なもの：
 - Node.js 24以上
 - 初期コミットのあるGitリポジトリ（リモートはなくてもかまいません）
-- インストール・認証済みの`claude`、`grok`、`agy`、`codex`のいずれか1つ以上
+- インストール・認証済みの`claude`、`grok`、`agy`、`codex`のいずれか1つ以上（`agy`は個人のGoogleプランでは使いません。→ [安全について](#安全について)）
 
 ```sh
 # Linux / macOS
@@ -117,23 +119,23 @@ Claude CodeでOpus 5.5を選び、次のように使います。
 - **インストールの点検：** `node scripts/setup-doctor.mjs <リポジトリ>`がインストール済みのCLIを見て、合う設定を勧めます。
 - **チームファイル：** `--write-team`を付けると、インストール済みのCLIから`~/.hyperfusion/team.json`の下書きを書きます。使うワーカー、モデル、強度はそのファイルで直します。→ [チームファイル](references/configuration.md#이-컴퓨터의-팀-파일-hyperfusionteamjson)（韓国語）
 - **設定ファイル：** 対象リポジトリの`hyperfusion.config.json`です。例は`hyperfusion.config.example.json`にあります。
-- **リードガードフック（推奨）：** `npm run guard:settings`が出力する`hooks`を`~/.claude/settings.json`にマージします。ワーカーの作業中にリードが自分でファイルを編集するのを防ぎます。→ [詳しく](references/details.ja.md#インストールと使い方)
+- **リードガードフック（推奨）：** `npm run guard:settings`が出力する`hooks`を`~/.claude/settings.json`にマージします。ワーカーの作業中にリードがEdit・Writeツールでファイルを編集するのを防ぎます。Bashでの書き込みは防がず、ラウンド間のスナップショット比較で検出します。→ [詳しく](references/details.ja.md#インストールと使い方)
 - **次にすること：** どの段階でも`node scripts/fusion-state.mjs next <リポジトリ>`が次のコマンドを教えてくれます。
 
 ## 安全について
 
-- ワーカーに渡す文章では、メール・キー・パスワードのパターンを隠します。
+- ワーカーに渡す文章では、メール・IP・キー・パスワードのパターンを隠します。
 - 作業の状態ファイルはリポジトリの外、`~/.hyperfusion/state/`に置きます。
 - 自動のコミット、プッシュ、デプロイはしません。
 
 **これは協業のルールであって、OSのサンドボックスではありません。** シェルを使えるワーカーはリポジトリの外のファイルにも届きます。会社のコードで使うなら、ファイルアクセスと外部送信のポリシーを別に決めてください。→ [セキュリティの詳細](references/details.ja.md#セキュリティ)
 
-**個人のGoogleプランでAntigravityをワーカーとして使わないでください。** 2026-11-09、Googleのスタッフは、Claude Codeのようなサードパーティのエージェントが個人プラン（Free、Pro、Ultra）で`agy -p`を呼ぶことはAntigravity規約6条の違反で、自動のアカウント停止につながりうると[回答しました](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021)。HyperFusionがAntigravityにラウンドを任せるのはまさにこの形で、呼び出し間隔を置いても変わりません。チームファイルでこのワーカーを切るか（`"antigravity": {"enabled": false}`）、Google APIキー、Vertex AI、Gemini Enterpriseを使ってください。`agy`がAPIキーで動くかはHyperFusionでは確認していません。それでも停止の文言が出た場合、そのCLIはオペレーターが解除するまでこのコンピューターで起動しません。→ [チームファイル](references/configuration.md#자리-제한과-호출-간격)（韓国語）
+**個人のGoogleプランでAntigravityをワーカーとして使わないでください。** 2026-11-09、Googleのスタッフは、Claude Codeのようなサードパーティのエージェントが個人プラン（Free、Pro、Ultra）で`agy -p`を呼ぶことはAntigravity規約6条の違反で、自動のアカウント停止につながりうると[回答しました](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021)。HyperFusionがAntigravityにラウンドを任せるのはまさにこの形で、呼び出し間隔を置いても変わりません。チームファイルでこのワーカーを切るか（`"antigravity": {"enabled": false}`）、Google APIキー、Vertex AI、Gemini Enterpriseを使ってください。`agy`がAPIキーで動くかはHyperFusionでは確認していません。それでも停止の文言が出た場合、HyperFusionは、オペレーターが`setup-doctor --clear-suspension agy`で解除するまで、このコンピューターでそのCLIを起動しません。→ [チームファイル](references/configuration.md#자리-제한과-호출-간격)（韓国語）
 
 ## さらに読む
 
 - [詳細説明](references/details.ja.md)：機能の全体、適応型レビュー、ベンダー設定、測定、セキュリティ、テスト
-- [CHANGELOG（韓国語）](CHANGELOG.md)：バージョンごとの変更。現在のパッケージバージョンは`0.34.0`です。
+- [CHANGELOG（韓国語）](CHANGELOG.md)：バージョンごとの変更。現在のパッケージバージョンは`0.35.0`です。
 - 初めてなら[runtime](references/runtime.md)（コマンド）と[configuration](references/configuration.md)（設定）から読んでください。リード向けの英語の要約は[executor-quickstart](references/executor-quickstart.md)です。
 
 | テーマ | 文書 |

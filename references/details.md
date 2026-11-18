@@ -17,6 +17,7 @@
 
 - **일꾼 말은 믿지 않는다.** 변경 파일, 테스트 통과 주장은 스냅샷 diff와 컨트롤러의 재실행으로만 인정한다. 거짓 신고는 복구 단계로 간다.
 - **엄격한 반려.** 반려에는 사유가 필수고, 재지시에는 파일·줄 단위의 명령서가 필수다. 같은 수용 기준(AC1…)으로 두 번 반려되면 일꾼을 교체한다. 일꾼당 3라운드, 리드 takeover는 모든 일꾼이 소진된 뒤 1회뿐이다.
+- **정적 검사 관문.** 작업지시서의 `static_commands`(린트, 타입 검사)를 컨트롤러가 finish와 VERIFY에서 직접 돌린다. 수용 테스트와 반대로 시작 전 트리에서 통과해야 받는다. 실패하면 리뷰 없이 같은 일꾼에게 되돌린다. 일꾼이 규칙을 끄지 못하게 `static_protect`에 적은 설정 파일이 바뀌면 돌리지 않고 리드에게 올린다. 통과하지 않으면 작업을 닫을 수 없다(`STATIC_NOT_PASSING`). → [static-gate](static-gate.md)
 - **red-first 수용 테스트.** 컨트롤러가 수용 명령을 직접 돌린다. 시작할 때 손대지 않은 트리에서 실패하는지 먼저 확인해서, 처음부터 통과하는 엉터리 관문을 막는다. 리팩터링처럼 처음부터 통과해야 정상인 작업은 **보존 검증**(`verification:{kind:"preserve",protect:[...]}`)으로, 테스트·픽스처가 작업 내내 바뀌지 않았음을 컨트롤러가 스냅샷으로 증명한다.
 - **AC 추적표와 PR 초안.** `acceptance_map`으로 수용 기준(AC1…)과 그걸 증명하는 명령을 잇는다. 끝나면 AC별 판정표와 PR 설명 초안(`pr-draft.md`)을 남긴다. 변경 목록은 첫 일꾼 시작(`base-1`) 대비 최종 누적 변경이고, 일꾼 라운드에 귀속되지 않는 파일은 `unattributed_changes`로 별도 표시한다. 커밋·푸시는 사용자가 지시한다.
 - **독립 리뷰 위임.** 라운드 리뷰를 Sol 같은 다른 모델이 읽기 전용으로 한다. 리뷰어는 누적 diff(최대 100,000자)와 컨트롤러가 돌린 수용 결과를 받고, 일꾼의 요약·테스트 보고와 이전 리뷰어의 결론은 받지 않는다. 구현한 모델은 자기 리뷰를 할 수 없다. 근거(파일·줄) 없는 반려는 그대로 적용되지 않는다. → [review](review-protocol.md)
@@ -32,6 +33,7 @@
 - **오토파일럿.** `autopilot`이 라운드 실행과 독립 위임 리뷰를 자동으로 진행한다(아래 [설치와 사용](#설치와-사용)). `report`의 `lead_load`는 리드가 직접 판정한 횟수와 컨트롤러가 승인한 횟수, 리드가 읽어야 했던 게이트 수, 자동·수동 복구 수를 보여 준다.
 - **요약 뒤에도 이어 가기.** 리드 가드의 SessionStart 훅이 대화가 요약되거나 새 세션이 시작될 때 진행 중인 작업과 다음 명령을 한 번 알려 준다.
 - **작업 상태 한 줄.** `fusion-state.mjs line`, UserPromptSubmit 훅, 프롬프트 위 띠 모드(`mods/hf-status`)가 같은 한 줄로 단계·일꾼 라운드·다음 동작을 보여 준다. → [운영 설명](operations.md#작업-상태-표시)
+- **규칙 후보.** `memory.mjs rule-candidates`가 서로 다른 작업 둘 이상에서 되풀이된 `error` 기억을 기계 검사로 바꿀 후보로 보여 준다(읽기 전용). 리드가 규칙 파일로 옮긴 기억은 회수에서 빠지고, 그 규칙 파일이 바뀌거나 사라지면 다시 올라온다. → [static-gate](static-gate.md)
 - **내장 기억 계층.** 시행착오(에러, 절차, 경험)를 외부 서버 없이 로컬에 쌓아 다음 세션과 다른 일꾼에게 넘긴다. 쓰기와 읽기 모두 리드의 승인을 거치고, 출처·버전으로 거른다. 비밀값은 저장하지 않는다. → [memory](memory.md) · [기억 회수](memory-recall.md)
 - **알림.** `HF_NOTIFY_URL`(예: ntfy)로 일꾼 완료나 리드 판단이 필요할 때 휴대폰 푸시를 받는다. 본문은 상태만 담는다.
 
@@ -121,7 +123,7 @@ Claude Code에서 Opus 5.5를 고르고:
 npm test
 ```
 
-자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 재량권과 자동 복구, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 24에서 실행하도록 구성돼 있다. Windows에서는 테스트 파일을 순차 실행하므로(Windows 한 대로 전체를 돌리면 몇 시간 걸린다) CI는 Windows 작업을 러너 4대로 나눠 돌리고(`HF_TEST_SHARD`, 다른 OS는 병렬도 2), 실제 고아 프로세스를 만드는 회귀 테스트는 병렬 테스트 뒤에 따로 돌린다. `npm run spawns`가 테스트(또는 지정한 명령)가 만드는 하위 프로세스를 명령별·호출 지점별로 센다.
+자동 테스트가 상태 기계, 일꾼 어댑터, 배치, 리뷰 위임, 재량권과 자동 복구, 기억 계층, 프로젝트 흐름, 보안, 마스킹과 오토파일럿을 확인한다. 실제 CLI 스모크 1개는 `HF_LIVE=1`일 때만 실행한다. GitHub Actions는 Ubuntu·Windows × Node 24에서 실행하도록 구성돼 있다. Windows에서는 테스트 파일을 순차 실행하므로(Windows 한 대로 전체를 돌리면 몇 시간 걸린다) CI는 Windows 작업을 러너 4대로 나눠 돌리고(`HF_TEST_SHARD`, 다른 OS는 병렬도 2), 실제 고아 프로세스를 만드는 회귀 테스트는 병렬 테스트 뒤에 따로 돌린다.
 
 **테스트의 `grok`/`agy`/`claude`/`codex`는 대역 CLI다.** 실제 모델 호출, 인증, 이미지 생성은 이 저장소의 테스트로 검증되지 않았다. 설치된 CLI에 필요한 플래그가 없으면 실행 전에 `ADAPTER_UNAVAILABLE`로 거절한다. CLI 플래그는 [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md), [Antigravity CLI](https://antigravity.google/docs/cli/headless), [Claude Code](https://code.claude.com/docs/en/headless) 문서를 기준으로 했다. 재량권의 자동 복구가 "다시 해도 같은 실패"를 가려내는 문구 판별은 대역 CLI 기준이라, 실제 CLI에서 처음 몇 번은 `recovery-*.json`의 `reason`을 확인하는 것이 좋다. 실모델로 잰 리드 토큰 결과는 [README](../README.ko.md#측정-결과)에 있다.
 
