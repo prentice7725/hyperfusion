@@ -67,11 +67,11 @@ Opus가 코드를 쓰고, 테스트를 돌리고, 긴 로그를 읽으면 비싼
 **읽는 법과 한계**
 - 토큰 수치는 입력 환산값이다. 캐시 쓰기는 1.25배, 캐시 읽기는 0.1배, 출력은 5배로 쳐서 더했다.
 - 일꾼 모델이 쓴 토큰과 비용은 이 표에 없다. 일꾼은 다른 구독이나 더 싼 모델을 쓴다고 가정했다.
-- 각각 두 번씩만 돌렸다. 회차 사이에 스킬도 고쳤다(2회차에는 #112, #114가 들어갔다).
+- 각각 두 번씩만 돌렸다. 회차 사이에 스킬도 고쳤다(2회차에는 일꾼이 관련 테스트만 돌리게 한 [#112](https://github.com/prentice7725/hyperfusion/pull/112)와 일꾼·리뷰어에게 경계 점검표를 준 [#114](https://github.com/prentice7725/hyperfusion/pull/114)가 들어갔다).
 - 2026-11-10~11, Windows 11 한 대에서 측정했다.
 - 방법은 [벤치마크 문서](references/benchmark-pilot.md)에 있다.
 
-**일꾼만 따로.** 리드와 리뷰어 없이 일꾼 하나에게 같은 다섯 과제를 한 라운드씩, 일꾼마다 15회 맡겨 봤다(2026-11-14). 숨김 시험을 전부 통과한 횟수는 Terra 15, Sonnet 15, Grok 13, Gemini 4 Hydrogen 12, Gemini 3.8 Flash 7이다. 범위 밖 파일을 고친 시험은 없었다. 그래서 Antigravity 기본 모델을 Hydrogen으로 바꿨고, Hydrogen은 B급에 둔다. → [일꾼 역량 시험](references/archive/worker-capability-trial.md)
+**일꾼만 따로.** 리드와 리뷰어 없이 일꾼 하나에게 같은 다섯 과제를 한 라운드씩, 일꾼마다 15회 맡겨 봤다(2026-11-14). 숨김 시험을 전부 통과한 횟수는 Terra 15, Sonnet 15, Grok 13, Gemini 4 Hydrogen 12, Gemini 3.8 Flash 7이다. 범위 밖 파일을 고친 시험은 없었다. 그래서 Antigravity 기본 모델을 Hydrogen으로 바꿨고, Hydrogen은 A급 중 가장 낮은 Grok(13)에 못 미쳐 B급에 둔다([등급](#팀)). → [일꾼 역량 시험](references/archive/worker-capability-trial.md)
 
 ## 팀
 
@@ -86,6 +86,8 @@ Opus가 코드를 쓰고, 테스트를 돌리고, 긴 로그를 읽으면 비싼
 | Antigravity | agy (Gemini 4 Hydrogen high) | UI, 프론트엔드, 문서. 개인 구글 요금제로는 쓰지 않는다(안전에 대해 참고) |
 | Sol | gpt-6.1-sol (Codex) | 주로 리뷰와 상담 |
 
+**등급.** A급은 Terra·Grok·Sonnet, B급은 Luna·Haiku·Antigravity다. 쉬운 구현, UI, 문서는 B급부터 맡기고, B급 라운드가 반려되면 A급으로 넘긴다.
+
 Fable을 쓸 수 있는 요금제(Max 등)에서 Fable이 리드면, Opus는 리뷰·상담 일꾼이 되고 A급이 실패한 일을 넘겨받는다. → [Fable 리드](references/configuration.md#fable-리드와-opus-일꾼)
 
 설치된 일꾼만 쓴다. 하나만 있어도 된다. 배치는 출발점일 뿐이고, 일꾼마다 반려된 기록을 보고 리드가 바꾼다. → [배치 규칙](references/routing.md)
@@ -95,7 +97,7 @@ Fable을 쓸 수 있는 요금제(Max 등)에서 Fable이 리드면, Opus는 리
 필요한 것:
 - Node.js 24 이상
 - 초기 커밋이 있는 Git 저장소(원격 저장소는 없어도 된다)
-- 설치·인증된 `claude`, `grok`, `agy`, `codex` 중 하나 이상
+- 설치·인증된 `claude`, `grok`, `agy`, `codex` 중 하나 이상(`agy`는 개인 구글 요금제로 쓰지 않는다. → [안전에 대해](#안전에-대해))
 
 ```sh
 # Linux / macOS
@@ -117,23 +119,23 @@ Claude Code에서 Opus 5.5를 고르고 이렇게 쓴다.
 - **설치 점검:** `node scripts/setup-doctor.mjs <저장소>`가 설치된 CLI를 보고 알맞은 설정을 추천한다.
 - **팀 파일:** `--write-team`을 붙이면 설치된 CLI로 `~/.hyperfusion/team.json` 초안을 쓴다. 쓸 일꾼, 모델, 강도를 그 파일에서 고친다. → [팀 파일](references/configuration.md#이-컴퓨터의-팀-파일-hyperfusionteamjson)
 - **설정 파일:** 대상 저장소의 `hyperfusion.config.json`이다. 예시는 `hyperfusion.config.example.json`에 있다.
-- **리드 가드 훅(권장):** `npm run guard:settings`가 출력하는 `hooks`를 `~/.claude/settings.json`에 합친다. 일꾼이 일하는 동안 리드가 직접 파일을 고치지 못하게 막는다. → [자세히](references/details.md#설치와-사용)
+- **리드 가드 훅(권장):** `npm run guard:settings`가 출력하는 `hooks`를 `~/.claude/settings.json`에 합친다. 일꾼이 일하는 동안 리드가 Edit·Write 도구로 파일을 고치지 못하게 막는다. Bash로 쓴 변경은 막지 않고, 라운드 사이 스냅샷 비교가 잡는다. → [자세히](references/details.md#설치와-사용)
 - **다음에 할 일:** 어느 단계에서든 `node scripts/fusion-state.mjs next <저장소>`가 다음 명령을 알려 준다.
 
 ## 안전에 대해
 
-- 일꾼에게 넘기는 글에서는 이메일, 키, 비밀번호 패턴을 가린다.
+- 일꾼에게 넘기는 글에서는 이메일, IP, 키, 비밀번호 패턴을 가린다.
 - 작업 상태 파일은 저장소 밖 `~/.hyperfusion/state/`에 둔다.
 - 자동 커밋, 푸시, 배포는 하지 않는다.
 
 **이것은 협업 규칙이지 OS 샌드박스가 아니다.** 셸을 쓸 수 있는 일꾼은 저장소 밖 파일에도 닿을 수 있다. 회사 코드에 쓴다면 파일 접근과 외부 전송 정책을 따로 정해야 한다. → [보안 상세](references/details.md#보안)
 
-**개인 구글 요금제로 Antigravity를 일꾼으로 쓰지 마라.** 2026-11-09 구글 직원은 Claude Code 같은 서드파티 에이전트가 개인 요금제(Free, Pro, Ultra)에서 `agy -p`를 부르는 것은 Antigravity 약관 6조 위반이고 자동 계정 정지로 이어질 수 있다고 [답했다](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021). HyperFusion이 Antigravity에 라운드를 맡기는 것이 바로 그 모양이고, 호출 간격을 둬도 달라지지 않는다. 팀 파일에서 이 일꾼을 끄거나(`"antigravity": {"enabled": false}`) 구글 API 키, Vertex AI, Gemini Enterprise를 쓴다. `agy`가 API 키로 도는지는 HyperFusion이 확인하지 않았다. 그래도 정지 문구가 나오면 그 CLI를 이 컴퓨터에서 운영자가 풀 때까지 띄우지 않는다. → [팀 파일](references/configuration.md#자리-제한과-호출-간격)
+**개인 구글 요금제로 Antigravity를 일꾼으로 쓰지 마라.** 2026-11-09 구글 직원은 Claude Code 같은 서드파티 에이전트가 개인 요금제(Free, Pro, Ultra)에서 `agy -p`를 부르는 것은 Antigravity 약관 6조 위반이고 자동 계정 정지로 이어질 수 있다고 [답했다](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021). HyperFusion이 Antigravity에 라운드를 맡기는 것이 바로 그 모양이고, 호출 간격을 둬도 달라지지 않는다. 팀 파일에서 이 일꾼을 끄거나(`"antigravity": {"enabled": false}`) 구글 API 키, Vertex AI, Gemini Enterprise를 쓴다. `agy`가 API 키로 도는지는 HyperFusion이 확인하지 않았다. 그래도 정지 문구가 나오면 HyperFusion은 운영자가 `setup-doctor --clear-suspension agy`로 풀 때까지 이 컴퓨터에서 그 CLI를 띄우지 않는다. → [팀 파일](references/configuration.md#자리-제한과-호출-간격)
 
 ## 더 읽을거리
 
 - [상세 설명](references/details.md): 전체 기능, 적응형 리뷰, 벤더 설정, 측정, 보안, 테스트
-- [CHANGELOG](CHANGELOG.md): 버전별 변경. 지금 패키지 버전은 `0.34.0`이다.
+- [CHANGELOG](CHANGELOG.md): 버전별 변경. 지금 패키지 버전은 `0.35.0`이다.
 - 처음이면 [runtime](references/runtime.md)(명령)과 [configuration](references/configuration.md)(설정)부터 본다. 리드용 영어 요약은 [executor-quickstart](references/executor-quickstart.md)에 있다.
 
 | 주제 | 문서 |

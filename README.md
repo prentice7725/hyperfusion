@@ -67,11 +67,11 @@ We ran five large tasks (L01–L05) under the same conditions and compared the l
 **How to read this, and its limits**
 - Token figures are input-equivalent. Cache writes count 1.25×, cache reads 0.1× and output 5×.
 - Worker tokens and costs are not in the table. Workers are assumed to run on another subscription or a cheaper model.
-- Each side ran twice only. The skill also changed between runs (run 2 included #112 and #114).
+- Each side ran twice only. The skill also changed between runs (run 2 included [#112](https://github.com/prentice7725/hyperfusion/pull/112), which keeps worker test runs focused, and [#114](https://github.com/prentice7725/hyperfusion/pull/114), which gives workers and reviewers a boundary checklist).
 - Measured on 2026-11-10 and 11-11 on one Windows 11 machine.
 - See the [benchmark document](references/benchmark-pilot.md) for the method.
 
-**Workers alone.** We also gave each worker the same five tasks with no lead and no reviewer, one round each, 15 times per worker (2026-11-14). Runs that passed every hidden test: Terra 15, Sonnet 15, Grok 13, Gemini 4 Hydrogen 12, Gemini 3.8 Flash 7. No run edited files outside its scope. Antigravity now uses Hydrogen by default; Hydrogen stays B-tier. → [worker capability trial](references/archive/worker-capability-trial.md) (Korean)
+**Workers alone.** We also gave each worker the same five tasks with no lead and no reviewer, one round each, 15 times per worker (2026-11-14). Runs that passed every hidden test: Terra 15, Sonnet 15, Grok 13, Gemini 4 Hydrogen 12, Gemini 3.8 Flash 7. No run edited files outside its scope. Antigravity now uses Hydrogen by default; Hydrogen stays B-tier because it scored below Grok (13), the lowest A-tier worker ([tiers](#team)). → [worker capability trial](references/archive/worker-capability-trial.md) (Korean)
 
 ## Team
 
@@ -86,6 +86,8 @@ We ran five large tasks (L01–L05) under the same conditions and compared the l
 | Antigravity | agy (Gemini 4 Hydrogen high) | UI, frontend, documentation. Not on a personal Google plan (see Safety) |
 | Sol | gpt-6.1-sol (Codex) | Mostly reviews and advice |
 
+**Tiers.** A-tier is Terra, Grok and Sonnet; B-tier is Luna, Haiku and Antigravity. Easy code, UI and documentation start with B-tier, and a rejected B-tier round moves to A-tier.
+
 On a plan that offers Fable (such as Max), Fable can lead. Opus then becomes a review and advice worker and takes over rounds that A-tier workers failed. → [Fable lead](references/configuration.md#fable-리드와-opus-일꾼) (Korean)
 
 Only installed workers are used, and one is enough. These roles are a starting point: the lead changes them based on each worker's rejection history. → [Routing](references/routing.md)
@@ -95,7 +97,7 @@ Only installed workers are used, and one is enough. These roles are a starting p
 You need:
 - Node.js 24 or later
 - a Git repository with an initial commit (no remote needed)
-- at least one of `claude`, `grok`, `agy` or `codex`, installed and signed in
+- at least one of `claude`, `grok`, `agy` or `codex`, installed and signed in (do not use `agy` on a personal Google plan; see [Safety](#safety))
 
 ```sh
 # Linux / macOS
@@ -117,23 +119,23 @@ Pick Opus 5.5 in Claude Code and run:
 - **Check the setup:** `node scripts/setup-doctor.mjs <repository>` looks at the installed CLIs and recommends a configuration.
 - **Team file:** add `--write-team` to draft `~/.hyperfusion/team.json` from the installed CLIs. Edit that file to choose the workers, models and efforts on this machine. → [Team file](references/configuration.md#이-컴퓨터의-팀-파일-hyperfusionteamjson) (Korean)
 - **Configuration:** `hyperfusion.config.json` in the target repository. See `hyperfusion.config.example.json`.
-- **Lead guard hooks (recommended):** merge the `hooks` printed by `npm run guard:settings` into `~/.claude/settings.json`. They stop the lead from editing files while a worker is on the job. → [Details](references/details.en.md#installation-and-usage)
+- **Lead guard hooks (recommended):** merge the `hooks` printed by `npm run guard:settings` into `~/.claude/settings.json`. They stop the lead from editing files with the Edit and Write tools while a worker is on the job. They do not block Bash writes; the snapshot check between rounds catches those. → [Details](references/details.en.md#installation-and-usage)
 - **What next:** at any stage, `node scripts/fusion-state.mjs next <repository>` prints the next command.
 
 ## Safety
 
-- Text sent to workers has email, key and password patterns masked.
+- Text sent to workers has email, IP, key and password patterns masked.
 - Task state lives outside the repository in `~/.hyperfusion/state/`.
 - Nothing is committed, pushed or deployed automatically.
 
 **These are collaboration rules, not an OS sandbox.** A worker with a shell can reach files outside the repository. For company code, set your own file-access and data-transfer policy. → [Security details](references/details.en.md#security)
 
-**Do not run Antigravity as a worker on a personal Google plan.** On 2026-11-09 a Google staff member [answered](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021) that a third-party agent such as Claude Code invoking `agy -p` on a personal plan (Free, Pro, Ultra) violates section 6 of the Antigravity terms and can trigger automatic account suspension. HyperFusion does exactly that when it hands a round to Antigravity, and pacing does not change it. Turn the worker off in your team file (`"antigravity": {"enabled": false}`), or use a Google API key, Vertex AI or Gemini Enterprise instead; HyperFusion has not verified that `agy` runs on an API key. If a suspension notice appears anyway, HyperFusion stops launching that CLI on this machine until you clear it. → [team file](references/configuration.md#자리-제한과-호출-간격) (Korean)
+**Do not run Antigravity as a worker on a personal Google plan.** On 2026-11-09 a Google staff member [answered](https://discuss.ai.google.dev/t/terms-section-6-may-a-local-script-run-the-official-agy-cli-when-launched-by-another-vendors-ai-tool/199021) that a third-party agent such as Claude Code invoking `agy -p` on a personal plan (Free, Pro, Ultra) violates section 6 of the Antigravity terms and can trigger automatic account suspension. HyperFusion does exactly that when it hands a round to Antigravity, and pacing does not change it. Turn the worker off in your team file (`"antigravity": {"enabled": false}`), or use a Google API key, Vertex AI or Gemini Enterprise instead; HyperFusion has not verified that `agy` runs on an API key. If a suspension notice appears anyway, HyperFusion stops launching that CLI on this machine until you clear it with `setup-doctor --clear-suspension agy`. → [team file](references/configuration.md#자리-제한과-호출-간격) (Korean)
 
 ## More to read
 
 - [Details](references/details.en.md): all features, adaptive review, vendor settings, measurement, security, tests
-- [CHANGELOG](CHANGELOG.md) (Korean): changes by version. The current package version is `0.34.0`.
+- [CHANGELOG](CHANGELOG.md) (Korean): changes by version. The current package version is `0.35.0`.
 - New here? Start with [runtime](references/runtime.md) (commands) and [configuration](references/configuration.md) (settings). The English lead summary is [executor-quickstart](references/executor-quickstart.md).
 
 | Topic | Documents |
