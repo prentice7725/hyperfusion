@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 외부 전송 마스킹이 한국·일본 개인 식별번호를 가린다. 주민·외국인등록번호, 마이넘버, 전화(한국·일본·`+82`·`+81`), 카드(Luhn·BIN), 계좌, 여권, 운전면허, 재류카드, 기초연금번호. 전각 숫자와 장음 부호 하이픈도 찾는다. 오탐을 줄이려고 체크섬·날짜 검사·키워드(앞 30자 또는 JSON 필드 이름)를 쓰고, 영숫자·하이픈에 붙은 숫자는 보지 않는다. 조건은 `references/operations.md`의 "외부 전송 마스킹".
+
 ## 0.35.0 — 2026-11-17
 
 - 정적 검사 관문(HF-I11)을 넣었다. brief의 `static_commands`(린트, 타입 검사)를 컨트롤러가 finish와 VERIFY에서 수용 테스트와 같은 감독 실행기로 돌린다. 시작 전 트리에서 통과해야 받고(`STATIC_BASELINE_FAILING`, `STATIC_DIRTY`, `STATIC_UNVERIFIED`), 실패하면 리뷰 없이 같은 일꾼에게 되돌린다. 수용 실패와 함께면 한 번의 재지시에 둘 다 싣는다. 일꾼이 규칙을 끄지 못하게 `static_protect`(범위 밖 설정 파일)가 필수이고, 바뀌면 돌리지 않고 리드에게 올린다(`STATIC_CONFIG_CHANGED`). 통과하지 않으면 CLOSE(`STATIC_NOT_PASSING`)와 위임 자동 승인이 막힌다. 지표 `static_returns`, `static_ms`, `static_config_changes`. 설계 `references/static-gate.md`.

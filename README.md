@@ -124,7 +124,7 @@ Pick Opus 5.5 in Claude Code and run:
 
 ## Safety
 
-- Text sent to workers has email, IP, key and password patterns masked.
+- Text sent to workers has email, IP, key and password patterns masked, plus Korean and Japanese personal identifiers (resident and My Number IDs, phone, card, bank account, passport, driver license, residence card, pension numbers).
 - Task state lives outside the repository in `~/.hyperfusion/state/`.
 - Nothing is committed, pushed or deployed automatically.
 
