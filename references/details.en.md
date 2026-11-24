@@ -115,7 +115,7 @@ The lead follows [SKILL.md](../SKILL.md). From the installed skill directory, ru
 
 Acceptance execution also requires child-process shutdown proof. Missing proof stops at RECOVERY_REQUIRED. Time limits cover acceptance and final verification too.
 
-Outgoing brief/diff/prior-result text masks email, IP, key, and password patterns by default. Vendor authentication variables are retained. This is not DLP for repository files that a CLI reads directly; apply your own file-access and external-transfer policies. See [transmission scope](operations.md#외부-전송-마스킹).
+Outgoing brief/diff/prior-result text masks email, IP, key, and password patterns, and Korean and Japanese personal identifiers, by default. Vendor authentication variables are retained. This is not DLP for repository files that a CLI reads directly; apply your own file-access and external-transfer policies. See [transmission scope](operations.md#외부-전송-마스킹).
 
 ## Tests and limitations
 

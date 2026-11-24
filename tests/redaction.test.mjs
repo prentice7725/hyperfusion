@@ -100,6 +100,58 @@ test('real email addresses are still masked next to, or inside, image-like names
  assert.throws(()=>redactValue({scope:{paths:['alice@example.com.txt']}}),e=>e.code==='REDACTION_UNSAFE');
 });
 
+// 個人番号 check digit, computed here so the fixtures stay valid numbers.
+const myNumber=base=>{let s=0;for(let n=1;n<=11;n++)s+=Number(base[11-n])*(n<=6?n+1:n-6);const r=s%11;return base+(r<=1?0:11-r);};
+
+test('Korean personal identifiers are masked',()=>{
+ const cases=[
+  ['주민번호 900101-1234567','rrn'],['외국인등록번호 900101-5234567','rrn'],['주민 9001011234568','rrn'],['신규 201015-3123456','rrn'],
+  ['휴대폰 010-1234-5678','phone'],['01012345678','phone'],['011-123-4567','phone'],['전화 02-123-4567','phone'],['031.123.4567','phone'],['+82 10-1234-5678','phone'],
+  ['카드 4111-1111-1111-1111','card'],['5555 5555 5555 4444','card'],['378282246310005','card'],
+  ['국민은행 123456-04-123456','bank-account'],['여권 M12345678','passport'],['여권번호M123A4567','passport'],['면허 11-22-123456-78','driver-license'],
+ ];
+ for(const [text,kind] of cases){
+  const counts={},masked=redactText(text,counts);
+  assert.match(masked,new RegExp(`\\[REDACTED:${kind}\\]`),text);
+  assert.equal(counts[kind],1,text);
+ }
+});
+
+test('Japanese personal identifiers are masked, including full-width digits and long-mark dashes',()=>{
+ const mn=myNumber('12345678901'),grouped=`${mn.slice(0,4)} ${mn.slice(4,8)} ${mn.slice(8)}`;
+ const cases=[
+  [`マイナンバー ${mn}`,'my-number'],[`番号 ${grouped}`,'my-number'],
+  ['携帯 090-1234-5678','phone'],['080 1234 5678','phone'],['050-1234-5678','phone'],['電話 03-1234-5678','phone'],['045-123-4567','phone'],
+  ['0123-45-6789','phone'],['03(1234)5678','phone'],['+81 90-1234-5678','phone'],['０９０－１２３４－５６７８','phone'],['090ー1234ー5678','phone'],
+  ['在留カード AB12345678CD','residence-card'],['旅券番号 TK1234567','passport'],['免許証番号 301234567890','driver-license'],
+  ['普通預金 口座番号 1234567','bank-account'],['基礎年金番号 1234-567890','pension-number'],
+ ];
+ for(const [text,kind] of cases){
+  const counts={},masked=redactText(text,counts);
+  assert.match(masked,new RegExp(`\\[REDACTED:${kind}\\]`),text);
+  assert.equal(counts[kind],1,text);
+ }
+ // Full-width input is replaced at the original offsets, so the surrounding text survives untouched.
+ assert.equal(redactText('連絡先：０９０－１２３４－５６７８まで'),'連絡先：[REDACTED:phone]まで');
+});
+
+test('personal-identifier rules leave ordinary numbers alone',()=>{
+ const mn=myNumber('12345678901'),wrong=mn.slice(0,11)+((Number(mn[11])+1)%10);
+ const plain=['version 0.12.0 hash deadbeef sha 3fbe6ad','2026-11-23 12:34:56','ts 1795435151584','build 20240101123456',
+  'uuid 123e4567-e89b-12d3-a456-426614174000','hex a01012345678b','order 123456-04-123456','date 01-01-2024',
+  'tests/run-0102345678.log','9001011234567','991301-1234567','4111 1111 1111 1112','1111 1111 1111 1117','M12345678',
+  '301234567890','1234567','1234-567890',`${wrong.slice(0,4)}-${wrong.slice(4,8)}-${wrong.slice(8)}`,mn,'99-22-123456-78'];
+ for(const text of plain)assert.equal(redactText(text),text,text);
+});
+
+test('a field name supplies the keyword for a bare identifier value',()=>{
+ const masked=redactValue({passport:'M12345678',my_number:myNumber('12345678901'),driver_license:'301234567890',note:'M12345678'});
+ assert.deepEqual(masked,{passport:'[REDACTED:passport]',my_number:'[REDACTED:my-number]',driver_license:'[REDACTED:driver-license]',note:'M12345678'});
+ // A phone number in a transport path still blocks dispatch rather than leaking.
+ assert.throws(()=>redactValue({scope:{paths:['contacts/010-1234-5678.txt']}}),e=>e.code==='REDACTION_UNSAFE');
+ assert.doesNotThrow(()=>redactValue({scope:{paths:['src/v0.12.0/build-20240101123456.log']},task_id:'HF-1795435151584'}));
+});
+
 // Existing transport callers keep compact masks; evidence opts into raw line coordinates.
 test('line-preserving text redaction masks whole multiline secrets without shifting later evidence',()=>{
  const input='header\n-----BEGIN PRIVATE KEY-----\nprivate body\n-----END PRIVATE KEY-----\npassword="first\nsecond"\nfailed later';
