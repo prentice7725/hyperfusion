@@ -10,9 +10,9 @@ HF ▸ HF-test │ REVIEW 리뷰 차례 │ grok 1/3 │ 다음 review or delega
 
 ## 어떻게 동작하나
 
-- 상태 파일을 직접 읽지 않고 `node <hyperfusion>/scripts/fusion-state.mjs line <작업 폴더>`를 부릅니다. 한 줄을 만드는 규칙이 `scripts/status-line.mjs` 한 곳에만 있어서 명령줄, UserPromptSubmit 훅, 이 띠가 같은 말을 합니다.
-- 모델을 부르지 않고 타이머도 없습니다. 세션 시작, **Bash 도구 호출이 끝난 뒤**(컨트롤러 명령은 모두 Bash로 실행됩니다), 턴이 끝날 때만 다시 읽습니다.
-- 명령이 실패하거나 시간이 걸려도(5초 제한) 작업을 막지 않습니다. 이전 줄을 그대로 둡니다.
+- 상태 파일을 직접 읽지 않고 `node <hyperfusion>/scripts/fusion-state.mjs line <작업 폴더>`를 실행합니다. 한 줄을 만드는 규칙이 `scripts/status-line.mjs` 한 곳에만 있어서 명령줄, `UserPromptSubmit` 훅, 이 띠가 모두 같은 내용을 보여 줍니다.
+- 모델을 부르지 않고 타이머도 없습니다. 세션 시작, **Bash 도구 호출이 끝난 뒤**(컨트롤러 명령은 모두 Bash로 실행됩니다), 턴이 끝날 때만 상태를 다시 읽습니다.
+- 명령이 실패하거나 5초 제한을 넘겨도 작업을 막지 않습니다.
 - **숨김** 버튼은 그 줄만 숨깁니다. 단계나 라운드가 바뀌어 줄이 달라지면 다시 나타납니다.
 
 ## 보이는 화면
@@ -27,7 +27,7 @@ HF ▸ HF-test │ REVIEW 리뷰 차례 │ grok 1/3 │ 다음 review or delega
 /plugin install hf-status --marketplace prentice7725/hyperfusion
 ```
 
-설치 화면에서 **`script`** 에 hyperfusion의 `scripts/fusion-state.mjs` **절대 경로**를 넣습니다. 비워 두면 띠가 나타나지 않습니다. `node`는 PATH의 node가 아니면 바꿉니다.
+설치 화면에서 **`script`** 에 hyperfusion의 `scripts/fusion-state.mjs` **절대 경로**를 넣습니다. 비워 두면 띠가 나타나지 않습니다. `node`는 `PATH`에 있는 기본 명령이 아니면 해당 경로로 바꿉니다.
 
 로컬 폴더로 시험할 때는 `claude --plugin-dir mods/hf-status`로 띄우고 설정(`pluginConfigs`)에 `script`를 넣습니다.
 
@@ -40,4 +40,4 @@ claude plugin validate mods/hf-status
 claude plugin test mods/hf-status
 ```
 
-시험(`hf-status.test.tsx`)은 `process.run`을 대역으로 세워 줄이 그려지는 것, 작업이 없을 때 엔진 기본 그림에 양보하는 것, 명령이 실패해도 던지지 않는 것, `script`가 비었을 때 아무것도 실행하지 않는 것, 숨김과 재표시, Bash 호출 뒤 갱신을 확인합니다. 이 시험은 `claude` CLI가 필요해서 `npm test`와 CI에는 들어 있지 않습니다. 줄을 만드는 쪽(`scripts/status-line.mjs`)은 `tests/status-line.test.mjs`가 CI에서 확인합니다.
+시험(`hf-status.test.tsx`)은 `process.run`을 대역으로 세워 줄이 그려지는 것, 작업이 없을 때 엔진 기본 화면에 양보하는 것, 명령이 실패해도 예외를 던지지 않는 것, `script`가 비었을 때 아무것도 실행하지 않는 것, 숨김과 재표시, Bash 호출 뒤 갱신을 확인합니다. 이 시험은 `claude` CLI가 필요해서 `npm test`와 CI에는 들어 있지 않습니다. 줄을 만드는 쪽(`scripts/status-line.mjs`)은 `tests/status-line.test.mjs`가 CI에서 확인합니다.
