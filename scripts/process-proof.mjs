@@ -20,7 +20,7 @@ const command=(file,args)=>new Promise((resolve,reject)=>{
 // Load the system module explicitly: automatic module discovery can stall in
 // a filtered environment on hosted Windows runners. Do not resolve a repo module.
 const INVENTORY="$ErrorActionPreference='Stop'; Import-Module (Join-Path $PSHOME 'Modules\\CimCmdlets\\CimCmdlets.psd1'); "+
- "while($null -ne [Console]::In.ReadLine()){ try{ $rows=CimCmdlets\\Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,@{n='created';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}}}; [Console]::Out.WriteLine((ConvertTo-Json -InputObject @($rows) -Compress)) } catch { [Console]::Out.WriteLine('!'+$_.Exception.Message) }; [Console]::Out.Flush() }";
+ "while($null -ne [Console]::In.ReadLine()){ try{ $rows=CimCmdlets\\Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,KernelModeTime,UserModeTime,@{n='created';e={if($_.CreationDate){$_.CreationDate.ToUniversalTime().ToString('o')}}}; [Console]::Out.WriteLine((ConvertTo-Json -InputObject @($rows) -Compress)) } catch { [Console]::Out.WriteLine('!'+$_.Exception.Message) }; [Console]::Out.Flush() }";
 let inventory=null;
 const tableError=(message,code)=>Object.assign(Error(message),{code});
 function inventoryServer() {
@@ -56,18 +56,27 @@ function inventoryServer() {
 }
 process.once('exit',()=>{try{process.kill(inventory?.pid);}catch{}});
 
+// 누적 CPU 시간(ms). 정지 관측(stall-watch.mjs)만 쓰고, 종료 증명은 이 값을 보지 않는다. 읽지 못하면 null이다.
+// ps의 time은 Linux에서 [DD-]HH:MM:SS, macOS에서 M:SS.ss다. Win32_Process의 두 값은 100ns 단위다.
+export function psCpuMs(text) {
+ const m=/^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(String(text??''));
+ if(!m)return null;
+ return Math.round(((Number(m[1]??0)*24+Number(m[2]??0))*60+Number(m[3]))*60000+Number(m[4])*1000);
+}
+const windowsCpuMs=p=>Number.isFinite(p?.KernelModeTime)&&Number.isFinite(p?.UserModeTime)?Math.round((p.KernelModeTime+p.UserModeTime)/10000):null;
+
 export async function processTable() {
  let rows,query;
  if(isWin){
   const server=inventoryServer();
   query={out:await server.query(),pid:server.pid};
-  const parsed=JSON.parse(query.out);rows=(Array.isArray(parsed)?parsed:[parsed]).map(p=>({pid:p.ProcessId,parent:p.ParentProcessId,created:p.created,...(typeof p.Name==='string'?{name:p.Name}:{})}));
+  const parsed=JSON.parse(query.out);rows=(Array.isArray(parsed)?parsed:[parsed]).map(p=>({pid:p.ProcessId,parent:p.ParentProcessId,created:p.created,cpu_ms:windowsCpuMs(p),...(typeof p.Name==='string'?{name:p.Name}:{})}));
  } else {
-  query=await command('ps',['-eo','pid=,ppid=,stat=,lstart=']);
+  query=await command('ps',['-eo','pid=,ppid=,stat=,time=,lstart=']);
   rows=query.out.trim().split('\n').filter(Boolean).map(line=>{
-   const m=line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
+   const m=line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.+)$/);
    if(!m)throw Error('Unrecognized process table');
-   return {pid:Number(m[1]),parent:Number(m[2]),zombie:m[3].startsWith('Z'),created:m[4]};
+   return {pid:Number(m[1]),parent:Number(m[2]),zombie:m[3].startsWith('Z'),created:m[5],cpu_ms:psCpuMs(m[4])};
   }).filter(p=>!p.zombie);
  }
  // The inventory query is our child, but is not part of the command being supervised.
@@ -115,13 +124,15 @@ const START_SLACK_MS=2000;
 // 부모가 죽으면 부모 연결이 끊기므로, 감독 중 폴링으로 모아 둔 (PID, 생성 시각) 목록이 그 자식을 알아보는 유일한 근거다.
 // 생성 시각이 다르면 재사용된 PID이므로 건드리지 않는다. 폴링 사이에 태어나 바로 빠져나간 자손은 목록에 없어 죽이지 못하지만,
 // 그런 것도 아래 정지 증명이 그대로 잡아낸다(정리는 증명을 대신하지 않는다).
-export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETTLE,baseline=null,reap=false,kill=(pid)=>process.kill(pid,'SIGKILL')}={}) {
+// onSample: 관측할 때마다 감독 중인 트리의 프로세스 목록을 넘긴다(정지 관측용). 여기서 난 오류는 증명에 영향을 주지 않는다.
+export function watchProcessTree({readTable=processTable,pollMs=1000,settle=SETTLE,baseline=null,reap=false,kill=(pid)=>process.kill(pid,'SIGKILL'),onSample=null}={}) {
  const tracked=new Map();let pid=null,timer=null,pending=Promise.resolve(),error=null,querying=false,stopped=false,bornAfter=null;
  const observe=async()=>{
-  try{const rows=await readTable();for(const p of descendants(rows,pid,tracked,{bornAfter})){
+  try{const rows=await readTable(),live=descendants(rows,pid,tracked,{bornAfter});for(const p of live){
    if(!Number.isSafeInteger(p.pid)||p.pid<1||typeof p.created!=='string'||!p.created)throw Object.assign(Error('Process identity unavailable'),{code:'PROCESS_IDENTITY_UNAVAILABLE'});
    tracked.set(p.pid,p.created);
-  }}
+  }
+  if(onSample&&!stopped)try{onSample(live);}catch{/* observation only */}}
   catch(e){error=e.code??'PROCESS_TABLE_UNAVAILABLE';}
  };
  // Do not queue observations behind a slow CIM call: that creates a growing

@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {isMain,isWin,killTree,assertCommandLine} from './platform.mjs';
-import {read,immutable,repo,snapshot,hash} from './artifact.mjs';
+import {read,immutable,atomic,repo,snapshot,hash,changeFingerprint} from './artifact.mjs';
 import {assertLease} from './writer-lease.mjs';
 import {result as validateResult,consultResult} from './contracts.mjs';
 import {adapter} from './adapters/index.mjs';
@@ -24,6 +24,7 @@ import {watchProcessTree} from './process-proof.mjs';
 import {recordCompletion,controllerDigest} from './reconciliation.mjs';
 import {openMonitor} from './worker-monitor.mjs';
 import {defaultTimeout} from './round-timeout.mjs';
+import {createStallWatch,stallFile} from './stall-watch.mjs';
 import {attachObserverPane,herdrEnabled} from './herdr-observer.mjs';
 import {acquirePacing,intervalMs,cliOf,assertNotSuspended,suspensionHit,recordSuspension,suspensionMessage} from './worker-pacing.mjs';
 
@@ -49,7 +50,8 @@ const pacingFor=(root,state,executor)=>{
 // 일꾼 프로세스 하나를 감독하며 실행한다. tag는 산출물 이름(launch-<tag>.json 등)에 붙는다.
 // marker: 이 프로세스가 컨트롤러가 띄운 일꾼임을 리드 가드가 알아보게 하는 값(lease 토큰의 해시나 상담 ID).
 // 호스트 훅을 끌 수 없는 환경(Codex 관리형 훅, agy)에서 일꾼이 리드용 가드에 막히지 않게 한다.
-async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescence=false,signal,monitorQuietMs=120000,monitorIntervalMs=1000,marker={},pacing={interval:0,deadline:null}}) {
+// stallWatch: 정지 관측의 기준 시간(minGapMs, firstSignalMs, stallMs)과 작업 트리 확인 간격(treeIntervalMs). 관측만 하고 일꾼을 끊지 않는다.
+async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescence=false,signal,monitorQuietMs=120000,monitorIntervalMs=1000,marker={},pacing={interval:0,deadline:null},stallWatch={}}) {
  if(!Number.isSafeInteger(monitorQuietMs)||monitorQuietMs<1||!Number.isSafeInteger(monitorIntervalMs)||monitorIntervalMs<1)throw Error('Invalid monitor interval');
  const started=Date.now();
  if(signal?.aborted)throw Object.assign(Error('Bridge interrupted before launch'),{code:'AUTOPILOT_INTERRUPTED'});
@@ -63,6 +65,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
  try{
   activity=openMonitor({dir,tag:String(tag),quietMs:monitorQuietMs,identity:{task_id:String(request.task_id??''),round,run_id:crypto.randomUUID(),executor:String(request.executor??''),role}});
  }catch{activity=null;}
+ const stallBase={task_id:String(request.task_id??''),round,executor:String(request.executor??''),role,tag:String(tag)};
  // 감시 기록 실패가 라운드의 성공·실패나 lease 처리를 바꾸면 안 된다.
  const guard=fn=>{try{if(activity)fn();}catch{/* observation only */}};
  // 일꾼이 끝난 뒤 남은 자손 중 감독 중에 관측한 바로 그 프로세스는 컨트롤러가 정리한다(그룹 밖으로 빠져나간 agy 도구 자식 등).
@@ -74,7 +77,13 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
   meta:{task:String(request.task_id??''),tag:String(tag),repo:path.basename(root)},
   onWait:({ms,reason})=>guard(()=>activity.noteUntrusted('bridge',`pacing: waiting ${Math.ceil(ms/1000)}s for ${cli} (${reason})`))});
  if(pacing.deadline!==null)timeoutMs=Math.max(1,Math.min(timeoutMs,pacing.deadline-Date.now()));
- const monitor=proveQuiescence?watchProcessTree({reap:true}):null;
+ // 정지 관측(관측 전용). 진행 신호가 모두 멈춘 구간을 stall-<tag>.json에 남긴다. 실패해도 라운드에는 영향이 없다.
+ const {treeIntervalMs=15000,...stallLimits}=stallWatch??{};
+ let stall=null;const stallIdentity=stallBase;
+ try{stall=createStallWatch({...stallLimits,startedAt:Date.now()});}catch{stall=null;}
+ const watch=fn=>{try{if(stall)return fn();}catch{/* observation only */}return null;};
+ const saveStall=report=>{try{atomic(path.join(dir,stallFile(tag)),{...stallIdentity,...report});}catch{/* observation only */}};
+ const monitor=proveQuiescence?watchProcessTree({reap:true,onSample:rows=>watch(()=>stall.processes(rows))}):null;
  try{
   // create-once 실행 표식이 크래시나 재실행에서도 중복 프로세스를 막는다.
   immutable(path.join(dir,`launch-${tag}.json`),{executor:request.executor,bridge_pid:process.pid,session_id:request.cli.session_id,at:new Date().toISOString(),paced_ms:pace.paced_ms});
@@ -82,7 +91,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
   // 스키마처럼 CLI가 파일 경로로 받는 입력. 컨트롤러가 정한 경로에 한 번만 쓴다.
   for(const f of request.cli.extra_files??[])fs.writeFileSync(f.path,f.content,{flag:'wx',mode:0o600});
  }catch(e){pace.release();throw e;}
- let stdout='',stderr='',reason=null,child,killTimer,timer,activityTimer,forceResolve,alive=false,exited=false,observer=null;
+ let stdout='',stderr='',reason=null,child,killTimer,timer,activityTimer,treeTimer,treePending=null,treeLast=null,forceResolve,alive=false,exited=false,observer=null;
  const stop=(why,kind='timeout')=>{
   if(reason)return;
   reason=why;
@@ -108,19 +117,32 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
    // HYPERFUSION_HERDR가 없으면 자동 감지라 Herdr 밖에서는 아무것도 하지 않고 기록도 남기지 않는다. 1(강제)일 때만 건너뛴 사유를 남긴다.
    const herdr=herdrEnabled();
    if(child.pid&&activity&&(herdr.enabled||herdr.forced))observer=attachObserverPane({dir,tag:String(tag)}).then(r=>guard(()=>activity.noteUntrusted('bridge',r.attached?`herdr pane ${r.pane_id} attached`:`herdr pane skipped: ${r.reason}`)),()=>{});
-   if(child.pid)activityTimer=setInterval(()=>guard(()=>activity.tick()),monitorIntervalMs);
+   if(child.pid)activityTimer=setInterval(()=>{
+    guard(()=>activity.tick());
+    // 기준을 넘은 순간을 한 번 기록한다. 끊지 않는다.
+    const hit=watch(()=>stall.tick());
+    if(hit){saveStall(stall.report());guard(()=>activity.noteUntrusted('bridge',`stall watch (observe only): ${hit.kind} after ${Math.round(hit.flat_ms/1000)}s without output, CPU or tree change; the worker was not stopped`));}
+   },monitorIntervalMs);
+   // 구현 라운드만 작업 트리 변경을 본다. 첫 확인은 기준값만 잡는다. 앞 확인이 끝나지 않았으면 건너뛴다.
+   if(child.pid&&stall&&role==='implement'&&Number.isSafeInteger(treeIntervalMs)&&treeIntervalMs>0)treeTimer=setInterval(()=>{
+    if(treePending)return;
+    treePending=changeFingerprint(root).then(fp=>{
+     if(treeLast!==null&&fp!==treeLast)watch(()=>stall.progress('tree'));else watch(()=>stall.available('tree'));
+     treeLast=fp;
+    },()=>{watch(()=>stall.available('tree',false));}).finally(()=>{treePending=null;});
+   },treeIntervalMs);
    if(child.pid)immutable(path.join(dir,`process-${tag}.json`),{executor:request.executor,pid:child.pid,process_group:isWin?null:child.pid,tree_kill:isWin?'taskkill /T /F':'process group',platform:process.platform,session_id:request.cli.session_id});
    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
    child.on('error',e=>{reason='Executor spawn failed: '+e.message;});
-   child.stdout.on('data',chunk=>{if(Buffer.byteLength(stdout)+Buffer.byteLength(chunk)>maxBytes)stop('Executor stdout limit exceeded');else{stdout+=chunk;guard(()=>activity.output('stdout',chunk));}});
-   child.stderr.on('data',chunk=>{if(Buffer.byteLength(stderr)+Buffer.byteLength(chunk)>maxBytes)stop('Executor stderr limit exceeded');else{stderr+=chunk;guard(()=>activity.output('stderr',chunk));}});
+   child.stdout.on('data',chunk=>{if(Buffer.byteLength(stdout)+Buffer.byteLength(chunk)>maxBytes)stop('Executor stdout limit exceeded');else{stdout+=chunk;guard(()=>activity.output('stdout',chunk));watch(()=>stall.progress('output'));}});
+   child.stderr.on('data',chunk=>{if(Buffer.byteLength(stderr)+Buffer.byteLength(chunk)>maxBytes)stop('Executor stderr limit exceeded');else{stderr+=chunk;guard(()=>activity.output('stderr',chunk));watch(()=>stall.progress('output'));}});
    timer=setTimeout(()=>stop('Executor timeout'),timeoutMs);
    child.on('close',(code,signal)=>resolve({code,signal}));
    // 프롬프트를 stdin으로 받는 일꾼(Sonnet)만 파이프를 연다.
    if(request.stdin!==undefined){child.stdin.on('error',e=>{if(e.code!=='EPIPE')stop('Executor stdin failed: '+e.message);});child.stdin.end(request.stdin);}
   });
  } finally {
-  clearTimeout(timer);clearTimeout(killTimer);clearInterval(activityTimer);process.off('SIGTERM',onTerm);process.off('SIGINT',onTerm);
+  clearTimeout(timer);clearTimeout(killTimer);clearInterval(activityTimer);clearInterval(treeTimer);process.off('SIGTERM',onTerm);process.off('SIGINT',onTerm);
   signal?.removeEventListener('abort',onTerm);
   // 잔존 자식을 정리한다. POSIX는 그룹 전체, Windows는 일꾼이 살아 있을 때만 트리 종료.
   // 그룹 밖으로 빠져나간 자손(Windows에서는 일꾼이 먼저 끝난 뒤 남은 자손)은 정지 증명 단계에서 감독 중 관측한 것만 정리하고, 그래도 남으면 리드가 확인한다.
@@ -129,6 +151,9 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
   pace.release();
  }
  await observer;
+ await treePending;
+ // 프로세스가 깨끗이 끝났는지만 적는다(ok). 작업 성공 여부가 아니다.
+ if(stall&&exit){const report=watch(()=>stall.finish(Date.now(),{ok:!reason&&exit.code===0,code:exit.code??null,signal:exit.signal??null,reason:reason??null}));if(report)saveStall(report);}
  const proof=monitor?await monitor.finish({exited,aborted:exit.signal==='SUPERVISOR_ABORT'}):null;
  if(proof)immutable(path.join(dir,`quiescence-${tag}.json`),{...proof,executor:request.executor});
  let observation=null;
@@ -164,7 +189,7 @@ async function supervise(root,dir,tag,request,{timeoutMs,maxBytes,proveQuiescenc
 }
 
 // 리드가 넘긴 구현 라운드 dispatch 한 건을 정확히 한 번 실행하고 결과를 검증해 남긴다.
-export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescence=false,signal,monitorQuietMs,monitorIntervalMs}={}) {
+export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescence=false,signal,monitorQuietMs,monitorIntervalMs,stallWatch}={}) {
  root=repo(root);
  ensureControl(root);
  const state=read(controlPath(root,'state.json'));
@@ -178,7 +203,7 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
  try{
   // 파일이 아니라 컨트롤러가 다시 만든 요청으로 실행한다. 달라졌으면 여기서 멈춘다.
   const verified=verifyExecute(root,state,dir,request,lease);
-  parsed=await supervise(root,dir,n,{...request,...verified,role:'implement',round:n,task_id:state.task_id,executor:state.owner},{timeoutMs:timeoutFor(root,state,state.owner,timeoutMs),maxBytes,proveQuiescence,signal,monitorQuietMs,monitorIntervalMs,marker:{HF_WORKER_LEASE:hash(lease.token)},pacing:pacingFor(root,state,state.owner)});
+  parsed=await supervise(root,dir,n,{...request,...verified,role:'implement',round:n,task_id:state.task_id,executor:state.owner},{timeoutMs:timeoutFor(root,state,state.owner,timeoutMs),maxBytes,proveQuiescence,signal,monitorQuietMs,monitorIntervalMs,stallWatch,marker:{HF_WORKER_LEASE:hash(lease.token)},pacing:pacingFor(root,state,state.owner)});
   result=validateResult(parsed.result,request.task_id,request.round);
  }catch(e){
   if(/CODEX_WINDOWS_SANDBOX/.test(e?.message??'')){
@@ -202,7 +227,7 @@ export async function execute(root,{timeoutMs,maxBytes=8*1024*1024,proveQuiescen
 }
 
 // 상담(advisor/committee) 한 건의 위원을 병렬로 실행한다. writer lease 없이 읽기 전용으로 돈다.
-export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuiescence=false,signal}={}) {
+export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuiescence=false,signal,stallWatch}={}) {
  root=repo(root);
  ensureControl(root);
  const unlock=acquireLock(controlPath(root,'locks/consult-execution.lock'));
@@ -221,7 +246,7 @@ export async function consult(root,id,{timeoutMs,maxBytes=8*1024*1024,proveQuies
   if(snapshot(root).digest!==open.digest)throw Error('READ_ONLY_TREE_CHANGED');
   const sent=read(path.join(dir,`consult-${id}-${m.member}.json`));
   const request={...sent,...verifyConsult(root,state,dir,sent,{id,member:m.member,executor:m.executor})};
-  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs,'consult'),maxBytes,proveQuiescence:proofRequired,signal,marker:{HF_WORKER_CONSULT:String(id)},pacing:pacingFor(root,state,m.executor)});
+  const parsed=await supervise(root,dir,`consult-${id}-${m.member}`,{...request,role:open.mode==='review'?'review':'consult',round:state.iteration,task_id:state.task_id,executor:m.executor},{timeoutMs:timeoutFor(root,state,m.executor,timeoutMs,'consult'),maxBytes,proveQuiescence:proofRequired,signal,stallWatch,marker:{HF_WORKER_CONSULT:String(id)},pacing:pacingFor(root,state,m.executor)});
   let result;try{result=consultResult(parsed.result,state.task_id,id,m.member,open.mode);}catch(error){error.quiescence=parsed.quiescence;throw error;}
   const file=path.join(dir,`consult-result-${id}-${m.member}.json`);
   immutable(file,result);

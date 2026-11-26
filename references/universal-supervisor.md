@@ -88,6 +88,33 @@ node scripts/fusion-state.mjs monitor C:\path\repo --watch
 
 기본 상한은 활동 400건/256KiB, 알림 64건, 중복 키 512개다. 상세 텍스트는 redaction 후 240자로 제한한다. terminal 중복 키는 유지하고 per-event ID는 제한된 창에서 중복 제거한다. 같은 identity로 다시 열면 reducer·카운터·중복·알림을 복원하고 다른 run identity 재사용은 거절한다. 종료가 확인된 30일 이전의 관측 파일만 다음 open에서 정리하며 결과·writer·snapshot·launch 증거는 삭제하지 않는다. 감시 파일의 symlink·과대 크기는 거절한다. 지원 OS에서 파일 0600/폴더 0700이며 Windows ACL을 보장한다고 주장하지 않는다.
 
+### 정지 관측 (관측 전용)
+
+`QUIET`는 출력만 보므로, 끝날 때까지 출력이 없는 CLI(`--output-format json`으로 도는 Claude·Grok·AGY)에서는 정상 실행도 2분 뒤 `QUIET`가 된다. 그래서 브리지는 진행 신호 셋을 따로 모아 **모두 멈춘 구간**을 `stall-<tag>.json`에 남긴다. 일꾼을 끊지 않고, 라운드 결과·lease·종료 증명·복구 판정도 바꾸지 않는다. 일꾼을 끊는 것은 지금처럼 실행 상한(`timeout_ms`)뿐이다.
+
+| 신호 | 출처 | 볼 수 있는 경우 |
+|---|---|---|
+| `output` | 브리지가 읽은 stdout·stderr 바이트 | 항상 |
+| `cpu` | 종료 증명용 프로세스 표의 누적 CPU 시간. 감독 중인 트리에서 프로세스의 CPU가 1초 이상 늘었거나 새 프로세스가 생기면 진행이다 | 종료 증명을 켠 실행(오토파일럿, 명령줄 브리지) |
+| `tree` | 15초마다 보는 작업 트리 지문(바뀐 파일의 크기·수정 시각). 내용은 읽지 않고 git 잠금도 잡지 않는다 | 구현 라운드 |
+
+일꾼이 스스로 보고하는 값은 쓰지 않는다. 기록에는 2분 이상 멈춘 구간 전부(최대 32개, 넘치면 짧은 것부터 버림)와, 기준을 처음 넘은 순간(`would_stop`)이 들어간다. 기준은 첫 신호 전 5분(`no_first_signal`), 그 뒤 10분(`stalled`)이다. 기준을 넘으면 활동 기록에 `stall watch (observe only)` 한 줄이 남는다.
+
+```powershell
+node scripts/stall-watch.mjs C:\path\repo
+node scripts/stall-watch.mjs C:\path\repo --stall-min=5 --first-signal-min=3
+node scripts/stall-watch.mjs C:\path\repo --json
+```
+
+실행마다 판정을 하나 낸다. 구간을 그대로 남기므로 기준을 바꿔 다시 계산할 수 있다.
+
+- `would_save N`: 기준을 넘긴 뒤 신호가 돌아오지 않았고 실행이 실패로 끝났다. 끊었다면 N만큼 아꼈다.
+- `false_positive_resumed`: 기준을 넘긴 뒤 신호가 다시 움직였다. 끊었다면 일하던 일꾼을 죽였다.
+- `false_positive_finished`: 신호는 돌아오지 않았지만 프로세스가 정상 종료했다(긴 추론 등).
+- `none`: 기준을 넘긴 구간이 없다.
+
+제한: `outcome.ok`는 프로세스가 종료 코드 0으로 끝났다는 뜻이지 작업 성공이 아니다. 긴 추론 중인 일꾼과 연결이 죽은 일꾼이 CPU로 갈리는지는 아직 재지 않았고, 이 기록이 그 측정이다. 같은 도구를 되풀이하며 헛도는 일꾼은 신호가 계속 움직이므로 여기에 잡히지 않는다(`max_turns`와 실행 상한이 막는다). 실제로 끊는 동작은 `false_positive`가 충분히 적은 기준을 확인한 뒤에 따로 넣는다.
+
 ## Quota, effort, 최종 패킷
 
 `node scripts/quota-policy.mjs REPO record QUOTA.json`으로 운영자 관측을 기록하고 `REPO status`로 조회한다. `REPO collect-codex`는 Codex가 자기 세션 기록(`~/.codex/sessions/**/*.jsonl`, 위치는 `HF_CODEX_HOME`/`CODEX_HOME`로 바꾼다)에 남기는 마지막 `rate_limits`를 읽어 openai 잔량을 `supported_tool`로 기록한다. 네트워크도 모델도 쓰지 않고 숫자 필드만 꺼낸다. 5시간·7일 창 중 사용률이 높은 쪽을 기준으로 남은 %를 기록하며, `collected_at`은 그 기록의 시각이라 Codex를 대화형으로 마지막으로 쓴 뒤 30분이 지나면 stale이다(`codex exec`는 `rate_limits`를 null로 남기므로 읽을 값이 없으면 아무것도 쓰지 않고 이유를 돌려준다). Antigravity의 실행 중인 서버에 묻는 방식은 프로세스 인자의 토큰을 꺼내야 해서 쓰지 않는다. provider는 anthropic/openai/xai/google, source는 user_manual/supported_tool/unknown이다. collected_at, ttl_ms, reset_at, window, unit을 보존하며 잔량 누락·TTL 만료·reset 경과는 unknown/stale로 남긴다. xai는 검증된 자동 조회 도구가 없어 user_manual만 받는다. `supported_tool`이라는 저장 필드 자체는 실제 도구 연결을 증명하지 않는다. quota 조회 모델 호출은 없다. 신입·탐색 우대가 fresh exhaustion의 뒤쪽 배치를 되돌리지 않도록 최종 정렬한다.
