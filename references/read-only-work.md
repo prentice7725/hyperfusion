@@ -32,7 +32,7 @@ Run the returned bridge command, then use `consult-finish` as before. Do not com
 
 ## Evidence and coverage
 
-Each reader receives an explicit scope/focus manifest bound to its member, task digest and optional frozen workflow digest. Planned analysis gets its approved paths; mandatory reviewers always get the complete task scope and the existing cumulative changed-file, AC, controller acceptance and rejection context. Adapter-specific diff truncation still requires inspecting the remaining changed files. A focus hint never reduces required panel coverage, changes Grok's medium implementation/designated xhigh review distinction, or grants approval authority.
+Each reader receives an explicit scope/focus manifest bound to its member, task digest and optional frozen workflow digest. Planned analysis gets its approved paths; mandatory reviewers always get the complete task scope and the existing cumulative changed-file, AC, controller acceptance and rejection context. Adapter-specific diff truncation still requires inspecting the remaining changed files. A focus hint never reduces required panel coverage, changes Grok's implementation effort/designated xhigh review distinction, or grants approval authority.
 
 The controller binds dispatched prompts and manifests to hashes. The bridge refuses modified evidence/focus packets. Before each queued launch it rechecks controller identity, writer and acceptance markers, tree digest and existing observed cost/wall-time budgets. A workspace execution lock prevents overlapping bridge runs and premature settlement while the bridge is alive. Read-only manifests authorize no edits, tests, builds, installs or worktree creation; existing CLI restrictions and post-consult snapshot validation remain in place.
 

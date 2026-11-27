@@ -7,6 +7,7 @@ import {config,taskExecutorOptions} from '../scripts/executor-config.mjs';
 import {run} from '../scripts/fusion-state.mjs';
 import {read} from '../scripts/artifact.mjs';
 import {route} from '../scripts/router.mjs';
+import {validateTeam} from '../scripts/team-file.mjs';
 
 const write=(f,value)=>fs.writeFileSync(path.join(f.root,'hyperfusion.config.json'),JSON.stringify(value));
 const effort=args=>args[args.indexOf('--reasoning-effort')+1];
@@ -26,9 +27,9 @@ for(const policy of ['classic','external-first']){
 
 test('explicit Grok effort and CLI-default opt-out remain authoritative',t=>{
  const f=fixture(t,{initialize:false});
- // Grok 4.7은 high와 xhigh만 받는다. 그 밖의 값은 설정에서 거절한다.
- assert.throws(()=>{write(f,{executors:{grok:{reasoning_effort:'medium'}}});config(f.root);},/EFFORT_UNSUPPORTED: grok/);
- for(const setting of ['high','xhigh',null]){
+ // HyperFusion은 Grok 4.7의 medium, high, xhigh를 받는다. 그 밖의 값은 설정에서 거절한다.
+ for(const bad of ['low','max','minimal'])assert.throws(()=>{write(f,{executors:{grok:{reasoning_effort:bad}}});config(f.root);},/EFFORT_UNSUPPORTED: grok reasoning_effort must be one of medium, high, xhigh/);
+ for(const setting of ['medium','high','xhigh',null]){
   write(f,{routing:{policy:'external-first'},executors:{grok:{reasoning_effort:setting}}});
   const c=config(f.root);
   for(const difficulty of ['low','medium','high',undefined])assert.equal(taskExecutorOptions(c,'grok',difficulty).reasoning_effort,setting??undefined);
@@ -49,4 +50,31 @@ test('both shipped profiles explicitly select Grok high',()=>{
  for(const file of ['hyperfusion.config.example.json','hyperfusion.v03.config.example.json']){
   assert.equal(JSON.parse(fs.readFileSync(new URL('../'+file,import.meta.url),'utf8')).executors.grok.reasoning_effort,'high',file);
  }
+});
+
+test('Grok medium reaches the CLI for advice and implementation',t=>{
+ const f=fixture(t,{initialize:false});
+ write(f,{routing:{policy:'external-first'},review:{by:'delegate',reviewers:['grok']},executors:{grok:{reasoning_effort:'medium'}}});
+ const c=config(f.root);assert.equal(c.executors.grok.reasoning_effort,'medium');assert.equal(c.effort_source.grok,'config');
+ run(f.root,'init',{...f.brief,executor:'grok',difficulty:'high'});
+ const advice=run(f.root,'consult',{mode:'advisor',question:'Check the change',executors:['grok']});
+ assert.equal(effort(read(path.join(f.control,'tasks',f.brief.task_id,`consult-${advice.consult_id}-m1.json`)).cli.args),'medium');
+ run(f.root,'consult-finish',{quiescent:true});
+ assert.equal(effort(f.begin().cli.args),'medium');
+});
+
+test('an adaptive Grok review seat runs at xhigh even when Grok implementation is set to medium',t=>{
+ const f=fixture(t,{initialize:false});
+ write(f,{review:{by:'delegate',strategy:'lead-gated-adaptive'},executors:{grok:{reasoning_effort:'medium'}}});
+ run(f.root,'init',{...f.brief,executor:'antigravity',task_criticality:'important',assignment_reason:'Independent deep review'});
+ f.begin();f.finish();
+ const c=run(f.root,'delegate-review',{});
+ const m=c.members.find(x=>x.executor==='grok');assert.ok(m,'Grok holds a review seat');
+ assert.equal(effort(read(path.join(f.control,'tasks',f.brief.task_id,`consult-${c.consult_id}-${m.member}.json`)).cli.args),'xhigh');
+ assert.equal(f.state().configuration.executors.grok.reasoning_effort,'medium');
+});
+
+test('a team file accepts Grok medium and refuses efforts outside medium, high and xhigh',()=>{
+ assert.doesNotThrow(()=>validateTeam({version:1,members:{grok:{enabled:true,reasoning_effort:'medium'}}}));
+ assert.throws(()=>validateTeam({version:1,members:{grok:{enabled:true,reasoning_effort:'low'}}}),/members.grok.reasoning_effort must be one of medium, high, xhigh/);
 });

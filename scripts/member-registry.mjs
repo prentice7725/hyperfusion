@@ -3,8 +3,8 @@
 const general=['code','tests','refactor','ui','docs'];
 const high=['low','medium','high','xhigh','max'];
 const codex=['minimal','low','medium','high','xhigh'];
-// Grok 4.7은 high와 xhigh만 받는다.
-const grokEfforts=['high','xhigh'];
+// Grok 4.7이 받는 강도 중 HyperFusion이 쓰는 값. medium은 운영자가 고르는 빠른 구현 강도이고 기본값은 high다.
+const grokEfforts=['medium','high','xhigh'];
 export const MEMBERS={
  grok:{vendor:'xai',binary:'grok',env:'HF_GROK_BIN',auth:['XAI_','GROK_'],model:null,implement:true,grade:'A',caps:[...general,'image-gen'],effort:'high',efforts:grokEfforts,rounds:3,role:'A급 구현(high), 이미지 애셋 생성',owns:['image-asset']},
  antigravity:{vendor:'google',binary:'agy',env:'HF_AGY_BIN',auth:['GOOGLE_','GEMINI_','AGY_','ANTIGRAVITY_'],model:null,implement:true,grade:'B',caps:general,effort:'high',efforts:['low','medium','high'],rounds:3,role:'B급 구현(Gemini 4 Hydrogen high): UI·프론트엔드, 문서',owns:['ui','docs']},

@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Grok 추론 강도에 `medium`을 더했다. `executors.grok.reasoning_effort:"medium"`(또는 팀 파일 `members.grok.reasoning_effort`)을 적으면 구현과 상담이 `--reasoning-effort medium`으로 돈다. Grok 4.7 모델 목록에 `medium`이 있는데도 A·B 등급제를 넣을 때 `high`·`xhigh`만 받도록 막아 두었다. 기본값(구현 `high`, 리뷰 자리 `xhigh`)은 바꾸지 않았다. 2026-11-27 단독 일꾼 시험(`tools/worker-trial.mjs`, 각 1회, Grok CLI 1.0.92): 같은 조건 짝인 L01은 medium 16.7분·29턴·$0.71, high 29.5분·52턴·$1.66(둘 다 숨김 9/9), L02는 medium 37.9분(숨김 4/5), high는 60분 제한에 걸렸다(남은 트리 숨김 5/5). medium 5과제는 숨김 전부 통과 4/5(개별 27/28)로, 11/14 역량 시험의 high 13/15(과제당 3회)와 견줄 만하다. L03~L05에는 같은 조건의 high 시간이 없다.
 - 일꾼 정지 관측을 넣었다(관측 전용). 브리지가 출력 바이트, 프로세스 트리의 CPU 시간, 작업 트리 변경이 모두 멈춘 구간을 `stall-<tag>.json`에 남긴다. 일꾼을 끊지 않고 라운드 결과·종료 증명·복구 판정도 바꾸지 않는다. `node scripts/stall-watch.mjs REPO`가 실행마다 "끊었다면 아꼈을 시간"과 오탐을 보여 주고, `--stall-min`으로 기준을 바꿔 다시 계산한다. 프로세스 표에 누적 CPU 시간(`cpu_ms`)이 붙었다. 설명은 `references/universal-supervisor.md`의 "정지 관측".
 - 외부 전송 마스킹이 한국·일본 개인 식별번호를 가린다. 주민·외국인등록번호, 마이넘버, 전화(한국·일본·`+82`·`+81`), 카드(Luhn·BIN), 계좌, 여권, 운전면허, 재류카드, 기초연금번호. 전각 숫자와 장음 부호 하이픈도 찾는다. 오탐을 줄이려고 체크섬·날짜 검사·키워드(앞 30자 또는 JSON 필드 이름)를 쓰고, 영숫자·하이픈에 붙은 숫자는 보지 않는다. 조건은 `references/operations.md`의 "외부 전송 마스킹".
 
