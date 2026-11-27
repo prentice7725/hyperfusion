@@ -5,7 +5,7 @@
   "external": {"default": "auto", "available": ["terra", "grok", "sonnet", "luna", "haiku", "antigravity"]},
   "executors": {
     "terra": {"model": "gpt-6.1-terra", "reasoning_effort": "medium"},
-    "grok": {"reasoning_effort": "high"},
+    "grok": {"reasoning_effort": "medium"},
     "antigravity": {"sandbox": true, "model": "gemini-4-hydrogen-high"},
     "sol": {"model": "gpt-6.1-sol", "reasoning_effort": "xhigh"},
     "sonnet": {"model": "claude-sonnet-5-5", "reasoning_effort": "medium"}

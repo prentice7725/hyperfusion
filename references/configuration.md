@@ -166,9 +166,9 @@ Haiku(`haiku`)는 Sonnet과 같은 Claude Code CLI(`HF_CLAUDE_BIN`)를 `--model 
 | Grok | `--reasoning-effort` | `medium`, `high`, `xhigh` (Grok 4.7) |
 | Terra, Luna, Sol (Codex) | `-c model_reasoning_effort=…` | `minimal`, `low`, `medium`, `high`, `xhigh` |
 
-구현 기본값은 A급 Terra `medium`, Grok `high`, Sonnet `medium`, B급 Luna `xhigh`, Haiku `max`, Antigravity `gemini-4-hydrogen-high`이다. 리뷰 자리는 Sol `xhigh`, Sonnet `max`, Grok `xhigh`로 구현 강도와 따로 간다(클래식 위임 리뷰도 같다). Grok 구현과 상담은 모든 난이도에서 `high`이며, 리뷰 자리 강도는 전역 기본값이나 이후 구현 라운드를 바꾸지 않는다. 운영자가 강도를 직접 적은 일꾼은 클래식 리뷰에서도 그 값을 쓴다. 설정에 값을 적으면 일반 기본값을 덮어쓰고, `null`을 적으면 일반 플래그를 넘기지 않고 CLI 기본값을 쓴다(필수 리뷰 역할의 강도는 해제하지 않음). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
+구현 기본값은 A급 Terra `medium`, Grok `medium`, Sonnet `medium`, B급 Luna `xhigh`, Haiku `max`, Antigravity `gemini-4-hydrogen-high`이다. 리뷰 자리는 Sol `xhigh`, Sonnet `max`, Grok `xhigh`로 구현 강도와 따로 간다(클래식 위임 리뷰도 같다). Grok 구현과 상담은 모든 난이도에서 `medium`이며, 리뷰 자리 강도는 전역 기본값이나 이후 구현 라운드를 바꾸지 않는다. 운영자가 강도를 직접 적은 일꾼은 클래식 리뷰에서도 그 값을 쓴다. 설정에 값을 적으면 일반 기본값을 덮어쓰고, `null`을 적으면 일반 플래그를 넘기지 않고 CLI 기본값을 쓴다(필수 리뷰 역할의 강도는 해제하지 않음). 목록 밖의 값은 `EFFORT_UNSUPPORTED` 설정 오류다. 설정했는데 설치된 CLI 도움말에 그 플래그가 없으면 조용히 무시하지 않고 `ADAPTER_UNAVAILABLE`로 거절한다. CLI가 받아들이는지는 `setup-doctor.mjs --smoke`로 확인한다.
 
-Grok을 더 빨리 돌리려면 `executors.grok.reasoning_effort:"medium"`을 적는다. 구현과 상담이 medium으로 돌고, 리뷰 자리는 여전히 `xhigh`다(클래식 위임 리뷰는 운영자가 적은 값을 쓴다). 기본값은 `high`로 그대로다. `low`처럼 목록 밖의 값은 설정 단계에서 `EFFORT_UNSUPPORTED`로 거절된다. 진행 중 작업의 고정된 설정은 변경하지 않으니 새 작업을 init한다. CLI 기본값으로 위임하는 `null`은 `high` 지정과 다르다.
+Grok 구현 기본값은 2026-11-27부터 `medium`이다(전에는 `high`). 단독 일꾼 시험에서 같은 조건 짝인 L01은 시간 43%, 비용 57%가 줄고 숨김 시험 결과가 같았으며, L02는 high가 60분 제한에 걸린 반면 medium은 37.9분에 끝났다(숨김 시험 하나 실패). 과제당 1회라 다음 L01~L05 벤치마크에서 다시 보고, 통과율이나 재작업 라운드가 나빠지면 되돌린다. 예전처럼 돌리려면 `executors.grok.reasoning_effort:"high"`(또는 팀 파일 `members.grok.reasoning_effort:"high"`)를 적는다. 이미 `high`를 적은 설정과 팀 파일은 그대로 `high`로 돈다. 리뷰 자리는 어느 쪽이든 `xhigh`다(클래식 위임 리뷰는 운영자가 적은 값을 쓴다). `low`처럼 목록 밖의 값은 설정 단계에서 `EFFORT_UNSUPPORTED`로 거절된다. 진행 중 작업의 고정된 설정은 변경하지 않으니 새 작업을 init한다. CLI 기본값으로 위임하는 `null`은 `medium` 지정과 다르다.
 
 ## AGY 모델 계열과 effort 분리 (Argon)
 

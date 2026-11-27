@@ -24,7 +24,7 @@ export const APEX_ROUND_CAP=3;
 // 상담(advisor 1명, committee 2명) 위원 실행 총량. 구현 예산과 별도다.
 export const CONSULT_CAP=4;
 // 추론 강도(reasoning_effort)로 받는 값. CLI마다 다르다(각 CLI --help 기준).
-// Codex: codex exec -c model_reasoning_effort=…, Claude Code·agy: --effort, Grok: --reasoning-effort(Grok 4.7은 high·xhigh).
+// Codex: codex exec -c model_reasoning_effort=…, Claude Code·agy: --effort, Grok: --reasoning-effort(medium·high·xhigh).
 // 기본 추론 강도. 설정에 reasoning_effort가 없으면 이 값을 쓰고, null이면 플래그를 넘기지 않는다(CLI 기본값).
 export const DEFAULT_EFFORT=Object.fromEntries(Object.entries(MEMBERS).map(([n,m])=>[n,m.effort]));
 export const EFFORT_LEVELS=Object.fromEntries(Object.entries(MEMBERS).map(([n,m])=>[n,m.efforts]));
@@ -64,8 +64,8 @@ export const ROUTING_POLICIES=['classic','external-first'];
 // 외부 최상위만 든다(Opus 리드면 Sol). A급 Sonnet·Terra는 승인 없이 구현한다.
 export const grantOnly=c=>grantOnlyMembers(c);
 // 난이도별 시작 강도(작업지시서 v0.3 §5). 운영자가 reasoning_effort를 직접 적은 일꾼에는 적용하지 않는다.
-// Grok 4.7 implements at high across difficulties; xhigh is the review seat's effort.
-export const DIFFICULTY_EFFORT={grok:{low:'high',medium:'high',high:'high'},antigravity:{low:'low',medium:'medium',high:'high'}};
+// Grok 4.7 implements at medium across difficulties; xhigh is the review seat's effort.
+export const DIFFICULTY_EFFORT={grok:{low:'medium',medium:'medium',high:'medium'},antigravity:{low:'low',medium:'medium',high:'high'}};
 // Routing preflight and controller dispatch must inspect the same task profile.
 export function taskExecutorOptions(configuration,owner,difficulty) {
  const options={...(configuration?.executors?.[owner]??{})};

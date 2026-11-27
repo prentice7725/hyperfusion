@@ -45,7 +45,7 @@
       "reasoning_effort": "medium"
     },
     "grok": {
-      "reasoning_effort": "high"
+      "reasoning_effort": "medium"
     }
   },
   "routing": {
