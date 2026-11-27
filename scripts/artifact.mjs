@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {execFileSync,execFile} from 'node:child_process';
 import {samePath,renameWithRetry} from './platform.mjs';
 import {assertPlainDir} from './control-dir.mjs';
 export const hash = v => crypto.createHash('sha256').update(v).digest('hex');
@@ -61,6 +61,21 @@ function pinGitConfig(root,read) {
  try{return read();}finally{pinned=null;}
 }
 export function git(root,args) {return execFileSync('git',[...(pinned?.root===root?pinned.args:neutralArgs(root)),'-C',root,...args],{encoding:'utf8',maxBuffer:64*1024*1024,env:gitEnv,windowsHide:true});}
+// 작업 트리가 바뀌었는지만 가리는 가벼운 지문(정지 관측용). 스냅샷과 달리 파일 내용을 읽지 않고, 일꾼이 도는 동안 불러도
+// 이벤트 루프를 막지 않게 git을 비동기로 띄운다. 잠금을 잡지 않으므로(GIT_OPTIONAL_LOCKS=0) 일꾼의 git 명령과 부딪히지 않는다.
+// 증거가 아니다: 판정·승인·범위 검사에는 snapshot만 쓴다.
+export function changeFingerprint(root,{timeoutMs=10000,maxPaths=2000}={}) {
+ return new Promise((resolve,reject)=>{
+  let args;try{args=neutralArgs(root);}catch(e){reject(e);return;}
+  execFile('git',[...args,'-C',root,'ls-files','-z','--modified','--others','--deleted','--exclude-standard'],{encoding:'utf8',maxBuffer:16*1024*1024,env:gitEnv,windowsHide:true,timeout:timeoutMs},(error,out)=>{
+   if(error){reject(error);return;}
+   const names=[...new Set(out.split('\0').filter(Boolean))].sort();
+   const stamps=names.slice(0,maxPaths).map(name=>{try{const st=fs.lstatSync(path.join(root,name));return `${name}\0${st.size}\0${st.mtimeMs}`;}catch{return name+'\0gone';}});
+   let head='';try{head=fs.readFileSync(path.join(root,'.git','HEAD'),'utf8');}catch{/* 워크트리의 .git은 파일이다 */}
+   resolve(hash(JSON.stringify([names.length,stamps,head])));
+  });
+ });
+}
 // 사람이 읽는 diff는 외부 diff 도구와 textconv를 쓰지 않는다.
 export const SAFE_DIFF=['--no-ext-diff','--no-textconv'];
 // 한 프로세스 안에서 같은 저장소를 수없이 확인한다(run, execute, autopilot이 매번 부른다). 성공한 확인만 기억하되,
