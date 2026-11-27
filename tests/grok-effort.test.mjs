@@ -13,15 +13,15 @@ const write=(f,value)=>fs.writeFileSync(path.join(f.root,'hyperfusion.config.jso
 const effort=args=>args[args.indexOf('--reasoning-effort')+1];
 
 for(const policy of ['classic','external-first']){
- test(`Grok 4.7 implements at high for every ${policy} difficulty and implementation dispatch`,t=>{
+ test(`Grok 4.7 implements at medium for every ${policy} difficulty and implementation dispatch`,t=>{
   const f=fixture(t,{initialize:false});write(f,{routing:{policy}});
   const c=config(f.root);
   for(const difficulty of ['low','medium','high',undefined]){
-   assert.equal(taskExecutorOptions(c,'grok',difficulty).reasoning_effort,'high');
-   assert.equal(route(f.root,c,{task_kind:'image-asset',difficulty},{probe:false}).effort?.reasoning_effort??c.executors.grok.reasoning_effort,'high');
+   assert.equal(taskExecutorOptions(c,'grok',difficulty).reasoning_effort,'medium');
+   assert.equal(route(f.root,c,{task_kind:'image-asset',difficulty},{probe:false}).effort?.reasoning_effort??c.executors.grok.reasoning_effort,'medium');
   }
   run(f.root,'init',{...f.brief,executor:'grok',difficulty:'high'});
-  assert.equal(effort(f.begin().cli.args),'high');
+  assert.equal(effort(f.begin().cli.args),'medium');
  });
 }
 
@@ -36,8 +36,8 @@ test('explicit Grok effort and CLI-default opt-out remain authoritative',t=>{
  }
 });
 
-// 상담은 구현 강도(high), 리뷰 자리는 xhigh다.
-for(const [mode,expected] of [['advisor','high'],['review','xhigh']])test(`Grok ${mode} dispatch defaults to ${expected}`,t=>{
+// 상담은 구현 강도(medium), 리뷰 자리는 xhigh다.
+for(const [mode,expected] of [['advisor','medium'],['review','xhigh']])test(`Grok ${mode} dispatch defaults to ${expected}`,t=>{
  const f=fixture(t,{initialize:false});write(f,{review:{by:'delegate',reviewers:['grok']}});
  run(f.root,'init',{...f.brief,executor:'antigravity'});
  if(mode==='review'){f.begin();f.finish();}
@@ -46,9 +46,9 @@ for(const [mode,expected] of [['advisor','high'],['review','xhigh']])test(`Grok 
  assert.equal(effort(d.cli.args),expected);
 });
 
-test('both shipped profiles explicitly select Grok high',()=>{
+test('both shipped profiles explicitly select Grok medium',()=>{
  for(const file of ['hyperfusion.config.example.json','hyperfusion.v03.config.example.json']){
-  assert.equal(JSON.parse(fs.readFileSync(new URL('../'+file,import.meta.url),'utf8')).executors.grok.reasoning_effort,'high',file);
+  assert.equal(JSON.parse(fs.readFileSync(new URL('../'+file,import.meta.url),'utf8')).executors.grok.reasoning_effort,'medium',file);
  }
 });
 
@@ -77,4 +77,15 @@ test('an adaptive Grok review seat runs at xhigh even when Grok implementation i
 test('a team file accepts Grok medium and refuses efforts outside medium, high and xhigh',()=>{
  assert.doesNotThrow(()=>validateTeam({version:1,members:{grok:{enabled:true,reasoning_effort:'medium'}}}));
  assert.throws(()=>validateTeam({version:1,members:{grok:{enabled:true,reasoning_effort:'low'}}}),/members.grok.reasoning_effort must be one of medium, high, xhigh/);
+});
+
+test('a repository config or team file that pins Grok high keeps implementation and advice at high',t=>{
+ const f=fixture(t,{initialize:false});write(f,{executors:{grok:{reasoning_effort:'high'}}});
+ const c=config(f.root);assert.equal(c.executors.grok.reasoning_effort,'high');
+ for(const difficulty of ['low','medium','high'])assert.equal(taskExecutorOptions(c,'grok',difficulty).reasoning_effort,'high');
+ const dir=fs.mkdtempSync(path.join(f.root,'..','hf-team-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const team=path.join(dir,'team.json');fs.writeFileSync(team,JSON.stringify({version:1,members:{grok:{enabled:true,reasoning_effort:'high'},sonnet:{enabled:true}}}));
+ const fromTeam=config(dir,{teamFile:team});assert.equal(fromTeam.executors.grok.reasoning_effort,'high');assert.equal(fromTeam.effort_source.grok,'team');
+ write(f,{routing:{policy:'external-first'}});
+ for(const difficulty of ['low','medium','high'])assert.equal(taskExecutorOptions(config(f.root,{teamFile:team}),'grok',difficulty).reasoning_effort,'high');
 });

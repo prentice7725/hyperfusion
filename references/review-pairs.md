@@ -8,7 +8,7 @@ Init freezes `review_policy:"cross-vendor-pairs-v1"` in `assignment.json` for ne
 
 | Actual implementer | Standard, non-risk review | Important/APEX, explicit dual, or risk-raised review |
 |---|---|---|
-| Grok high | Sol xhigh | Sol xhigh + Sonnet max |
+| Grok medium | Sol xhigh | Sol xhigh + Sonnet max |
 | Antigravity | Sol xhigh | Sol xhigh + Grok xhigh |
 | Haiku | Sol xhigh | Sol xhigh + Grok xhigh |
 | Luna | Sonnet max | Sonnet max + Grok xhigh |
@@ -16,11 +16,11 @@ Init freezes `review_policy:"cross-vendor-pairs-v1"` in `assignment.json` for ne
 | Sonnet | Sol xhigh | Sol xhigh + Grok xhigh |
 | Authorized APEX Sol | Direct lead review | Direct lead review; never replaced by a delegated pair |
 
-Do not treat Grok high implementation plus Grok xhigh review as independent. New paired-policy substitutions must use vendors different from the implementer and from the other seated reviewer. Vendor identity here is the built-in member registry, not authenticated attestation of an arbitrary custom model/provider.
+Do not treat Grok implementation plus Grok xhigh review as independent. New paired-policy substitutions must use vendors different from the implementer and from the other seated reviewer. Vendor identity here is the built-in member registry, not authenticated attestation of an arbitrary custom model/provider.
 
 ## Role-specific effort and independent execution
 
-Keep Grok's normal implementation and ordinary advisor/committee consultation at the high default. Every review seat runs at its review effort: Sol xhigh, Sonnet max, Grok xhigh, including a Grok substitute in a single-review panel and a classic delegated review. An effort the operator wrote explicitly is kept for a classic review. The panel's role-specific effort overrides the normal member setting only for that review invocation; it never changes frozen implementation configuration or the next worker round.
+Keep Grok's normal implementation and ordinary advisor/committee consultation at the medium default (an operator may pin high). Every review seat runs at its review effort: Sol xhigh, Sonnet max, Grok xhigh, including a Grok substitute in a single-review panel and a classic delegated review. An effort the operator wrote explicitly is kept for a classic review. The panel's role-specific effort overrides the normal member setting only for that review invocation; it never changes frozen implementation configuration or the next worker round.
 
 Run `delegate-review` → emitted `bridge --consult` command → `consult-finish` after confirming process shutdown. The bridge launches the reviewers in parallel. Each gets the same pre-review tree/digest and bounded evidence, without the sibling's verdict. Selected model/effort, role and client-reported usage are recorded separately. Parallel execution does not eliminate Grok xhigh latency: the panel waits for every mandatory result. Actual live-model latency and judgment quality are not certified by fake-CLI transport tests.
 

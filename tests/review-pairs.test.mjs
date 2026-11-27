@@ -58,11 +58,11 @@ test('independent seats cannot be replaced by the writer, its vendor, or two sam
  assert.equal(panelSeats(planReview('haiku',paired),{asked:['grok'],reason:'Sol unavailable'}).effort.grok,'xhigh');
 });
 
-for(const owner of ['antigravity','haiku','luna','terra','sonnet'])test(`${owner} pair runs read-only on one digest; Grok review is xhigh without changing its high implementation default`,async t=>{
+for(const owner of ['antigravity','haiku','luna','terra','sonnet'])test(`${owner} pair runs read-only on one digest; Grok review is xhigh without changing its medium implementation default`,async t=>{
  const {f,s}=setup(t,owner);
  assert.equal(s.assignment.review_policy,PAIRED_REVIEW_POLICY);
  assert.deepEqual(s.review_preview.reviewers,table[owner]);
- assert.equal(config(f.root).executors.grok.reasoning_effort,'high');
+ assert.equal(config(f.root).executors.grok.reasoning_effort,'medium');
  const started=f.begin();assert.deepEqual(started.review_preview.reviewers,table[owner]);f.finish();
  const c=run(f.root,'delegate-review',{});assert.deepEqual(c.members.map(m=>m.executor),table[owner]);
  const requests=c.members.map(m=>read(task(f,`consult-${c.consult_id}-${m.member}.json`)));
@@ -72,14 +72,14 @@ for(const owner of ['antigravity','haiku','luna','terra','sonnet'])test(`${owner
  assert.equal(JSON.parse(requests[0].prompt).brief.consult.context.diff,JSON.parse(requests[1].prompt).brief.consult.context.diff);
  const out=await consult(f.root,c.consult_id);assert.ok(out.members.every(m=>m.ok),JSON.stringify(out));
  const result=run(f.root,'consult-finish',{quiescent:true});assert.equal(result.review.panel_status,'unanimous');
- assert.equal(f.state().phase,'LEAD_DECISION_REQUIRED');assert.equal(f.state().configuration.executors.grok.reasoning_effort,'high');
+ assert.equal(f.state().phase,'LEAD_DECISION_REQUIRED');assert.equal(f.state().configuration.executors.grok.reasoning_effort,'medium');
  const usage=read(task(f,`usage-consult-${c.consult_id}-${c.members.find(m=>m.executor==='grok').member}.json`));
  assert.equal(usage.role,'review');assert.equal(usage.reasoning_effort,'xhigh');
  const rows=f.state().review_results[1];assert.equal(new Set(rows.map(r=>r.digest)).size,1);
 });
 
-test('Grok high implementation never receives a Grok reviewer or changes implementation effort',t=>{
- const {f}=setup(t,'grok');const d=f.begin();assert.equal(d.cli.args[d.cli.args.indexOf('--reasoning-effort')+1],'high');
+test('Grok medium implementation never receives a Grok reviewer or changes implementation effort',t=>{
+ const {f}=setup(t,'grok');const d=f.begin();assert.equal(d.cli.args[d.cli.args.indexOf('--reasoning-effort')+1],'medium');
  f.finish();const c=run(f.root,'delegate-review',{});assert.deepEqual(c.members.map(m=>m.executor),['sol','sonnet']);
 });
 

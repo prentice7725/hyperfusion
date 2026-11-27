@@ -17,7 +17,7 @@ const OWNERS=['grok','antigravity','haiku','luna','terra','sonnet','sol','opus',
 // 이름을 받아 적기만 하면 승인된 것처럼 보이므로 아직 거절한다.
 const LATER=['explicit_repair'];
 // 기본 리뷰어의 강도. 바꿔 낀 리뷰어도 같은 값을 쓰고, 표에 없으면 설정값을 쓴다.
-// 리뷰 자리는 구현 강도와 따로 간다: Sol xhigh, Sonnet max, Grok xhigh(구현은 Sonnet medium, Grok high).
+// 리뷰 자리는 구현 강도와 따로 간다: Sol xhigh, Sonnet max, Grok xhigh(구현은 Sonnet medium, Grok medium).
 export const REVIEW_EFFORT={sol:'xhigh',sonnet:'max',grok:'xhigh'};
 export const PAIRED_REVIEW_POLICY='cross-vendor-pairs-v1';
 export const LEGACY_REVIEW_POLICY='legacy-v1';

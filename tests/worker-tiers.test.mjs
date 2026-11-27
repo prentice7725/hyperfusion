@@ -38,10 +38,10 @@ test('routing sends medium/high code to A-tier (Terra first) and low code, docs 
   assert.equal(first({task_kind:'docs'})[0],'antigravity');
   assert.equal(first({task_kind:'ui'})[0],'antigravity');
   assert.equal(first({task_kind:'code',difficulty:'high'}).includes('sol'),false);
-  // 구현 강도: Terra medium, Sonnet medium, Grok high.
+  // 구현 강도: Terra medium, Sonnet medium, Grok medium.
   assert.equal(taskExecutorOptions(c,'terra','high').reasoning_effort,'medium');
   assert.equal(taskExecutorOptions(c,'sonnet','high').reasoning_effort,'medium');
-  assert.equal(taskExecutorOptions(c,'grok','high').reasoning_effort,'high');
+  assert.equal(taskExecutorOptions(c,'grok','high').reasoning_effort,'medium');
  }
 });
 
