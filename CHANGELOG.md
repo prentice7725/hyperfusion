@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 벤치마크 실행·요약 도구를 저장소에 넣었다. `tools/benchmark-trial.mjs`는 준비부터 측정 창, headless 리드, 숨김 시험 채점까지 한 번에 돌리고, `suite`는 끊긴 뒤 그대로 다시 실행하면 기록이 남은 과제를 건너뛴다. 지금까지 이 스크립트는 scratchpad에만 있어 지워진 뒤 세션 기록에서 되살려야 했다. `tools/benchmark-report.mjs`는 과제별 리드 입력 환산·메시지 수와 측정 창 시간을 구현·리뷰·수용·나머지로 나눈 표를 낸다. 수용 테스트 기록에 `duration_ms`가 붙는다. `prepare`는 이전 시험의 제어 폴더가 남은 경로를 거절한다(2026-11-28 L03에서 끊긴 시험과 같은 경로에 다시 준비해 `BENCHMARK: writer active`로 막혔다). 설명은 `references/benchmark-pilot.md`의 "Running a repetition".
+
 - 일꾼이 `failed`로 보고하고 리드에게 묻지 않은(`needs_lead_decision:false`) 라운드에서 수용·정적 검사가 실패하면, 리드를 거치지 않고 실패 출력과 함께 같은 일꾼에게 한 번 되돌린다(리뷰 기록 `worker_status:"failed"`). 2026-11-28 벤치마크 3회차 L03·L05에서 이런 라운드가 오토파일럿을 멈췄고, L03은 리드가 재지시·복구·직접 리뷰를 맡아 리드 메시지 45개, 입력 환산 539K로 다섯 과제 중 가장 컸다. 같은 일꾼이 바로 다음 라운드에도 `failed`면 리드에게 올린다. `blocked`와 `needs_decision`은 지금처럼 리드에게 간다.
 
 - 리뷰·상담 결과의 지적 항목에 `suggestion`이 아예 없으면 빈 문자열로 받는다. 2026-11-27 L01 3회차에서 Grok 리뷰 두 번(약 30분, 그중 하나는 통과 판정)이 이 필드 하나가 빠져 `Invalid consult findings`로 버려지고 다시 돌았다. 고칠 방법은 지적 본문에 이미 있는 경우가 많다. 문자열이 아닌 `suggestion`과 다른 필드 검사는 그대로 엄격하다.

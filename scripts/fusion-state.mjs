@@ -1400,8 +1400,10 @@ function acceptanceRun(c,brief,stage,reference,{trust=false,known=null}={}) {
     Object.assign(record,{status:'skipped',ignored_changes:touched.slice(0,50),
       reason:'gitignored files changed since the reference point, so repository code may not be what the snapshot shows; inspect them, then verify with acceptance_trust_ignored:true. If they are only test or build outputs that never run as code (a cache or a dist/ your build regenerates), list their globs in the brief\'s acceptance_artifacts (or have the operator set HF_ACCEPTANCE_IGNORED_ALLOW) so they are not compared'});
   } else {
-    const before=known??snapshot(c.root);
+    const before=known??snapshot(c.root),started=Date.now();
     record.results=supervisedAcceptance(c,brief,stage,before);
+    // 벤치마크 시간 분해(tools/benchmark-report.mjs)가 일꾼 밖의 시간을 수용 실행과 나머지로 나눌 때 쓴다.
+    record.duration_ms=Date.now()-started;
     record.quiescent=record.results.every(r=>r.quiescence?.quiescent===true);
     record.status=record.results.every(r=>r.status==='pass')?'pass':'fail';
     if(touched.length)record.trusted_ignored_changes=touched.slice(0,50);

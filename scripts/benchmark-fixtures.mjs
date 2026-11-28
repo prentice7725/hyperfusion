@@ -3,7 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {hash,atomic,git} from './artifact.mjs';
-import {ensureControl,controlPath} from './control-dir.mjs';
+import {ensureControl,controlPath,controlRoot} from './control-dir.mjs';
 
 const source=fileURLToPath(new URL('../references/benchmark-fixtures/',import.meta.url));
 export const LARGE_CASES=JSON.parse(fs.readFileSync(new URL('../references/benchmark-large-cases.json',import.meta.url),'utf8'));
@@ -14,11 +14,24 @@ const commitFixture=(root,caseId)=>{
  command('init');command('add','.');command('commit','-m','Canonical '+caseId+' baseline');
  return git(root,['rev-parse','HEAD^{tree}']).trim();
 };
+// 제어 폴더는 저장소 경로로 정해진다. 지운 시험 폴더와 같은 경로에 다시 준비하면 이전 시험의 잠금·기록을 이어받아
+// start가 BENCHMARK: writer active로 거절되거나(2026-11-28 L03), 두 시험의 기록이 섞인다. 준비 단계에서 막는다.
+// 제어 폴더 이름은 실제 경로(realpath)로 정해지므로 빈 폴더를 먼저 만든다. 거절할 때는 방금 만든 빈 폴더(상위 포함)만 지운다.
+function assertFreshControl(root) {
+ const created=fs.mkdirSync(root,{recursive:true});
+ const dir=controlRoot(root);
+ if(fs.existsSync(dir)){
+  fs.rmSync(created??root,{recursive:true});
+  throw Error(`BENCHMARK: a control folder from an earlier trial at this path still exists (${dir}); prepare at a new path, or delete that folder once no worker from that trial is running`);
+ }
+}
+
 export function prepareFixture(caseId,target,options={}) {
  if(/^HF-L\d\d$/.test(caseId))return prepareHistoryFixture(caseId,target,options);
  if(!/^HF-B(?:0[1-9]|10)$/.test(caseId))throw Error('BENCHMARK: unknown fixture');
  const folder=path.join(source,caseId),root=path.resolve(target);
  if(fs.existsSync(root))throw Error('BENCHMARK: target must not exist; never overwrite a trial');
+ assertFreshControl(root);
  fs.mkdirSync(root,{recursive:true});fs.cpSync(folder,root,{recursive:true});
  const run=path.join(source,'run.mjs');fs.copyFileSync(run,path.join(root,'run.mjs'));
  for(const name of fs.readdirSync(root))fs.writeFileSync(path.join(root,name),fs.readFileSync(path.join(root,name),'utf8').replace(/\r\n/g,'\n'));
@@ -81,6 +94,7 @@ export function prepareHistoryFixture(caseId,target,{source:given,cases=LARGE_CA
  for(const [file,body] of treeFiles(repo,task.source_commit,task.acceptance_tests))files.set(file,body);
  for(const file of [...files.keys()])if(under(file,EXCLUDED))files.delete(file);
  if(!task.acceptance_tests.every(f=>files.has(f)))throw Error('BENCHMARK: acceptance test missing from source commit');
+ assertFreshControl(root);
  for(const [file,body] of files){const out=path.join(root,...file.split('/'));fs.mkdirSync(path.dirname(out),{recursive:true});fs.writeFileSync(out,body);}
  const digests=[...files].map(([file,body])=>[file,hash(body)]).sort((a,b)=>a[0]<b[0]?-1:1);
  const protected_files=Object.fromEntries(digests.filter(([file])=>file.startsWith(PROTECTED_PREFIX)));

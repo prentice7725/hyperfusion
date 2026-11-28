@@ -140,6 +140,36 @@ replaced. Calibration runs are not comparison trials; prepare fresh fixtures for
 the paired runs. `compare --suite large` and `compare-repeated --suite large`
 expect only large-suite records and never mix them with the core suite.
 
+### Running a repetition
+
+`tools/benchmark-trial.mjs` runs one trial end to end: prepare, start the window,
+a headless `claude -p` lead (Opus 5.5, `bypassPermissions`, 180-minute cap), stop,
+and hidden-test scoring. Both arms are told to verify with the acceptance command
+only, which overrides the fixture's own instruction to run full checks. It calls
+real models and costs money.
+
+```sh
+node tools/benchmark-trial.mjs suite --dir ../hf-bench/rep4 --source .
+node tools/benchmark-trial.mjs run HF-L03 baseline --dir ../hf-bench/solo3/L03 --source .
+node tools/benchmark-report.mjs ../hf-bench/rep4 [--rounds] [--json]
+```
+
+- The lead uses the installed skill, so the controller commands run from there
+  too (`--skill` or `HF_BENCH_ROOT` to change it). Update the installed copy to
+  the commit under test first.
+- `suite` runs the cases one at a time and skips a case whose `trial.log` already
+  says `recorded success`, so a run cut off by a reboot can be started again
+  unchanged. A cut-off case keeps its folder and its control folder; the next
+  attempt goes to `<case>-attempt2`.
+- The control folder is keyed by the repository path. `prepare` refuses a path
+  whose control folder survives from an earlier trial, because the new trial
+  would inherit that trial's locks and records.
+- `benchmark-report.mjs` prints one row per trial: lead input-equivalent and
+  messages, window minutes split into implement, review, acceptance and other
+  (the lead and controller steps), rounds, reviews, hidden-test result and stall
+  observations. Acceptance records written before 2026-11-28 have no
+  `duration_ms`; their time falls under other and is marked `*`.
+
 ### Quality scoring with hidden tests
 
 The protected acceptance file is the commit's own test, and both arms see it. A
