@@ -76,7 +76,7 @@ init(또는 명령이 처음 정해지는 begin)에서 손대지 않은 트리�
 - 둘 중 하나라도 실패하면 리뷰어를 부르지 않고 같은 일꾼에게 REDO로 되돌린다. 지금의 수용 실패 처리(`applyReview`, `reviewed_by:"controller"`)를 그대로 쓴다.
 - 반려 사유는 `STATIC: <명령>`이다. 같은 명령으로 두 번 되돌아간 일꾼은 지금의 "같은 실패 반복 시 교체" 규칙에 걸린다.
 - 재지시에는 실패한 명령과 출력의 끝 4KB를 붙인다(`static_feedback`). 수용 실패의 `acceptance_feedback`과 같은 모양이다.
-- 일꾼이 미완료(`blocked`, `needs_decision`)라고 보고했으면 자동으로 되돌리지 않고 증거로만 리드에게 보인다. 수용 테스트와 같다.
+- 일꾼이 미완료(`blocked`, `needs_decision`)라고 보고했으면 자동으로 되돌리지 않고 증거로만 리드에게 보인다. 수용 테스트와 같다. 리드에게 묻지 않은 `failed`는 연속 한 번까지 되돌린다([operations.md](operations.md#수용-테스트-자동-실행)).
 - 리드가 직접 구현한 라운드(takeover)는 기록만 하고 리드가 판정한다.
 - 기록은 `static-N-finish.json`에 남긴다: 명령별 종료 코드, 소요 시간, 출력 SHA-256, 끝 4KB, 종료 증거.
 

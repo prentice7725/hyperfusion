@@ -179,6 +179,43 @@ test('a failing acceptance run on a blocked result is evidence for the lead, not
  assert.equal(s.reviews.length,0,'the worker\'s question is not overwritten by a controller redo');
 });
 
+// 2026-11-28 benchmark L03/L05: the worker reported failed (no lead question), acceptance failed, and autopilot stopped for the lead.
+// Such a round now goes back to the same worker once, like a complete round with a failing acceptance run.
+const failedReport=(f,files)=>({...f.result(files),status:'failed',unresolved:['the acceptance run was interrupted; the rest is unverified'],needs_lead_decision:false,recommended_next_action:'rerun the acceptance test'});
+
+test('a failed report with a failing acceptance run and no lead question returns to the same worker once',t=>{
+ const f=fixture(t);f.brief.acceptance_commands=[CHECK];
+ f.begin();fs.writeFileSync(path.join(f.root,'a.txt'),'half done');
+ f.finish(failedReport(f,['a.txt']));
+ let s=f.state();
+ assert.equal(s.phase,'REDO');assert.equal(s.acceptance.status,'fail');
+ const order=s.reviews.at(-1);
+ assert.equal(order.reviewed_by,'controller');assert.equal(order.worker_status,'failed');
+ assert.match(order.rationale,/^The worker reported failed\. Acceptance commands failed/);
+ assert.deepEqual(order.blocking_criteria,['Acceptance: '+CHECK]);
+ // The next order carries the failing output, and the same worker gets it.
+ f.begin({lead_feedback:'@review'});
+ assert.equal(f.state().owner,s.owner);
+ assert.match(read(path.join(f.control,'tasks',f.brief.task_id,'brief-2.json')).lead_feedback.join('\n'),/a\.txt is half done/);
+ // A second failed report in a row is not returned again: it waits for the lead with the evidence.
+ fs.writeFileSync(path.join(f.root,'a.txt'),'still half done');
+ f.finish(failedReport(f,['a.txt']));
+ s=f.state();
+ assert.equal(s.phase,'REVIEW');assert.equal(s.acceptance.status,'fail');assert.equal(s.acceptance.round,2);
+ assert.equal(s.reviews.length,1,'only the first failed round was returned automatically');
+});
+
+test('a failed report that asks the lead, or passes acceptance, is not returned automatically',t=>{
+ const asks=fixture(t);asks.brief.acceptance_commands=[CHECK];
+ asks.begin();fs.writeFileSync(path.join(asks.root,'a.txt'),'half done');
+ asks.finish({...failedReport(asks,['a.txt']),needs_lead_decision:true});
+ assert.equal(asks.state().phase,'REVIEW');assert.equal(asks.state().reviews.length,0);
+ const passes=fixture(t);passes.brief.acceptance_commands=[CHECK];
+ passes.begin();fs.writeFileSync(path.join(passes.root,'a.txt'),'fixed');
+ passes.finish(failedReport(passes,['a.txt']));
+ assert.equal(passes.state().phase,'REVIEW');assert.equal(passes.state().acceptance.status,'pass');assert.equal(passes.state().reviews.length,0);
+});
+
 test('an incomplete result with no change runs no acceptance',t=>{
  const f=fixture(t);f.brief.acceptance_commands=[CHECK];
  f.begin();f.finish(incomplete(f,'failed',[]));
@@ -210,6 +247,21 @@ test('autopilot stops for the lead on an incomplete result after real acceptance
  const s=f.state();
  assert.deepEqual([s.acceptance.round,s.acceptance.status],[1,'pass']);
  assert.equal(s.open_consult,undefined,'no reviewer was spent');
+});
+
+// 2026-11-28 L03: round 1 reported failed with a failing acceptance run and autopilot stopped. Now the controller returns it and autopilot goes on.
+test('autopilot keeps going after a failed report with a failing acceptance run',async t=>{
+ const f=fixture(t,{initialize:false});f.brief.acceptance_commands=[CHECK];
+ run(f.root,'init',{...f.brief,executor:'grok'});f.mode('edit');
+ const cli=process.env.HF_GROK_BIN;
+ fs.writeFileSync(cli,fs.readFileSync(cli,'utf8').replace("if(mode==='edit'){fs.writeFileSync('a.txt','fixed');result.files_changed=['a.txt'];}",
+  "if(mode==='edit'){const first=request.result_template.round===1;fs.writeFileSync('a.txt',first?'half done':'fixed');result.files_changed=['a.txt'];if(first){result.status='failed';result.needs_lead_decision=false;result.unresolved=['acceptance run interrupted'];}}"));
+ const out=await autopilot(f.root);
+ assert.ok(!['AUTOPILOT_WORKER_INCOMPLETE','AUTOPILOT_ACCEPTANCE_UNVERIFIED'].includes(out.reason),JSON.stringify(out));
+ const s=f.state();
+ assert.equal(s.reviews[0].reviewed_by,'controller');assert.equal(s.reviews[0].worker_status,'failed');assert.equal(s.reviews[0].round,1);
+ assert.ok(s.iteration>=2,'round 2 ran');
+ assert.deepEqual([s.acceptance.round,s.acceptance.status],[2,'pass']);
 });
 
 // 2026-11-10 L05 run 4: a worker "failed" only because the host blocked its tests; the reviewer should judge it, not the lead.

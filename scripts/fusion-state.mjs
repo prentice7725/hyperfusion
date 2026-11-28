@@ -1307,8 +1307,14 @@ function finish(c,input) {
   // 일반 반려와 같은 규칙(예산, 같은 실패 반복 시 교체)을 거친다. 리드 takeover 라운드는 리드가 직접 판정한다.
   // 미완료 결과의 실패는 일꾼의 질문(needs_decision 등)을 덮지 않도록 자동으로 되돌리지 않고, 증거로만 리드에게 간다.
   // 정적 검사 실패도 같은 길이다. 둘 다 실패하면 한 번의 재지시에 둘 다 싣는다. 보호 설정이 바뀐 라운드는 리드가 판단한다.
-  if((acc?.status==='fail'||st?.status==='fail')&&st?.status!=='config_changed'&&s.owner!=='lead'&&complete){
-    return applyReview(c,controllerRedo(brief,'after finish; returned to the worker without lead review',st,acc),acc?.tree_digest??st.tree_digest);
+  // 예외 하나: 일꾼이 failed로 보고하고 리드에게 묻지 않은(needs_lead_decision false) 라운드는 질문이 없으므로 같은 길로 한 번 되돌린다.
+  // 2026-11-28 벤치마크 L03·L05에서 이런 라운드가 오토파일럿을 멈추고 리드가 손으로 재지시·복구·직접 리뷰를 맡았다(L03 리드 메시지 45개).
+  // 같은 일꾼이 직전 라운드에도 이 길로 되돌아왔으면 다시 되돌리지 않고 리드에게 올린다. blocked와 needs_decision은 그대로 리드에게 간다.
+  const failedReturn=input.result.status==='failed'&&input.result.needs_lead_decision!==true&&!previousFailedReturn(s);
+  if((acc?.status==='fail'||st?.status==='fail')&&st?.status!=='config_changed'&&s.owner!=='lead'&&(complete||failedReturn)){
+    const order=controllerRedo(brief,'after finish; returned to the worker without lead review',st,acc);
+    if(!complete)Object.assign(order,{worker_status:'failed',rationale:`The worker reported failed. ${order.rationale}`});
+    return applyReview(c,order,acc?.tree_digest??st.tree_digest);
   }
   // 수용 실패는 컨트롤러 재지시다. 모델 pass는 여기로 오지 않는다. Sol처럼 리뷰어가 리드뿐이면 위임 없이 게이트로 올린다.
   if(s.configuration.review?.strategy==='lead-gated-adaptive'){
@@ -1488,6 +1494,12 @@ function staticRun(c,brief,stage,reference,{trust=false,known=null}={}) {
   c.art(`${name}.json`,record);
   s.static={round:n,stage,status:record.status,quiescent:record.quiescent===true,file:`${name}.json`,tree_digest:record.tree_digest??null,ignored_after:record.ignored_after??null};
   return record;
+}
+
+// 직전 라운드가 같은 일꾼의 failed 결과를 컨트롤러가 되돌린 라운드였는지. failed 자동 반려는 연속 한 번까지다.
+function previousFailedReturn(s) {
+  const last=(s.reviews??[]).at(-1);
+  return Boolean(last&&last.reviewed_by==='controller'&&last.worker_status==='failed'&&last.owner===s.owner&&last.round===s.iteration-1);
 }
 
 // 컨트롤러 재지시. 정적 검사와 수용 테스트 실패를 한 번에 싣는다. 같은 명령으로 두 번 되돌아가면 반복 반려 규칙에 걸린다.

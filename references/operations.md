@@ -102,6 +102,8 @@ brief에 `acceptance_map`을 넣으면 수용 기준 ID와 그 기준을 증명�
 
 `status --summary`에 마지막 실행 결과가 나온다. 컨트롤러가 되돌린 라운드는 리뷰 기록의 `reviewed_by`가 `controller`이고 지표에는 `acceptance_returns`로 센다.
 
+일꾼이 미완료라고 보고한 라운드는 자동으로 되돌리지 않고 증거로만 리드에게 보인다. 예외는 `failed`이면서 리드에게 묻지 않은(`needs_lead_decision:false`) 결과다. 질문이 없으므로 수용·정적 검사가 실패하면 같은 일꾼에게 한 번 되돌리고, 리뷰 기록에 `worker_status:"failed"`를 남긴다. 같은 일꾼이 바로 다음 라운드에도 `failed`를 내면 다시 되돌리지 않고 리드에게 올린다. `blocked`와 `needs_decision`은 그대로 리드에게 간다.
+
 테스트 실행은 저장소 코드 실행이다. 그래서 다음을 지킨다.
 
 - 명령은 리드가 쓴 brief에서만 받는다. 저장소의 `hyperfusion.config.json`은 일꾼이 고칠 수 있으므로 명령 출처가 아니다.
