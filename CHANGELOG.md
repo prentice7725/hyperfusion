@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- 리뷰·상담 결과의 지적 항목에 `suggestion`이 아예 없으면 빈 문자열로 받는다. 2026-11-27 L01 3회차에서 Grok 리뷰 두 번(약 30분, 그중 하나는 통과 판정)이 이 필드 하나가 빠져 `Invalid consult findings`로 버려지고 다시 돌았다. 고칠 방법은 지적 본문에 이미 있는 경우가 많다. 문자열이 아닌 `suggestion`과 다른 필드 검사는 그대로 엄격하다.
+
 - Grok 구현·상담 기본 강도를 `high`에서 `medium`으로 낮췄다. 리뷰 자리는 그대로 `xhigh`다. 근거는 아래 `medium` 항목의 시험이다(L01 짝에서 시간 −43%, 비용 −57%에 숨김 결과 같음, L02는 high가 60분 제한에 걸리고 medium은 37.9분에 끝났지만 숨김 하나 실패). 과제당 1회뿐이라 다음 L01~L05 벤치마크에서 다시 보고, 통과율이나 재작업 라운드가 나빠지면 되돌린다. `high`를 적은 저장소 설정과 팀 파일은 그대로 `high`로 돈다. 예전 기본값이 필요하면 `executors.grok.reasoning_effort:"high"`를 적는다. 예제 설정 두 개는 `medium`을 적는다.
 - Grok 추론 강도에 `medium`을 더했다. `executors.grok.reasoning_effort:"medium"`(또는 팀 파일 `members.grok.reasoning_effort`)을 적으면 구현과 상담이 `--reasoning-effort medium`으로 돈다. Grok 4.7 모델 목록에 `medium`이 있는데도 A·B 등급제를 넣을 때 `high`·`xhigh`만 받도록 막아 두었다. 2026-11-27 단독 일꾼 시험(`tools/worker-trial.mjs`, 각 1회, Grok CLI 1.0.92): 같은 조건 짝인 L01은 medium 16.7분·29턴·$0.71, high 29.5분·52턴·$1.66(둘 다 숨김 9/9), L02는 medium 37.9분(숨김 4/5), high는 60분 제한에 걸렸다(남은 트리 숨김 5/5). medium 5과제는 숨김 전부 통과 4/5(개별 27/28)로, 11/14 역량 시험의 high 13/15(과제당 3회)와 견줄 만하다. L03~L05에는 같은 조건의 high 시간이 없다.
 - 일꾼 정지 관측을 넣었다(관측 전용). 브리지가 출력 바이트, 프로세스 트리의 CPU 시간, 작업 트리 변경이 모두 멈춘 구간을 `stall-<tag>.json`에 남긴다. 일꾼을 끊지 않고 라운드 결과·종료 증명·복구 판정도 바꾸지 않는다. `node scripts/stall-watch.mjs REPO`가 실행마다 "끊었다면 아꼈을 시간"과 오탐을 보여 주고, `--stall-min`으로 기준을 바꿔 다시 계산한다. 프로세스 표에 누적 CPU 시간(`cpu_ms`)이 붙었다. 설명은 `references/universal-supervisor.md`의 "정지 관측".

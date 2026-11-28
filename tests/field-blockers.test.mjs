@@ -82,6 +82,26 @@ test('finding validation stays strict apart from the detail alias',()=>{
  assert.throws(()=>contract.consultResult(withFinding({detail:'x',severity:'high'}),'KF3','c2','m1','review'),/Invalid consult findings/);
  const both=contract.consultResult(withFinding({issue:'kept',detail:'extra'}),'KF3','c2','m1','review');
  assert.equal(both.findings[0].issue,'kept');
+ // suggestion은 빠진 경우만 채운다. 문자열이 아닌 값은 여전히 거절한다.
+ for(const suggestion of [null,7,['x'],{}])
+  assert.throws(()=>contract.consultResult(withFinding({issue:'x',suggestion}),'KF3','c2','m1','review'),/Invalid consult findings/,JSON.stringify(suggestion));
+});
+
+// Shape seen from Grok 4.7 on 2026-11-27 (HF-L01 c3/c4): findings with no suggestion field at all.
+// Both reviews were discarded as invalid and rerun (~30 minutes); one of them was a pass.
+test('a Grok review whose findings omit suggestion is accepted with an empty suggestion',()=>{
+ const text='라운드 4 변경을 성공 기준과 대조해 읽기 전용으로 검토합니다.\n\n'+JSON.stringify({task_id:'KF3',consult_id:'c3',member:'m1',summary:'AC2 still leaks a multi-line secret',
+  findings:[{severity:'blocker',file:'src/kf3.mjs',line:264,issue:'AC2: the line-count fallback returns the secret unmasked'},{file:'src/kf3.mjs',line:10,severity:'minor',issue:'comment is stale'}],
+  root_cause:'',plan:[],recommended_verdict:'redo',confidence:'high',blocking_criteria:['AC2']});
+ const parsed=grokParse(JSON.stringify({text,stopReason:'end_turn',sessionId:'s1'}),{cli:{session_id:'s1'}});
+ const v=contract.consultResult(parsed.result,'KF3','c3','m1','review');
+ assert.deepEqual(v.findings.map(f=>f.suggestion),['','']);
+ assert.equal(v.findings[0].issue,'AC2: the line-count fallback returns the secret unmasked');
+ assert.equal(contract.rejectionEvidence(v.recommended_verdict,v.findings),true);
+ // A pass with a finding that omits suggestion is kept too (c4 was a pass that got discarded).
+ const pass=contract.consultResult({...extractResult(text),consult_id:'c4',recommended_verdict:'pass',blocking_criteria:[],findings:[{file:'src/kf3.mjs',line:1,severity:'minor',issue:'nit'}]},'KF3','c4','m1','review');
+ assert.equal(pass.recommended_verdict,'pass');
+ assert.equal(pass.findings[0].suggestion,'');
 });
 
 // ── 3. reviewers see lead contract corrections ─────────────────────

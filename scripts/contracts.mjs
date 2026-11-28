@@ -130,8 +130,15 @@ export function feedback(v) {
 }
 // 스키마를 강제하지 않는 Grok은 지적 본문을 issue 대신 detail로 적을 때가 있다(KF3 실측). 이름만 다른 그 필드 하나만 issue로 옮긴다.
 // 다른 검사(파일, 줄, 심각도, 빈 본문)는 그대로 엄격하다.
-const findingAlias=f=>f&&typeof f==='object'&&f.issue===undefined&&typeof f.detail==='string'
- ?Object.fromEntries(Object.entries(f).map(([k,x])=>[k==='detail'?'issue':k,x])):f;
+// Grok은 suggestion 필드를 아예 빼고 낼 때도 있다(2026-11-27 L01, 리뷰 두 번이 이것 하나로 무효가 돼 약 30분을 다시 돌렸다).
+// 고칠 방법은 지적 본문에 이미 있는 경우가 많아, 빠진 경우만 빈 문자열로 채운다. 문자열이 아닌 값은 그대로 거절한다.
+const findingAlias=f=>{
+ if(!f||typeof f!=='object'||Array.isArray(f))return f;
+ let out=f;
+ if(out.issue===undefined&&typeof out.detail==='string')out=Object.fromEntries(Object.entries(out).map(([k,x])=>[k==='detail'?'issue':k,x]));
+ if(out.suggestion===undefined)out={...out,suggestion:''};
+ return out;
+};
 export function consultResult(v,task_id,consult_id,member,mode) {
  if(v&&Array.isArray(v.findings)){const findings=v.findings.map(findingAlias);if(findings.some((f,i)=>f!==v.findings[i]))v={...v,findings};}
  requireThat(v&&v.task_id===task_id&&v.consult_id===consult_id&&v.member===member,'Consult provenance mismatch');
